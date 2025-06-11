@@ -14,14 +14,23 @@ export default class WriterlyIndentationValidator {
   validateDocument(document: vscode.TextDocument) {
     const diagnostics: vscode.Diagnostic[] = [];
     let previousIndentLevel = 0;
+    let insideCodeBlock = false;
 
     for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
       const line = document.lineAt(lineNumber);
       const lineText = line.text;
 
-      // Skip empty lines
       if (lineText.trim() === "") {
         continue;
+      }
+
+      if (lineText.trim().startsWith("```") && !insideCodeBlock) {
+        insideCodeBlock = true;
+      } else if (!lineText.trim().startsWith("```") && insideCodeBlock) {
+        // Skip validation inside code blocks
+        continue;
+      } else if (lineText.trim().startsWith("```") && insideCodeBlock) {
+        insideCodeBlock = false;
       }
 
       const indentationResult = this.analyzeIndentation(

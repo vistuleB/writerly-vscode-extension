@@ -9,6 +9,9 @@
     },
     {
       "include": "#block-with-attributes"
+    },
+    {
+      "include": "#codeblock"
     }
   ],
   "repository": {
@@ -120,6 +123,31 @@
           "name": "string.unquoted.wly"
         }
       ]
+    },
+    "codeblock": {
+      "begin": "^(\\s+)(```)([a-zA-Z0-9]*)?\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.whitespace.leading"
+        },
+        "2": {
+          "name": "punctuation.definition.string.begin.markdown.wly"
+        },
+        "3": {
+          "name": "fenced_code.block.language.wly"
+        }
+      },
+
+      "end": "^(\\s*)(```)\\s*$",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.whitespace.leading"
+        },
+        "2": {
+          "name": "punctuation.definition.string.end.markdown.wly"
+        }
+      },
+      "contentName": "markup.raw.block.wly"
     }
   }
 }
