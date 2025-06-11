@@ -1,0 +1,65 @@
+{
+  "name": "writerly-vscode",
+  "displayName": "Writerly",
+  "description": "Writerly support for VS Code",
+  "version": "0.0.1",
+  "publisher": "Writerly",
+  "author": {
+    "name": "Chaker Atallah"
+  },
+  "engines": {
+    "vscode": "^1.25.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./out/extension",
+  "contributes": {
+    "languages": [
+      {
+        "id": "writerly",
+        "aliases": [
+          "Writerly",
+          "writerly"
+        ],
+        "extensions": [
+          ".writerly"
+        ],
+        "configuration": "./writerly.configuration.json"
+      }
+    ],
+    "commands": [],
+    "grammars": [
+      {
+        "language": "writerly",
+        "scopeName": "source.writerly",
+        "path": "./syntaxes/writerly.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "tsc -p ./",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "postinstall": "node ./node_modules/vscode/bin/install"
+  },
+  "dependencies": {
+    "cross-spawn": "^6.0.5",
+    "glob": "^7.1.4",
+    "which": "^1.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^10.5.2",
+    "tslint": "^5.11.0",
+    "typescript": "^2.9.2",
+    "vscode": "^1.1.18"
+  },
+  "__metadata": {
+    "id": "d2961823-0b27-4e01-bcc9-1fda76e44ca7",
+    "publisherDisplayName": "mdgriffith",
+    "publisherId": "a5a92ec3-b3ba-49bc-a0a3-0ab06441469f"
+  }
+}

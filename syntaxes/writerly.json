@@ -1,0 +1,42 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "fileTypes": ["writerly"],
+  "name": "Writerly",
+  "scopeName": "source.writerly",
+  "patterns": [
+    {
+      "include": "#block"
+    },
+    {
+      "include": "#comment"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.comment.mark"
+            }
+          },
+          "begin": "^\\s*!",
+          "end": "$",
+          "name": "comment.line.mark"
+        }
+      ]
+    },
+    "block": {
+      "match": "^\\s*(\\|\\>?)\\s*([a-zA-Z0-9]+)",
+      "name": "storage.tag.wly",
+      "captures": {
+        "1": {
+          "name": "keyword.control.wly"
+        },
+        "2": {
+          "name": "constant.name.tag.wly"
+        }
+      }
+    }
+  }
+}
