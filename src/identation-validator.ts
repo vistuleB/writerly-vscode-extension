@@ -15,6 +15,8 @@ export default class WriterlyIndentationValidator {
     const diagnostics: vscode.Diagnostic[] = [];
     let previousIndentLevel = 0;
     let insideCodeBlock = false;
+    let codeBlockIndentLevel = 0;
+    let previousLineIsTag = false;
 
     for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
       const line = document.lineAt(lineNumber);
@@ -26,18 +28,20 @@ export default class WriterlyIndentationValidator {
 
       if (lineText.trim().startsWith("```") && !insideCodeBlock) {
         insideCodeBlock = true;
-      } else if (!lineText.trim().startsWith("```") && insideCodeBlock) {
-        // Skip validation inside code blocks
-        continue;
+        codeBlockIndentLevel = this.getLineIndentation(lineText);
       } else if (lineText.trim().startsWith("```") && insideCodeBlock) {
         insideCodeBlock = false;
       }
 
-      const indentationResult = this.analyzeIndentation(
-        lineText,
-        lineNumber,
-        previousIndentLevel
-      );
+      let indentationResult = insideCodeBlock
+        ? this.analyzeCodeBlockIndentation(codeBlockIndentLevel, lineText)
+        : this.analyzeIndentation(
+            lineText,
+            previousLineIsTag,
+            previousIndentLevel
+          );
+
+      previousLineIsTag = lineText.trim().startsWith("|>");
 
       if (indentationResult.error) {
         const diagnostic = new vscode.Diagnostic(
@@ -64,13 +68,41 @@ export default class WriterlyIndentationValidator {
     this.diagnosticCollection.set(document.uri, diagnostics);
   }
 
+  private getLineIndentation(line: string): number {
+    const leadingWhitespace = line.match(/^(\s*)/)?.[1] || "";
+    return leadingWhitespace.length;
+  }
+
+  private analyzeCodeBlockIndentation(
+    codeBlockIndentation: number,
+    lineText: string
+  ): IndentationResult {
+    const lineIndent = this.getLineIndentation(lineText);
+    if (codeBlockIndentation > lineIndent) {
+      return {
+        error: `Code block indentation must be at least same as it's opening`,
+        severity: vscode.DiagnosticSeverity.Error,
+        code: "code-block-indentation-too-low",
+        indentLength: lineIndent,
+        indentLevel: Math.floor(lineIndent / 4),
+      };
+    }
+    return {
+      error: null,
+      severity: vscode.DiagnosticSeverity.Information,
+      code: null,
+      indentLength: lineIndent,
+      indentLevel: Math.floor(lineIndent / 4),
+    };
+  }
+
   private analyzeIndentation(
     lineText: string,
-    lineNumber: number,
+    previousLineIsTag: boolean,
     previousIndentLevel: number
   ): IndentationResult {
+    const indentLength = this.getLineIndentation(lineText);
     const leadingWhitespace = lineText.match(/^(\s*)/)?.[1] || "";
-    const indentLength = leadingWhitespace.length;
 
     // Check for tabs
     if (leadingWhitespace.includes("\t")) {
@@ -104,6 +136,17 @@ export default class WriterlyIndentationValidator {
         } levels. Maximum increase is 1 level (4 spaces)`,
         severity: vscode.DiagnosticSeverity.Error,
         code: "excessive-indentation-increase",
+        indentLength,
+        indentLevel: currentIndentLevel,
+      };
+    }
+
+    // Check if there is identation increase between text lines
+    if (currentIndentLevel > previousIndentLevel && !previousLineIsTag) {
+      return {
+        error: `Indentation can't be increased between text lines`,
+        severity: vscode.DiagnosticSeverity.Error,
+        code: "indentation-increase-text-lines",
         indentLength,
         indentLevel: currentIndentLevel,
       };
