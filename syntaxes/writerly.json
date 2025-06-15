@@ -125,7 +125,7 @@
       ]
     },
     "codeblock": {
-      "begin": "^(\\s+)(```)([a-zA-Z0-9]*)?\\s*$",
+      "begin": "^(\\s+)(```)([a-zA-Z0-9\\s]*)?\\s*$",
       "beginCaptures": {
         "1": {
           "name": "punctuation.whitespace.leading"

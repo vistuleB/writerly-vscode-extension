@@ -1,3 +1,4 @@
+import { assert } from "console";
 import * as vscode from "vscode";
 
 interface IndentationResult {
@@ -29,6 +30,13 @@ export default class WriterlyIndentationValidator {
       if (lineText.trim().startsWith("```") && !insideCodeBlock) {
         insideCodeBlock = true;
         codeBlockIndentLevel = this.getLineIndentation(lineText);
+        let codeBlockDiagnostic = this.analyzeCodeBlockOpening(
+          lineText,
+          lineNumber
+        );
+        if (codeBlockDiagnostic) {
+          diagnostics.push(codeBlockDiagnostic);
+        }
       } else if (lineText.trim().startsWith("```") && insideCodeBlock) {
         insideCodeBlock = false;
       }
@@ -94,6 +102,26 @@ export default class WriterlyIndentationValidator {
       indentLength: lineIndent,
       indentLevel: Math.floor(lineIndent / 4),
     };
+  }
+
+  private analyzeCodeBlockOpening(
+    lineText: string,
+    lineNumber: number
+  ): vscode.Diagnostic | undefined {
+    assert(lineText.trim().startsWith("```"));
+
+    let thereIsSpaceAfterOpening = lineText.trim().slice(3)?.[0] === " ";
+    if (thereIsSpaceAfterOpening) {
+      let startChar = lineText.length - lineText.trim().slice(3).length - 1;
+      const diagnostic = new vscode.Diagnostic(
+        new vscode.Range(lineNumber, startChar, lineNumber, lineText.length),
+        "Language name must be written directly after the opening backticks",
+        vscode.DiagnosticSeverity.Error
+      );
+      diagnostic.code = "code-block-opening-language-name";
+      diagnostic.source = "writerly-indentation";
+      return diagnostic;
+    }
   }
 
   private analyzeIndentation(
