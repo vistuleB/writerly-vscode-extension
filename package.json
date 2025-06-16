@@ -2,7 +2,7 @@
   "name": "writerly-vscode",
   "displayName": "Writerly",
   "description": "Writerly support for VS Code",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "Writerly",
   "author": {
     "name": "Chaker Atallah"

@@ -9,14 +9,22 @@ interface IndentationResult {
   indentLevel: number;
 }
 
+interface CodeBlockState {
+  isInside: boolean;
+  startLine?: number;
+  indentLevel: number;
+}
+
 export default class WriterlyIndentationValidator {
   constructor(private diagnosticCollection: vscode.DiagnosticCollection) {}
 
-  validateDocument(document: vscode.TextDocument) {
+  validateDocument(document: vscode.TextDocument): void {
     const diagnostics: vscode.Diagnostic[] = [];
+    const codeBlockState: CodeBlockState = {
+      isInside: false,
+      indentLevel: 0,
+    };
     let previousIndentLevel = 0;
-    let insideCodeBlock = false;
-    let codeBlockIndentLevel = 0;
     let previousLineIsTag = false;
 
     for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
@@ -27,53 +35,145 @@ export default class WriterlyIndentationValidator {
         continue;
       }
 
-      if (lineText.trim().startsWith("```") && !insideCodeBlock) {
-        insideCodeBlock = true;
-        codeBlockIndentLevel = this.getLineIndentation(lineText);
-        let codeBlockDiagnostic = this.analyzeCodeBlockOpening(
+      if (
+        this.handleCodeBlockBoundaries(
           lineText,
-          lineNumber
-        );
-        if (codeBlockDiagnostic) {
-          diagnostics.push(codeBlockDiagnostic);
-        }
-      } else if (lineText.trim().startsWith("```") && insideCodeBlock) {
-        insideCodeBlock = false;
-      }
+          lineNumber,
+          codeBlockState,
+          diagnostics
+        )
+      )
+        continue;
 
-      let indentationResult = insideCodeBlock
-        ? this.analyzeCodeBlockIndentation(codeBlockIndentLevel, lineText)
-        : this.analyzeIndentation(
-            lineText,
-            previousLineIsTag,
-            previousIndentLevel
-          );
+      const indentationResult = this.getIndentationResult(
+        lineText,
+        codeBlockState,
+        previousLineIsTag,
+        previousIndentLevel
+      );
 
       previousLineIsTag = lineText.trim().startsWith("|>");
 
       if (indentationResult.error) {
-        const diagnostic = new vscode.Diagnostic(
-          new vscode.Range(
-            lineNumber,
-            0,
-            lineNumber,
-            indentationResult.indentLength
-          ),
-          indentationResult.error,
-          indentationResult.severity
+        diagnostics.push(
+          this.createIndentationDiagnostic(lineNumber, indentationResult)
         );
-        diagnostic.code = indentationResult.code;
-        diagnostic.source = "writerly-indentation";
-        diagnostics.push(diagnostic);
       }
 
-      // Update previous indent level only if current line is valid
       if (!indentationResult.error) {
         previousIndentLevel = indentationResult.indentLevel;
       }
     }
 
+    this.handleUnclosedCodeBlock(document, codeBlockState, diagnostics);
     this.diagnosticCollection.set(document.uri, diagnostics);
+  }
+
+  private handleCodeBlockBoundaries(
+    lineText: string,
+    lineNumber: number,
+    codeBlockState: CodeBlockState,
+    diagnostics: vscode.Diagnostic[]
+  ): boolean {
+    const isCodeBlockBoundary = lineText.trim().startsWith("```");
+    if (!isCodeBlockBoundary) return false;
+
+    if (!codeBlockState.isInside) {
+      // Opening code block
+      codeBlockState.isInside = true;
+      codeBlockState.startLine = lineNumber;
+      codeBlockState.indentLevel = this.getLineIndentation(lineText);
+
+      const openingDiagnostic = this.analyzeCodeBlockOpening(
+        lineText,
+        lineNumber
+      );
+      if (openingDiagnostic) {
+        diagnostics.push(openingDiagnostic);
+      }
+    } else {
+      // Closing code block
+      codeBlockState.isInside = false;
+      codeBlockState.startLine = undefined;
+
+      if (codeBlockState.indentLevel != this.getLineIndentation(lineText)) {
+        diagnostics.push(
+          new vscode.Diagnostic(
+            new vscode.Range(lineNumber, 0, lineNumber, lineText.length),
+            "Closing code block must have the same indentation as opening",
+            vscode.DiagnosticSeverity.Error
+          )
+        );
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private getIndentationResult(
+    lineText: string,
+    codeBlockState: CodeBlockState,
+    previousLineIsTag: boolean,
+    previousIndentLevel: number
+  ): IndentationResult {
+    return codeBlockState.isInside
+      ? this.analyzeCodeBlockIndentation(codeBlockState.indentLevel, lineText)
+      : this.analyzeIndentation(
+          lineText,
+          previousLineIsTag,
+          previousIndentLevel
+        );
+  }
+
+  private createIndentationDiagnostic(
+    lineNumber: number,
+    result: IndentationResult
+  ): vscode.Diagnostic {
+    const diagnostic = new vscode.Diagnostic(
+      new vscode.Range(lineNumber, 0, lineNumber, result.indentLength),
+      result.error!,
+      result.severity
+    );
+    diagnostic.code = result.code;
+    diagnostic.source = "writerly-indentation";
+    return diagnostic;
+  }
+
+  private handleUnclosedCodeBlock(
+    document: vscode.TextDocument,
+    codeBlockState: CodeBlockState,
+    diagnostics: vscode.Diagnostic[]
+  ): void {
+    if (!codeBlockState.isInside) return;
+
+    if (codeBlockState.startLine !== undefined) {
+      diagnostics.push(
+        new vscode.Diagnostic(
+          new vscode.Range(
+            codeBlockState.startLine,
+            0,
+            codeBlockState.startLine,
+            document.lineAt(codeBlockState.startLine).text.length
+          ),
+          "Unclosed code block opening",
+          vscode.DiagnosticSeverity.Error
+        )
+      );
+    }
+
+    const lastLine = document.lineCount - 1;
+    diagnostics.push(
+      new vscode.Diagnostic(
+        new vscode.Range(
+          lastLine,
+          0,
+          lastLine,
+          document.lineAt(lastLine).text.length
+        ),
+        "Unclosed code block",
+        vscode.DiagnosticSeverity.Error
+      )
+    );
   }
 
   private getLineIndentation(line: string): number {
