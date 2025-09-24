@@ -349,7 +349,9 @@ export default class WriterlyIndentationValidator {
     // Check if this looks like an attribute (has an equals sign)
     if (trimmed.includes("=")) {
       // Check for spaces around equals sign
-      const equalsMatch = trimmed.match(/([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*(.+)/);
+      const equalsMatch = trimmed.match(
+        /([a-zA-Z_][-a-zA-Z0-9\._\:]*)\s*=\s*(.+)/,
+      );
       if (equalsMatch) {
         const beforeEquals = equalsMatch[1];
         const fullMatch = equalsMatch[0];
