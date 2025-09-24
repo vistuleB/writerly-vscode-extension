@@ -30,7 +30,7 @@
       ]
     },
     "block-with-attributes": {
-      "begin": "^(\\s*)(\\|\\>?)\\s*([a-zA-Z0-9]+)(.*)",
+      "begin": "^(\\s*)(\\|\\>?)\\s*([a-zA-Z_\\:][-a-zA-Z0-9\\._\\:]*)(.*)",
       "beginCaptures": {
         "1": {
           "name": "punctuation.whitespace.leading"
