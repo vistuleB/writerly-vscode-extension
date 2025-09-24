@@ -341,6 +341,11 @@ export default class WriterlyIndentationValidator {
       return { isValid: true, error: null, invalidLine: null };
     }
 
+    // Skip commented attributes (!! prefix)
+    if (trimmed.startsWith("!!")) {
+      return { isValid: true, error: null, invalidLine: null };
+    }
+
     // Check if this looks like an attribute (has an equals sign)
     if (trimmed.includes("=")) {
       // Check for spaces around equals sign
