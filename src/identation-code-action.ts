@@ -6,24 +6,40 @@ export default class WriterlyCodeActionProvider
   provideCodeActions(
     document: vscode.TextDocument,
     range: vscode.Range | vscode.Selection,
-    context: vscode.CodeActionContext
+    context: vscode.CodeActionContext,
   ): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
 
     // Find indentation-related diagnostics
     const indentationDiagnostics = context.diagnostics.filter(
-      (diagnostic) => diagnostic.source === "writerly-indentation"
+      (diagnostic) => diagnostic.source === "writerly-indentation",
+    );
+
+    // Find attribute-related diagnostics
+    const attributeDiagnostics = context.diagnostics.filter((diagnostic) =>
+      diagnostic.message.includes("spaces around the equals sign"),
     );
 
     if (indentationDiagnostics.length > 0) {
       // Quick fix for individual line
       const fixLineAction = new vscode.CodeAction(
         "Fix indentation on this line",
-        vscode.CodeActionKind.QuickFix
+        vscode.CodeActionKind.QuickFix,
       );
       fixLineAction.edit = this.createIndentationFix(document, range);
       fixLineAction.diagnostics = indentationDiagnostics;
       actions.push(fixLineAction);
+    }
+
+    if (attributeDiagnostics.length > 0) {
+      // Quick fix for attribute formatting
+      const fixAttributeAction = new vscode.CodeAction(
+        "Remove spaces around equals sign",
+        vscode.CodeActionKind.QuickFix,
+      );
+      fixAttributeAction.edit = this.createAttributeFix(document, range);
+      fixAttributeAction.diagnostics = attributeDiagnostics;
+      actions.push(fixAttributeAction);
     }
 
     return actions;
@@ -31,7 +47,7 @@ export default class WriterlyCodeActionProvider
 
   private createIndentationFix(
     document: vscode.TextDocument,
-    range: vscode.Range
+    range: vscode.Range,
   ): vscode.WorkspaceEdit {
     const edit = new vscode.WorkspaceEdit();
     const line = document.lineAt(range.start.line);
@@ -47,10 +63,35 @@ export default class WriterlyCodeActionProvider
       range.start.line,
       0,
       range.start.line,
-      leadingWhitespace.length
+      leadingWhitespace.length,
     );
 
     edit.replace(document.uri, replaceRange, newIndentation);
+    return edit;
+  }
+
+  private createAttributeFix(
+    document: vscode.TextDocument,
+    range: vscode.Range,
+  ): vscode.WorkspaceEdit {
+    const edit = new vscode.WorkspaceEdit();
+    const line = document.lineAt(range.start.line);
+    const lineText = line.text;
+
+    // Fix spaces around equals sign
+    const fixedLine = lineText.replace(
+      /([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*(.+)/,
+      "$1=$2",
+    );
+
+    const replaceRange = new vscode.Range(
+      range.start.line,
+      0,
+      range.start.line,
+      lineText.length,
+    );
+
+    edit.replace(document.uri, replaceRange, fixedLine);
     return edit;
   }
 }

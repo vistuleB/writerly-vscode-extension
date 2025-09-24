@@ -9,6 +9,12 @@ interface IndentationResult {
   indentLevel: number;
 }
 
+interface AttributeValidationResult {
+  isValid: boolean;
+  error: string | null;
+  invalidLine: number | null;
+}
+
 interface CodeBlockState {
   isInside: boolean;
   startLine?: number;
@@ -26,6 +32,8 @@ export default class WriterlyIndentationValidator {
     };
     let previousIndentLevel = 0;
     let previousLineIsTag = false;
+    let inAttributeBlock = false;
+    let attributeBlockStart = -1;
 
     for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
       const line = document.lineAt(lineNumber);
@@ -40,7 +48,7 @@ export default class WriterlyIndentationValidator {
           lineText,
           lineNumber,
           codeBlockState,
-          diagnostics
+          diagnostics,
         )
       )
         continue;
@@ -49,14 +57,46 @@ export default class WriterlyIndentationValidator {
         lineText,
         codeBlockState,
         previousLineIsTag,
-        previousIndentLevel
+        previousIndentLevel,
       );
 
-      previousLineIsTag = lineText.trim().startsWith("|>");
+      const currentLineIsTag = lineText.trim().startsWith("|>");
+
+      // Check if we're starting a new tag block
+      if (currentLineIsTag) {
+        inAttributeBlock = true;
+        attributeBlockStart = lineNumber;
+      } else if (inAttributeBlock && !currentLineIsTag) {
+        // We're in an attribute block, validate attributes
+        const attributeResult = this.validateAttributeLine(
+          lineText,
+          lineNumber,
+        );
+        if (!attributeResult.isValid) {
+          // Add error for malformed attribute
+          diagnostics.push(
+            new vscode.Diagnostic(
+              new vscode.Range(lineNumber, 0, lineNumber, lineText.length),
+              attributeResult.error!,
+              vscode.DiagnosticSeverity.Error,
+            ),
+          );
+          // Stop treating subsequent lines as attributes
+          inAttributeBlock = false;
+        } else if (
+          attributeResult.isValid &&
+          this.getLineIndentation(lineText) === 0
+        ) {
+          // End of attribute block (back to root level)
+          inAttributeBlock = false;
+        }
+      }
+
+      previousLineIsTag = currentLineIsTag;
 
       if (indentationResult.error) {
         diagnostics.push(
-          this.createIndentationDiagnostic(lineNumber, indentationResult)
+          this.createIndentationDiagnostic(lineNumber, indentationResult),
         );
       }
 
@@ -73,7 +113,7 @@ export default class WriterlyIndentationValidator {
     lineText: string,
     lineNumber: number,
     codeBlockState: CodeBlockState,
-    diagnostics: vscode.Diagnostic[]
+    diagnostics: vscode.Diagnostic[],
   ): boolean {
     const isCodeBlockBoundary = lineText.trim().startsWith("```");
     if (!isCodeBlockBoundary) return false;
@@ -86,7 +126,7 @@ export default class WriterlyIndentationValidator {
 
       const openingDiagnostic = this.analyzeCodeBlockOpening(
         lineText,
-        lineNumber
+        lineNumber,
       );
       if (openingDiagnostic) {
         diagnostics.push(openingDiagnostic);
@@ -101,8 +141,8 @@ export default class WriterlyIndentationValidator {
           new vscode.Diagnostic(
             new vscode.Range(lineNumber, 0, lineNumber, lineText.length),
             "Closing code block must have the same indentation as opening",
-            vscode.DiagnosticSeverity.Error
-          )
+            vscode.DiagnosticSeverity.Error,
+          ),
         );
         return true;
       }
@@ -114,25 +154,25 @@ export default class WriterlyIndentationValidator {
     lineText: string,
     codeBlockState: CodeBlockState,
     previousLineIsTag: boolean,
-    previousIndentLevel: number
+    previousIndentLevel: number,
   ): IndentationResult {
     return codeBlockState.isInside
       ? this.analyzeCodeBlockIndentation(codeBlockState.indentLevel, lineText)
       : this.analyzeIndentation(
           lineText,
           previousLineIsTag,
-          previousIndentLevel
+          previousIndentLevel,
         );
   }
 
   private createIndentationDiagnostic(
     lineNumber: number,
-    result: IndentationResult
+    result: IndentationResult,
   ): vscode.Diagnostic {
     const diagnostic = new vscode.Diagnostic(
       new vscode.Range(lineNumber, 0, lineNumber, result.indentLength),
       result.error!,
-      result.severity
+      result.severity,
     );
     diagnostic.code = result.code;
     diagnostic.source = "writerly-indentation";
@@ -142,7 +182,7 @@ export default class WriterlyIndentationValidator {
   private handleUnclosedCodeBlock(
     document: vscode.TextDocument,
     codeBlockState: CodeBlockState,
-    diagnostics: vscode.Diagnostic[]
+    diagnostics: vscode.Diagnostic[],
   ): void {
     if (!codeBlockState.isInside) return;
 
@@ -153,11 +193,11 @@ export default class WriterlyIndentationValidator {
             codeBlockState.startLine,
             0,
             codeBlockState.startLine,
-            document.lineAt(codeBlockState.startLine).text.length
+            document.lineAt(codeBlockState.startLine).text.length,
           ),
           "Unclosed code block opening",
-          vscode.DiagnosticSeverity.Error
-        )
+          vscode.DiagnosticSeverity.Error,
+        ),
       );
     }
 
@@ -168,11 +208,11 @@ export default class WriterlyIndentationValidator {
           lastLine,
           0,
           lastLine,
-          document.lineAt(lastLine).text.length
+          document.lineAt(lastLine).text.length,
         ),
         "Unclosed code block",
-        vscode.DiagnosticSeverity.Error
-      )
+        vscode.DiagnosticSeverity.Error,
+      ),
     );
   }
 
@@ -183,7 +223,7 @@ export default class WriterlyIndentationValidator {
 
   private analyzeCodeBlockIndentation(
     codeBlockIndentation: number,
-    lineText: string
+    lineText: string,
   ): IndentationResult {
     const lineIndent = this.getLineIndentation(lineText);
     if (codeBlockIndentation > lineIndent) {
@@ -206,7 +246,7 @@ export default class WriterlyIndentationValidator {
 
   private analyzeCodeBlockOpening(
     lineText: string,
-    lineNumber: number
+    lineNumber: number,
   ): vscode.Diagnostic | undefined {
     assert(lineText.trim().startsWith("```"));
 
@@ -216,7 +256,7 @@ export default class WriterlyIndentationValidator {
       const diagnostic = new vscode.Diagnostic(
         new vscode.Range(lineNumber, startChar, lineNumber, lineText.length),
         "Language name must be written directly after the opening backticks",
-        vscode.DiagnosticSeverity.Error
+        vscode.DiagnosticSeverity.Error,
       );
       diagnostic.code = "code-block-opening-language-name";
       diagnostic.source = "writerly-indentation";
@@ -227,7 +267,7 @@ export default class WriterlyIndentationValidator {
   private analyzeIndentation(
     lineText: string,
     previousLineIsTag: boolean,
-    previousIndentLevel: number
+    previousIndentLevel: number,
   ): IndentationResult {
     const indentLength = this.getLineIndentation(lineText);
     const leadingWhitespace = lineText.match(/^(\s*)/)?.[1] || "";
@@ -288,5 +328,40 @@ export default class WriterlyIndentationValidator {
       indentLength,
       indentLevel: currentIndentLevel,
     };
+  }
+
+  private validateAttributeLine(
+    lineText: string,
+    lineNumber: number,
+  ): AttributeValidationResult {
+    const trimmed = lineText.trim();
+
+    // Skip empty lines and non-indented lines
+    if (trimmed === "" || !lineText.startsWith(" ")) {
+      return { isValid: true, error: null, invalidLine: null };
+    }
+
+    // Check if this looks like an attribute (has an equals sign)
+    if (trimmed.includes("=")) {
+      // Check for spaces around equals sign
+      const equalsMatch = trimmed.match(/([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*(.+)/);
+      if (equalsMatch) {
+        const beforeEquals = equalsMatch[1];
+        const fullMatch = equalsMatch[0];
+        const expectedFormat = `${beforeEquals}=${equalsMatch[2].trim()}`;
+
+        // Check if there are spaces around the equals sign
+        if (fullMatch.includes(" =") || fullMatch.includes("= ")) {
+          return {
+            isValid: false,
+            error:
+              "Attribute assignments must not have spaces around the equals sign (=). Use 'key=value' format.",
+            invalidLine: lineNumber,
+          };
+        }
+      }
+    }
+
+    return { isValid: true, error: null, invalidLine: null };
   }
 }
