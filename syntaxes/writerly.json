@@ -39,7 +39,7 @@
           "name": "keyword.control.wly"
         },
         "3": {
-          "name": "constant.name.tag.wly"
+          "name": "keyword.control.wly"
         },
         "4": {
           "patterns": [
