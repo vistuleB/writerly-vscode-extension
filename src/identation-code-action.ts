@@ -16,8 +16,10 @@ export default class WriterlyCodeActionProvider
     );
 
     // Find attribute-related diagnostics
-    const attributeDiagnostics = context.diagnostics.filter((diagnostic) =>
-      diagnostic.message.includes("spaces around the equals sign"),
+    const attributeDiagnostics = context.diagnostics.filter(
+      (diagnostic) =>
+        diagnostic.message.includes("spaces before the equals sign") ||
+        diagnostic.message.includes("Attribute key cannot be empty"),
     );
 
     if (indentationDiagnostics.length > 0) {
@@ -34,7 +36,7 @@ export default class WriterlyCodeActionProvider
     if (attributeDiagnostics.length > 0) {
       // Quick fix for attribute formatting
       const fixAttributeAction = new vscode.CodeAction(
-        "Remove spaces around equals sign",
+        "Remove spaces before equals sign",
         vscode.CodeActionKind.QuickFix,
       );
       fixAttributeAction.edit = this.createAttributeFix(document, range);
@@ -78,10 +80,10 @@ export default class WriterlyCodeActionProvider
     const line = document.lineAt(range.start.line);
     const lineText = line.text;
 
-    // Fix spaces around equals sign
+    // Fix spaces before equals sign only (preserve spaces after)
     const fixedLine = lineText.replace(
-      /([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*(.+)/,
-      "$1=$2",
+      /([a-zA-Z_][-a-zA-Z0-9\._\:]*)\s+=/,
+      "$1=",
     );
 
     const replaceRange = new vscode.Range(

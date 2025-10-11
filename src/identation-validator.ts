@@ -348,21 +348,29 @@ export default class WriterlyIndentationValidator {
 
     // Check if this looks like an attribute (has an equals sign)
     if (trimmed.includes("=")) {
-      // Check for spaces around equals sign
+      // Check for empty key (starts with =)
+      if (trimmed.startsWith("=")) {
+        return {
+          isValid: false,
+          error: "Attribute key cannot be empty. Use 'key=value' format.",
+          invalidLine: lineNumber,
+        };
+      }
+
+      // Check for spaces before equals sign
       const equalsMatch = trimmed.match(
-        /([a-zA-Z_][-a-zA-Z0-9\._\:]*)\s*=\s*(.+)/,
+        /([a-zA-Z_][-a-zA-Z0-9\._\:]*)\s*=\s*(.*)/,
       );
       if (equalsMatch) {
         const beforeEquals = equalsMatch[1];
         const fullMatch = equalsMatch[0];
-        const expectedFormat = `${beforeEquals}=${equalsMatch[2].trim()}`;
 
-        // Check if there are spaces around the equals sign
-        if (fullMatch.includes(" =") || fullMatch.includes("= ")) {
+        // Check if there are spaces before the equals sign (not allowed)
+        if (fullMatch.includes(" =")) {
           return {
             isValid: false,
             error:
-              "Attribute assignments must not have spaces around the equals sign (=). Use 'key=value' format.",
+              "Attribute assignments must not have spaces before the equals sign (=). Use 'key=value' or 'key= value' format.",
             invalidLine: lineNumber,
           };
         }
