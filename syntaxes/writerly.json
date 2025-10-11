@@ -151,7 +151,6 @@
           "name": "fenced_code.block.language.wly"
         }
       },
-
       "end": "^(\\s*)(```)\\s*$",
       "endCaptures": {
         "1": {
