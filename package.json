@@ -1,5 +1,5 @@
 {
-  "name": "writerly-vscode",
+  "name": "writerly-vscode-extension",
   "displayName": "Writerly",
   "description": "Writerly support for VS Code",
   "version": "0.0.8",
@@ -11,7 +11,7 @@
     "vscode": "^1.25.0"
   },
   "repository": {
-    "url": "https://github.com/MrChaker/writerly-vscode"
+    "url": "https://github.com/vistuleB/writerly-vscode-extension.git"
   },
   "categories": [
     "Other"
