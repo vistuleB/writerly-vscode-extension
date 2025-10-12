@@ -354,7 +354,12 @@ export default class WriterlyIndentationValidator {
         };
       }
 
-      // Only validate lines that look like real attributes (start with valid identifier)
+      // Only validate lines that match the exact attribute pattern: [a-zA-Z_][-a-zA-Z0-9\\._\\:]*=value
+      // Requirements for attribute identification:
+      // 1. Line must be indented (already checked above)
+      // 2. Must start with valid identifier: letter or underscore
+      // 3. Subsequent chars: hyphens, letters, numbers, underscores, dots, colons
+      // 4. Followed by equals sign
       // This avoids false positives on mathematical text like "$\gamma = w \in \Sigma^*$"
       const attributePattern = /^([a-zA-Z_][-a-zA-Z0-9\._\:]*)\s*=\s*(.*)/;
       const equalsMatch = trimmed.match(attributePattern);
