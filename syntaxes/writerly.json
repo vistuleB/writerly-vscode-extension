@@ -40,13 +40,6 @@
         },
         "3": {
           "name": "keyword.control.wly"
-        },
-        "4": {
-          "patterns": [
-            {
-              "include": "#attributes"
-            }
-          ]
         }
       },
       "end": "^(?=\\s*$)|^(?=\\s*[|])|^(?=\\s+(?!!)\\s*=)|^(?=\\s+(?!!)[^\\s]*\\s+=)",
