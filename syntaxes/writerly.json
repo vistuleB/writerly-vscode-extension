@@ -11,6 +11,9 @@
       "include": "#block-with-attributes"
     },
     {
+      "include": "#invalid-tag"
+    },
+    {
       "include": "#codeblock"
     }
   ],
@@ -154,6 +157,20 @@
         }
       },
       "contentName": "markup.raw.block.wly"
+    },
+    "invalid-tag": {
+      "match": "^(\\s*)(\\|\\>?)\\s*(?![a-zA-Z_\\:][-a-zA-Z0-9\\._\\:]*\\s*$)(.+)\\s*$",
+      "captures": {
+        "1": {
+          "name": "punctuation.whitespace.leading"
+        },
+        "2": {
+          "name": "keyword.control.wly"
+        },
+        "3": {
+          "name": "keyword.control.wly"
+        }
+      }
     }
   }
 }

@@ -15,7 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (document.languageId === "writerly") {
         indentationValidator.validateDocument(document);
       }
-    })
+    }),
   );
 
   // Validate on document change
@@ -24,7 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (event.document.languageId === "writerly") {
         indentationValidator.validateDocument(event.document);
       }
-    })
+    }),
   );
 
   // Validate already open documents
@@ -37,6 +37,9 @@ export function activate(context: vscode.ExtensionContext) {
   // Register code action provider for quick fixes
   const codeActionProvider = new WriterlyCodeActionProvider();
   context.subscriptions.push(
-    vscode.languages.registerCodeActionsProvider("writerly", codeActionProvider)
+    vscode.languages.registerCodeActionsProvider(
+      "writerly",
+      codeActionProvider,
+    ),
   );
 }

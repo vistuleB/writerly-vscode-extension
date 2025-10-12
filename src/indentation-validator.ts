@@ -64,6 +64,11 @@ export default class WriterlyIndentationValidator {
 
       // Check if we're starting a new tag block
       if (currentLineIsTag) {
+        // Validate tag format
+        const tagValidationResult = this.validateTagLine(lineText, lineNumber);
+        if (tagValidationResult.error) {
+          diagnostics.push(tagValidationResult.diagnostic);
+        }
         inAttributeBlock = true;
         attributeBlockStart = lineNumber;
       } else if (this.getLineIndentation(lineText) === 0) {
@@ -382,5 +387,74 @@ export default class WriterlyIndentationValidator {
     }
 
     return { isValid: true, error: null, invalidLine: null };
+  }
+
+  private validateTagLine(
+    lineText: string,
+    lineNumber: number,
+  ): { error: string | null; diagnostic: vscode.Diagnostic | null } {
+    const trimmed = lineText.trim();
+
+    // Check for empty tag (just |> with no name)
+    if (trimmed === "|>" || trimmed === "|>>" || /^\|\>\s*$/.test(trimmed)) {
+      const diagnostic = new vscode.Diagnostic(
+        new vscode.Range(lineNumber, 0, lineNumber, lineText.length),
+        "Tag name cannot be empty. Valid tag format: |> tagname",
+        vscode.DiagnosticSeverity.Error,
+      );
+      diagnostic.code = "empty-tag-name";
+      diagnostic.source = "writerly-tag-validation";
+      return { error: "Empty tag name", diagnostic };
+    }
+
+    // Use strict pattern: ^(\\s*)(\\|\\>?)\\s*([a-zA-Z_\\:][-a-zA-Z0-9\\._\\:]*)(\\s*)$
+    const tagPattern = /^(\s*)(\|\>?)\s*([a-zA-Z_\:][-a-zA-Z0-9\._\:]*)\s*$/;
+    const tagMatch = trimmed.match(/^(\|\>?)\s*(.*)$/);
+
+    if (tagMatch) {
+      const pipeSymbol = tagMatch[1];
+      const tagContent = tagMatch[2].trim();
+
+      // Check if tag content is empty
+      if (!tagContent) {
+        const diagnostic = new vscode.Diagnostic(
+          new vscode.Range(lineNumber, 0, lineNumber, lineText.length),
+          "Tag name cannot be empty. Valid tag format: |> tagname",
+          vscode.DiagnosticSeverity.Error,
+        );
+        diagnostic.code = "empty-tag-name";
+        diagnostic.source = "writerly-tag-validation";
+        return { error: "Empty tag name", diagnostic };
+      }
+
+      // Check if tag name matches valid pattern
+      const validTagPattern = /^[a-zA-Z_\:][-a-zA-Z0-9\._\:]*$/;
+      if (!validTagPattern.test(tagContent)) {
+        const diagnostic = new vscode.Diagnostic(
+          new vscode.Range(lineNumber, 0, lineNumber, lineText.length),
+          `Invalid tag name "${tagContent}". Tag names must start with a letter, underscore, or colon, followed by letters, numbers, hyphens, underscores, dots, or colons.`,
+          vscode.DiagnosticSeverity.Error,
+        );
+        diagnostic.code = "invalid-tag-name";
+        diagnostic.source = "writerly-tag-validation";
+        return { error: "Invalid tag name", diagnostic };
+      }
+
+      // Check for extra content after tag name (using strict pattern)
+      if (
+        !/^(\s*)(\|\>?)\s*([a-zA-Z_\:][-a-zA-Z0-9\._\:]*)\s*$/.test(lineText)
+      ) {
+        const diagnostic = new vscode.Diagnostic(
+          new vscode.Range(lineNumber, 0, lineNumber, lineText.length),
+          `Invalid tag format. Tag lines must contain only the tag name with optional whitespace. Valid format: |> tagname`,
+          vscode.DiagnosticSeverity.Error,
+        );
+        diagnostic.code = "invalid-tag-format";
+        diagnostic.source = "writerly-tag-validation";
+        return { error: "Invalid tag format", diagnostic };
+      }
+    }
+
+    return { error: null, diagnostic: null };
   }
 }
