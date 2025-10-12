@@ -66,6 +66,9 @@ export default class WriterlyIndentationValidator {
       if (currentLineIsTag) {
         inAttributeBlock = true;
         attributeBlockStart = lineNumber;
+      } else if (this.getLineIndentation(lineText) === 0) {
+        // Non-indented lines end the attribute block
+        inAttributeBlock = false;
       } else if (inAttributeBlock && !currentLineIsTag) {
         // We're in an attribute block, validate attributes
         const attributeResult = this.validateAttributeLine(
@@ -82,12 +85,6 @@ export default class WriterlyIndentationValidator {
             ),
           );
           // Stop treating subsequent lines as attributes
-          inAttributeBlock = false;
-        } else if (
-          attributeResult.isValid &&
-          this.getLineIndentation(lineText) === 0
-        ) {
-          // End of attribute block (back to root level)
           inAttributeBlock = false;
         }
       }
@@ -346,7 +343,7 @@ export default class WriterlyIndentationValidator {
       return { isValid: true, error: null, invalidLine: null };
     }
 
-    // Check if this looks like an attribute (has an equals sign)
+    // Check if this looks like an attribute (has an equals sign and valid attribute format)
     if (trimmed.includes("=")) {
       // Check for empty key (starts with =)
       if (trimmed.startsWith("=")) {
@@ -357,10 +354,11 @@ export default class WriterlyIndentationValidator {
         };
       }
 
-      // Check for spaces before equals sign
-      const equalsMatch = trimmed.match(
-        /([a-zA-Z_][-a-zA-Z0-9\._\:]*)\s*=\s*(.*)/,
-      );
+      // Only validate lines that look like real attributes (start with valid identifier)
+      // This avoids false positives on mathematical text like "$\gamma = w \in \Sigma^*$"
+      const attributePattern = /^([a-zA-Z_][-a-zA-Z0-9\._\:]*)\s*=\s*(.*)/;
+      const equalsMatch = trimmed.match(attributePattern);
+
       if (equalsMatch) {
         const beforeEquals = equalsMatch[1];
         const fullMatch = equalsMatch[0];
@@ -375,6 +373,7 @@ export default class WriterlyIndentationValidator {
           };
         }
       }
+      // If line has = but doesn't match attribute pattern, treat as regular text (not an error)
     }
 
     return { isValid: true, error: null, invalidLine: null };
