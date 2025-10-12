@@ -1,7 +1,7 @@
 "use strict";
 import * as vscode from "vscode";
-import WriterlyIndentationValidator from "./identation-validator";
-import WriterlyCodeActionProvider from "./identation-code-action";
+import WriterlyIndentationValidator from "./indentation-validator";
+import WriterlyCodeActionProvider from "./indentation-code-action";
 
 export function activate(context: vscode.ExtensionContext) {
   const collection = vscode.languages.createDiagnosticCollection("writerly");

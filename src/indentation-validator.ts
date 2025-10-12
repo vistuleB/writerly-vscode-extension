@@ -306,7 +306,7 @@ export default class WriterlyIndentationValidator {
       };
     }
 
-    // Check if there is identation increase between text lines
+    // Check if there is indentation increase between text lines
     if (currentIndentLevel > previousIndentLevel && !previousLineIsTag) {
       return {
         error: `Indentation can't be increased between text lines`,
