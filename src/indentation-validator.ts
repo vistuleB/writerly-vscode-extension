@@ -32,7 +32,7 @@ export default class WriterlyIndentationValidator {
     };
     let previousIndentLevel = 0;
     let previousLineIsTag = false;
-    let inAttributeBlock = false;
+    // let inAttributeBlock = false;
     let attributeBlockStart = -1;
 
     for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
@@ -69,30 +69,32 @@ export default class WriterlyIndentationValidator {
         if (tagValidationResult.error) {
           diagnostics.push(tagValidationResult.diagnostic);
         }
-        inAttributeBlock = true;
+        // inAttributeBlock = true;
         attributeBlockStart = lineNumber;
-      } else if (this.getLineIndentation(lineText) === 0) {
-        // Non-indented lines end the attribute block
-        inAttributeBlock = false;
-      } else if (inAttributeBlock && !currentLineIsTag) {
-        // We're in an attribute block, validate attributes
-        const attributeResult = this.validateAttributeLine(
-          lineText,
-          lineNumber,
-        );
-        if (!attributeResult.isValid) {
-          // Add error for malformed attribute
-          diagnostics.push(
-            new vscode.Diagnostic(
-              new vscode.Range(lineNumber, 0, lineNumber, lineText.length),
-              attributeResult.error!,
-              vscode.DiagnosticSeverity.Error,
-            ),
-          );
-          // Stop treating subsequent lines as attributes
-          inAttributeBlock = false;
-        }
       }
+      // else if (this.getLineIndentation(lineText) === 0) {
+        // Non-indented lines end the attribute block
+        // inAttributeBlock = false;
+      // } 
+      // else if (inAttributeBlock && !currentLineIsTag) {
+      //   // We're in an attribute block, validate attributes
+      //   const attributeResult = this.validateAttributeLine(
+      //     lineText,
+      //     lineNumber,
+      //   );
+      //   if (!attributeResult.isValid) {
+      //     // Add error for malformed attribute
+      //     diagnostics.push(
+      //       new vscode.Diagnostic(
+      //         new vscode.Range(lineNumber, 0, lineNumber, lineText.length),
+      //         attributeResult.error!,
+      //         vscode.DiagnosticSeverity.Error,
+      //       ),
+      //     );
+      //     // Stop treating subsequent lines as attributes
+      //     inAttributeBlock = false;
+      //   }
+      // }
 
       previousLineIsTag = currentLineIsTag;
 
@@ -332,62 +334,58 @@ export default class WriterlyIndentationValidator {
     };
   }
 
-  private validateAttributeLine(
-    lineText: string,
-    lineNumber: number,
-  ): AttributeValidationResult {
-    const trimmed = lineText.trim();
+  // private validateAttributeLine(
+  //   lineText: string,
+  //   lineNumber: number,
+  // ): AttributeValidationResult {
+  //   const trimmed = lineText.trim();
 
-    // Skip empty lines and non-indented lines
-    if (trimmed === "" || !lineText.startsWith(" ")) {
-      return { isValid: true, error: null, invalidLine: null };
-    }
+  //   // Skip empty lines and non-indented lines
+  //   if (trimmed === "" || !lineText.startsWith(" ")) {
+  //     return { isValid: true, error: null, invalidLine: null };
+  //   }
 
-    // Skip commented attributes (!! prefix)
-    if (trimmed.startsWith("!!")) {
-      return { isValid: true, error: null, invalidLine: null };
-    }
+  //   // Skip commented attributes (!! prefix)
+  //   if (trimmed.startsWith("!!")) {
+  //     return { isValid: true, error: null, invalidLine: null };
+  //   }
 
-    // Check if this looks like an attribute (has an equals sign and valid attribute format)
-    if (trimmed.includes("=")) {
-      // Check for empty key (starts with =)
-      if (trimmed.startsWith("=")) {
-        return {
-          isValid: false,
-          error: "Attribute key cannot be empty. Use 'key=value' format.",
-          invalidLine: lineNumber,
-        };
-      }
-
-      // Only validate lines that match the exact attribute pattern: [a-zA-Z_][-a-zA-Z0-9\\._\\:]*=value
-      // Requirements for attribute identification:
-      // 1. Line must be indented (already checked above)
-      // 2. Must start with valid identifier: letter or underscore
-      // 3. Subsequent chars: hyphens, letters, numbers, underscores, dots, colons
-      // 4. Followed by equals sign
-      // This avoids false positives on mathematical text like "$\gamma = w \in \Sigma^*$"
-      const attributePattern = /^([a-zA-Z_][-a-zA-Z0-9\._\:]*)\s*=\s*(.*)/;
-      const equalsMatch = trimmed.match(attributePattern);
-
-      if (equalsMatch) {
-        const beforeEquals = equalsMatch[1];
-        const fullMatch = equalsMatch[0];
-
-        // Check if there are spaces before the equals sign (not allowed)
-        if (fullMatch.includes(" =")) {
-          return {
-            isValid: false,
-            error:
-              "Attribute assignments must not have spaces before the equals sign (=). Use 'key=value' or 'key= value' format.",
-            invalidLine: lineNumber,
-          };
-        }
-      }
-      // If line has = but doesn't match attribute pattern, treat as regular text (not an error)
-    }
-
-    return { isValid: true, error: null, invalidLine: null };
-  }
+  //   // Check if this looks like an attribute (has an equals sign and valid attribute format)
+  //   if (trimmed.includes("=")) {
+  //     // Check for empty key (starts with =)
+  //     if (trimmed.startsWith("=")) {
+  //       return {
+  //         isValid: false,
+  //         error: "Attribute key cannot be empty. Use 'key=value' format.",
+  //         invalidLine: lineNumber,
+  //       };
+  //     }
+  //     // Only validate lines that match the exact attribute pattern: [a-zA-Z_][-a-zA-Z0-9\\._\\:]*=value
+  //     // Requirements for attribute identification:
+  //     // 1. Line must be indented (already checked above)
+  //     // 2. Must start with valid identifier: letter or underscore
+  //     // 3. Subsequent chars: hyphens, letters, numbers, underscores, dots, colons
+  //     // 4. Followed by equals sign
+  //     // This avoids false positives on mathematical text like "$\gamma = w \in \Sigma^*$"
+  //     const attributePattern = /^([a-zA-Z_][-a-zA-Z0-9\._\:]*)\s*=\s*(.*)/;
+  //     const equalsMatch = trimmed.match(attributePattern);
+  //     if (equalsMatch) {
+  //       const beforeEquals = equalsMatch[1];
+  //       const fullMatch = equalsMatch[0];
+  //       // Check if there are spaces before the equals sign (not allowed)
+  //       if (fullMatch.includes(" =")) {
+  //         return {
+  //           isValid: false,
+  //           error:
+  //             "Attribute assignments must not have spaces before the equals sign (=). Use 'key=value' or 'key= value' format.",
+  //           invalidLine: lineNumber,
+  //         };
+  //       }
+  //     }
+  //     // If line has = but doesn't match attribute pattern, treat as regular text (not an error)
+  //   }
+  //   return { isValid: true, error: null, invalidLine: null };
+  // }
 
   private validateTagLine(
     lineText: string,

@@ -11,9 +11,6 @@
       "include": "#block-with-attributes"
     },
     {
-      "include": "#invalid-tag"
-    },
-    {
       "include": "#codeblock"
     }
   ],
@@ -33,16 +30,16 @@
       ]
     },
     "block-with-attributes": {
-      "begin": "^(\\s*)(\\|\\>?)\\s*([a-zA-Z_\\:][-a-zA-Z0-9\\._\\:]*)(\\s*)$",
+      "begin": "^(\\s*)(\\|\\>?)(.*)$",
       "beginCaptures": {
         "1": {
           "name": "punctuation.whitespace.leading"
         },
         "2": {
-          "name": "keyword.control.wly"
+          "name": "entity.name.tag"
         },
         "3": {
-          "name": "keyword.control.wly"
+          "name": "entity.name.tag"
         }
       },
       "end": "^(?=\\s*$)|^(?=\\s*[|])|^(?=\\s+(?!!)\\s*=)|^(?=\\s+(?!!)[^\\s]*\\s+=)",
@@ -81,7 +78,7 @@
     "attributes": {
       "patterns": [
         {
-          "match": "\\b([a-zA-Z_][-a-zA-Z0-9\\._\\:]*)(=)(\\s*[^=]*?)(?=\\s+[a-zA-Z_][-a-zA-Z0-9\\._\\:]*=|$)",
+          "match": "(?:\\s*)([a-zA-Z_][-a-zA-Z0-9\\._\\:]*)(=)(.*)$",
           "captures": {
             "1": {
               "name": "entity.other.attribute-name.wly"
@@ -90,47 +87,9 @@
               "name": "punctuation.separator.key-value.wly"
             },
             "3": {
-              "patterns": [
-                {
-                  "include": "#attribute-values"
-                }
-              ]
+              "name": "entity.name.class"
             }
           }
-        }
-      ]
-    },
-    "attribute-values": {
-      "patterns": [
-        {
-          "match": "\"([^\"]*)\"",
-          "name": "string.quoted.double.wly",
-          "captures": {
-            "1": {
-              "name": "string.quoted.double.content.wly"
-            }
-          }
-        },
-        {
-          "match": "'([^']*)'",
-          "name": "string.quoted.single.wly",
-          "captures": {
-            "1": {
-              "name": "string.quoted.single.content.wly"
-            }
-          }
-        },
-        {
-          "match": "\\b(true|false)\\b",
-          "name": "constant.language.boolean.wly"
-        },
-        {
-          "match": "\\b\\d+(\\.\\d+)?\\b",
-          "name": "constant.numeric.wly"
-        },
-        {
-          "match": "[^=]+",
-          "name": "string.unquoted.wly"
         }
       ]
     },
@@ -157,20 +116,6 @@
         }
       },
       "contentName": "markup.raw.block.wly"
-    },
-    "invalid-tag": {
-      "match": "^(\\s*)(\\|\\>?)\\s*(?![a-zA-Z_\\:][-a-zA-Z0-9\\._\\:]*\\s*$)(.+)\\s*$",
-      "captures": {
-        "1": {
-          "name": "punctuation.whitespace.leading"
-        },
-        "2": {
-          "name": "keyword.control.wly"
-        },
-        "3": {
-          "name": "keyword.control.wly"
-        }
-      }
     }
   }
 }

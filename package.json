@@ -3,7 +3,7 @@
   "icon": "logo.png",
   "displayName": "Writerly",
   "description": "Writerly support for VS Code",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "publisher": "TabbyNotes",
   "author": {
     "name": "Chaker Atallah"
@@ -66,8 +66,10 @@
     "postinstall": "node ./node_modules/vscode/bin/install"
   },
   "dependencies": {
+    "@vscode/vsce": "^3.6.2",
     "cross-spawn": "^6.0.5",
     "glob": "^7.1.4",
+    "vsce": "^2.15.0",
     "which": "^1.3.1"
   },
   "devDependencies": {
