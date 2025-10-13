@@ -9,12 +9,6 @@ interface IndentationResult {
   indentLevel: number;
 }
 
-interface AttributeValidationResult {
-  isValid: boolean;
-  error: string | null;
-  invalidLine: number | null;
-}
-
 interface CodeBlockState {
   isInside: boolean;
   startLine?: number;
@@ -32,8 +26,6 @@ export default class WriterlyIndentationValidator {
     };
     let previousIndentLevel = 0;
     let previousLineIsTag = false;
-    // let inAttributeBlock = false;
-    let attributeBlockStart = -1;
 
     for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
       const line = document.lineAt(lineNumber);
@@ -54,6 +46,7 @@ export default class WriterlyIndentationValidator {
         continue;
 
       const indentationResult = this.getIndentationResult(
+        lineNumber,
         lineText,
         codeBlockState,
         previousLineIsTag,
@@ -69,8 +62,6 @@ export default class WriterlyIndentationValidator {
         if (tagValidationResult.error) {
           diagnostics.push(tagValidationResult.diagnostic);
         }
-        // inAttributeBlock = true;
-        attributeBlockStart = lineNumber;
       }
 
       previousLineIsTag = currentLineIsTag;
@@ -128,16 +119,18 @@ export default class WriterlyIndentationValidator {
         return true;
       }
     }
+
     return false;
   }
 
   private getIndentationResult(
+    lineNumber: number,
     lineText: string,
     codeBlockState: CodeBlockState,
     previousLineIsTag: boolean,
     previousIndentLevel: number,
   ): IndentationResult {
-    return codeBlockState.isInside
+    return (codeBlockState.isInside && codeBlockState.startLine < lineNumber)
       ? this.analyzeCodeBlockIndentation(codeBlockState.indentLevel, lineText)
       : this.analyzeIndentation(
           lineText,
@@ -293,9 +286,9 @@ export default class WriterlyIndentationValidator {
     // Check if there is indentation increase between text lines
     if (currentIndentLevel > previousIndentLevel && !previousLineIsTag) {
       return {
-        error: `Indentation can't be increased between text lines`,
+        error: `Indentation too large.`,
         severity: vscode.DiagnosticSeverity.Error,
-        code: "indentation-increase-text-lines",
+        code: "indentation-too-large",
         indentLength,
         indentLevel: currentIndentLevel,
       };
