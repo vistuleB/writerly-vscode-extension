@@ -1,7 +1,7 @@
 "use strict";
 import * as vscode from "vscode";
 import WriterlyIndentationValidator from "./indentation-validator";
-import WriterlyCodeActionProvider from "./indentation-code-action";
+// import WriterlyCodeActionProvider from "./indentation-code-action";
 
 export function activate(context: vscode.ExtensionContext) {
   const collection = vscode.languages.createDiagnosticCollection("writerly");
@@ -34,12 +34,14 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // John: code action was crappy but leaving for reference:
+
   // Register code action provider for quick fixes
-  const codeActionProvider = new WriterlyCodeActionProvider();
-  context.subscriptions.push(
-    vscode.languages.registerCodeActionsProvider(
-      "writerly",
-      codeActionProvider,
-    ),
-  );
+  // const codeActionProvider = new WriterlyCodeActionProvider();
+  // context.subscriptions.push(
+  //   vscode.languages.registerCodeActionsProvider(
+  //     "writerly",
+  //     codeActionProvider,
+  //   ),
+  // );
 }
