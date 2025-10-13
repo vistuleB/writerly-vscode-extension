@@ -30,8 +30,9 @@ export default class WriterlyIndentationValidator {
     for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
       const line = document.lineAt(lineNumber);
       const lineText = line.text;
+      const trimmed = line.text.trim();
 
-      if (lineText.trim() === "") {
+      if (trimmed === "" || trimmed.startsWith("!!")) {
         continue;
       }
 
@@ -55,9 +56,7 @@ export default class WriterlyIndentationValidator {
 
       const currentLineIsTag = lineText.trim().startsWith("|>");
 
-      // Check if we're starting a new tag block
       if (currentLineIsTag) {
-        // Validate tag format
         const tagValidationResult = this.validateTagLine(lineText, lineNumber);
         if (tagValidationResult.error) {
           diagnostics.push(tagValidationResult.diagnostic);
