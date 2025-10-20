@@ -32,7 +32,7 @@ export default class WriterlyIndentationValidator {
       const lineText = line.text;
       const trimmed = line.text.trim();
 
-      if (trimmed === "" || trimmed.startsWith("!!")) {
+      if (trimmed === "") {
         continue;
       }
 
