@@ -46,6 +46,16 @@ export default class WriterlyIndentationValidator {
       )
         continue;
 
+      // Check for missing code block closure before processing other content
+      if (codeBlockState.isInside) {
+        this.checkForMissingCodeBlockClosure(
+          lineText,
+          lineNumber,
+          codeBlockState,
+          diagnostics,
+        );
+      }
+
       const indentationResult = this.getIndentationResult(
         lineNumber,
         lineText,
@@ -56,6 +66,7 @@ export default class WriterlyIndentationValidator {
 
       const currentLineIsTag = lineText.trim().startsWith("|>");
 
+      // Check if we're starting a new tag block
       if (currentLineIsTag) {
         const tagValidationResult = this.validateTagLine(lineText, lineNumber);
         if (tagValidationResult.error) {
@@ -103,23 +114,21 @@ export default class WriterlyIndentationValidator {
         diagnostics.push(openingDiagnostic);
       }
     } else {
-      // Closing code block
-      codeBlockState.isInside = false;
-      codeBlockState.startLine = undefined;
+      // Check if this is actually a closing code block (same indentation as opening)
+      const currentIndentLevel = this.getLineIndentation(lineText);
 
-      if (codeBlockState.indentLevel != this.getLineIndentation(lineText)) {
-        diagnostics.push(
-          new vscode.Diagnostic(
-            new vscode.Range(lineNumber, 0, lineNumber, lineText.length),
-            "Closing code block must have the same indentation as opening",
-            vscode.DiagnosticSeverity.Error,
-          ),
-        );
+      if (currentIndentLevel === codeBlockState.indentLevel) {
+        // This is the closing code block at the same indentation
+        codeBlockState.isInside = false;
+        codeBlockState.startLine = undefined;
         return true;
+      } else {
+        // This is just content inside the code block (different indentation)
+        // Treat it as regular content, don't close the code block
+        return false;
       }
     }
-
-    return false;
+    return true;
   }
 
   private getIndentationResult(
@@ -129,7 +138,7 @@ export default class WriterlyIndentationValidator {
     previousLineIsTag: boolean,
     previousIndentLevel: number,
   ): IndentationResult {
-    return (codeBlockState.isInside && codeBlockState.startLine < lineNumber)
+    return codeBlockState.isInside
       ? this.analyzeCodeBlockIndentation(codeBlockState.indentLevel, lineText)
       : this.analyzeIndentation(
           lineText,
@@ -227,7 +236,12 @@ export default class WriterlyIndentationValidator {
     let containsSpaces = body.indexOf(" ") >= 0;
     if (containsSpaces) {
       const diagnostic = new vscode.Diagnostic(
-        new vscode.Range(lineNumber, startChar + 3, lineNumber, lineText.length),
+        new vscode.Range(
+          lineNumber,
+          startChar + 3,
+          lineNumber,
+          lineText.length,
+        ),
         "Language annotation should not contain spaces.",
         vscode.DiagnosticSeverity.Error,
       );
@@ -370,5 +384,41 @@ export default class WriterlyIndentationValidator {
     }
 
     return { error: null, diagnostic: null };
+  }
+
+  private checkForMissingCodeBlockClosure(
+    lineText: string,
+    lineNumber: number,
+    codeBlockState: CodeBlockState,
+    diagnostics: vscode.Diagnostic[],
+  ): void {
+    const trimmed = lineText.trim();
+
+    // Only trigger on clear structural boundaries that indicate missing closure
+    if (trimmed.startsWith("|>")) {
+      // New tag encountered while in code block - missing closure
+      if (codeBlockState.startLine !== undefined) {
+        diagnostics.push(
+          new vscode.Diagnostic(
+            new vscode.Range(lineNumber, 0, lineNumber, lineText.length),
+            `Missing code block closure. Expected \`\`\` before this tag to close code block started at line ${codeBlockState.startLine + 1}`,
+            vscode.DiagnosticSeverity.Error,
+          ),
+        );
+        // Mark the opening line too
+        diagnostics.push(
+          new vscode.Diagnostic(
+            new vscode.Range(
+              codeBlockState.startLine,
+              0,
+              codeBlockState.startLine,
+              100,
+            ),
+            `Code block opened here is never closed`,
+            vscode.DiagnosticSeverity.Error,
+          ),
+        );
+      }
+    }
   }
 }
