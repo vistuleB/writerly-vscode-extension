@@ -1,0 +1,44 @@
+|> section
+    title=User Example Test
+    description=Testing the exact example provided by the user
+
+This file tests the specific case mentioned where Python code inside
+a larger code block should be treated as content, not as a delimiter.
+
+|> user-example
+    type=nested-html-python
+
+The user's exact example:
+
+```
+<h1>Hello world</h1>
+    ```python
+    println("hello")
+    ```
+```
+
+Expected behavior:
+- The outer ``` opens a code block at indentation level 0
+- The inner ```python at indentation level 4 should be treated as CONTENT
+- The inner ``` at indentation level 4 should be treated as CONTENT
+- Only the final ``` at indentation level 0 should close the code block
+
+This should be highlighted as ONE code block containing HTML and Python text,
+not as separate blocks that cause parsing errors.
+
+|> verification
+    status=testing-fix
+
+If the fix works correctly:
+- No validation errors should appear
+- The entire content between the first and last ``` should be green (code block color)
+- The middle ```python and ``` should not be treated as delimiters
+
+Before the fix:
+- ```python would incorrectly close the outer block
+- println("hello") would appear as regular text
+- The final ``` would start a new unclosed block causing errors
+
+After the fix:
+- All content should be properly contained in one code block
+- Same indentation rule: only ``` at same level as opener can close

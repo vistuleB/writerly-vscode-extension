@@ -1,0 +1,94 @@
+|> section
+    title=Mathematical Examples
+    class=content
+
+This section contains mathematical expressions that should not trigger attribute validation errors.
+
+Mathematical expressions in paragraph text:
+- The equation $E = mc^2$ is Einstein's famous formula
+- In linear algebra: $Ax = b$ where A is a matrix
+- Calculus: $\lim_{x \to 0} \frac{\sin x}{x} = 1$
+
+|> definition
+    name=Reduction
+    type=formal
+
+    *(Reduktion und Linksreduktion)* Seien
+    $\alpha, \beta, \gamma \in (\Sigma \cup N)^*$ Wortformen und
+    $X \rightarrow \beta$ eine Produktion. Dann schreiben wir
+
+    \begin{align*}
+    \alpha \beta \gamma \rstep{} \alpha X \gamma \ ,
+    \end{align*}
+
+    und sagen _$\alpha \beta \gamma$ reduziert zu $\alpha X \gamma$_.
+    Man nennt einen solchen Schritt auch einen _Reduktionsschritt_.
+    Wir nennen den Schritt einen _Linksreduktionsschritt_, wenn
+    rechts von $\beta$ nur Terminale stehen. Wenn also
+    $\gamma = w \in \Sigma^*$ und somit
+
+    More mathematical content:
+    - Set theory: $A \cap B = \{x : x \in A \text{ and } x \in B\}$
+    - Function definition: $f: X \to Y$ where $f(x) = 2x + 1$
+    - Probability: $P(A \cup B) = P(A) + P(B) - P(A \cap B)$
+
+|> code-example
+    language=python
+
+    Programming examples with equals signs:
+
+        result = calculate_value()
+        config = load_settings()
+        data = process_input(raw_data)
+
+        if condition = True:
+            value = compute()
+
+        Mathematical operations:
+        area = pi * radius ** 2
+        distance = sqrt((x2 - x1)**2 + (y2 - y1)**2)
+
+Regular paragraph with mixed content:
+The formula $y = mx + b$ represents a linear function where m is the slope.
+In programming, we might write slope = calculate_slope(points) to compute it.
+Both mathematical notation and code should be treated as regular text.
+
+|> theorem
+    number=1
+    category=analysis
+
+    **Theorem 1.** For any continuous function $f: [a,b] \to \mathbb{R}$,
+    there exists $c \in [a,b]$ such that
+
+    $$f(c) = \frac{1}{b-a} \int_a^b f(x) \, dx$$
+
+    This is the Mean Value Theorem for integrals.
+
+    Proof outline:
+    1. Let $F(x) = \int_a^x f(t) \, dt$
+    2. Then $F'(x) = f(x)$ by the Fundamental Theorem
+    3. Apply MVT to $F$ on $[a,b]$: $F(b) - F(a) = F'(c)(b-a) = f(c)(b-a)$
+
+|> mixed-content
+    valid=attribute
+    working= attribute with space
+
+    Text with equations should not cause validation errors:
+
+        The quadratic formula: $x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$
+
+        In code: discriminant = b**2 - 4*a*c
+
+        More math: $\sum_{i=1}^n i = \frac{n(n+1)}{2}$
+
+        Programming: total = sum(range(1, n+1))
+
+None of the mathematical expressions or code examples above should trigger
+attribute validation warnings, even when indented.
+
+|> final-test
+    success=true
+    content=mathematical-and-programming
+
+The expressions $\alpha = \beta + \gamma$ and variable = value should both
+be treated as regular text content, not as malformed attributes.

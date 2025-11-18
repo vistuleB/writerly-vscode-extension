@@ -1,0 +1,27 @@
+|> section
+    title=Immediate Error Detection
+    description=Simple test for missing closure detection
+
+Testing immediate error feedback instead of end-of-file errors.
+
+|> test-case
+    type=missing-closure
+
+Code block without proper closure:
+
+```
+This code block is never closed.
+Content goes here.
+Some more content.
+```
+
+|> next-tag
+    error=This tag should immediately show missing closure error
+
+The error should appear on the line above (the tag line) immediately,
+not at the end of the document.
+
+Expected behavior:
+- Error on "|> next-tag" line: "Missing code block closure..."
+- Error on the opening "```" line: "Code block opened here is never closed"
+- Immediate feedback, not delayed until end of file

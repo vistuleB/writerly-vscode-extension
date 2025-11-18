@@ -1,0 +1,44 @@
+|> section
+    title=MySection
+    id=main-content
+    class=highlight
+
+This should work fine - all attributes are properly formatted.
+
+|> subsection
+    name=subsec1
+    visible=true
+    count=42
+
+More content here.
+
+|> problematic
+    attr1=good
+    attr2= badspace
+    attr3=alsogood
+    attr4=shouldnotparse
+
+The line with "attr2= badspace" has a space after equals, so everything from that line onwards (including attr3, attr4, and text) should be treated as ordinary text, not attributes.
+
+|> another
+    before=ok
+    during=fail
+    after=ignored
+
+Same here - "during =fail" has space before equals, so "after=ignored" should be plain text.
+
+|> valid
+    key=value
+    name=test
+    enabled=true
+
+This block should work normally again.
+
+|> edge-cases
+    noequals
+    empty=
+    spaces in value=this should work
+    key_with_underscores=ok
+    key-with-hyphens=ok
+
+Testing various edge cases.

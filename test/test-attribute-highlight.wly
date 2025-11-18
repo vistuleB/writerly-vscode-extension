@@ -1,0 +1,60 @@
+|> section
+    title=ValidSection
+    id=main
+    class=highlight
+
+This text should be normal - attributes above are valid.
+
+|> problematic1
+    good=value
+    bad= spacedvalue
+    shouldnotparse=ignored
+    alsoignored=test
+
+Everything from "bad= spacedvalue" onwards should be plain text, not highlighted as attributes.
+
+|> problematic2
+    valid=ok
+    invalid =fail
+    notattribute=anymore
+
+Same here - "invalid =fail" has space before equals, so "notattribute=anymore" should be plain text.
+
+|> problematic3
+    works=fine
+    broken = bothsides
+    plain=text
+
+The "broken = bothsides" line has spaces on both sides, so "plain=text" should not be an attribute.
+
+|> mixed
+    attr1=good
+    regular text line without equals
+    attr2=shouldthiswork
+
+Question: should attr2 be highlighted as attribute or plain text after the non-attribute line?
+
+|> edgecases
+    empty=
+    justkey
+    key=value with spaces
+    key=value=withequals
+
+Testing edge cases for attribute parsing.
+
+|> valid
+    name=test
+    count=42
+    enabled=true
+    path=/home/user
+
+This should all work correctly as attributes.
+
+Regular paragraph text at root level.
+
+! This is a comment
+
+|> final
+    last=attribute
+
+Final test section.

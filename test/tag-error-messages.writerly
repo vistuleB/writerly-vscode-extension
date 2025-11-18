@@ -1,0 +1,59 @@
+|> valid-tag
+    title=This tag is valid and should have no errors
+
+Testing empty tags (should show "Tag name cannot be empty" error):
+
+|>
+
+|>>
+
+|>
+
+Testing invalid tag names (should show pattern error message):
+
+|> 123starts-with-number
+
+|> -starts-with-hyphen
+
+|> .starts-with-dot
+
+|> @invalid-character
+
+|> #hash-invalid
+
+|> $dollar-invalid
+
+|> invalid spaces in name
+
+|> tag@with@symbols
+
+|> tag#with#hash
+
+Testing extra content (should show strict format error):
+
+|> valid-tag extra content here
+
+|> section some additional text
+
+|> tag-name with trailing text
+
+Valid examples for comparison:
+
+|> valid-simple-tag
+
+|> valid_underscore_tag
+
+|> valid.dot.tag
+
+|> valid:colon:tag
+
+|> _starts-with-underscore
+
+|> xml:namespace-style
+
+|> complex-tag.with_everything:combined
+
+Expected error messages:
+1. Empty tags: "Tag name cannot be empty. Valid tag format: |> tagname"
+2. Invalid patterns: "Invalid tag name '[name]'. Tag names must start with a letter, underscore, or colon, followed by letters, numbers, hyphens, underscores, dots, or colons."
+3. Extra content: "Invalid tag format. Tag lines must contain only the tag name with optional whitespace. Valid format: |> tagname"

@@ -1,0 +1,131 @@
+|> section
+    title=Semantic Token Highlighting Test
+    description=Testing advanced syntax highlighting with semantic tokens
+    class=demonstration
+
+This file tests the semantic token highlighting for the Writerly extension.
+Each element should have context-aware colors beyond basic TextMate grammar.
+
+|> tag-highlighting
+    type=pipe-and-names
+    status=active
+
+Testing tag name highlighting:
+- The |> pipe symbols should be highlighted as keywords
+- Tag names like "section", "tag-highlighting" should be highlighted as types
+- Different colors from regular text
+
+|> attribute-highlighting
+    simple=value
+    with_underscore = underscore_value
+    with-hyphen=hyphen-value
+    with.dot=dot-notation-value
+    namespace:key=namespaced-value
+    xml:lang=en
+    data.bind:model=complex-namespace
+    empty=
+    spaces= value with spaces after equals
+
+Testing attribute highlighting:
+- Attribute keys should be highlighted as properties
+- Namespaced keys (with :) should be highlighted as namespace tokens
+- Equals signs should be highlighted as operators
+- Values should be highlighted as strings
+- Different treatment for different attribute types
+
+|> comment-highlighting
+    active=true
+    !!disabled=commented-out-attribute
+    !!also:disabled=namespaced-commented-attribute
+    working=normal
+
+! This is a regular comment line at root level
+
+Testing comment highlighting:
+- Regular comments starting with ! should be highlighted as comments
+- Commented attributes with !! should be highlighted as comments
+- Regular attributes should maintain normal highlighting
+
+|> code-block-highlighting
+    language=mixed
+    type=nested
+
+Testing code block highlighting with nested content:
+
+```
+This is a code block with regular content.
+It should be highlighted as markup/code block.
+
+    ```python
+    # This inner code block should also be markup
+    print("Hello, nested world!")
+    ```
+
+More content in the outer code block.
+HTML example: <div>content</div>
+```
+
+The entire code block should be highlighted uniformly as markup.
+
+|> nested-code-with-attributes
+    example=complex
+    nesting=deep
+
+Code block containing various syntax:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Nested Example</title>
+</head>
+<body>
+    ```javascript
+    function greet(name) {
+        return `Hello, ${name}!`;
+    }
+
+    console.log(greet("World"));
+    ```
+</body>
+</html>
+```
+
+|> mixed-content
+    version=1.0
+    author=test-suite
+
+Regular paragraph text with various elements.
+
+Mathematical expressions: $f(x) = x^2 + 2x + 1$
+Programming references: variable = value
+URLs: https://example.com
+
+! Comment about the mixed content above
+
+More paragraph content here.
+
+|> edge-cases
+    _private=underscore-start
+    123invalid=number-start-should-not-highlight
+    valid-after-invalid=should-work
+    !!commented=out
+    final=test
+
+Testing edge cases:
+- Invalid attribute names should not receive attribute highlighting
+- Valid attributes after invalid ones should still work
+- Mixed valid/invalid patterns
+
+Expected semantic token behavior:
+1. |> symbols: keyword color (blue/purple in most themes)
+2. Tag names: type color (green/teal in most themes)
+3. Attribute keys: property color (light blue in most themes)
+4. Namespaced keys: namespace color (yellow/orange in most themes)
+5. Equals signs: operator color (white/gray in most themes)
+6. Attribute values: string color (orange/red in most themes)
+7. Comments: comment color (gray/green in most themes)
+8. Code blocks: markup color (consistent green highlighting)
+
+The semantic highlighting should provide more precise and context-aware
+colors than what TextMate grammar alone can achieve.

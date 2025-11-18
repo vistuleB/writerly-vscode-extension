@@ -1,0 +1,92 @@
+|> section
+    title=Testing WLY Extension
+    type=language-test
+    version=1.0
+
+This file tests the Writerly extension with the correct .wly file extension.
+The language ID should now be "wly" instead of "writerly".
+
+|> semantic-tokens
+    feature=highlighting
+    status=active
+
+Testing semantic token highlighting:
+- |> pipe symbols should be highlighted as keywords
+- Tag names should be highlighted as types
+- Attribute keys should be highlighted as properties
+- Values should be highlighted as strings
+
+|> attributes-test
+    simple=value
+    with_underscore=test_value
+    with-hyphen=test-value
+    with.dot=dot.notation
+    namespace:key=namespaced-value
+    xml:lang=en
+    data.bind:model=complex-case
+    empty=
+    spaces= value with spaces after equals
+
+Testing various attribute patterns with the wly language ID.
+
+|> comments-test
+    active=true
+    !!disabled=commented-attribute
+    working=normal
+
+! This is a regular comment
+! Testing comment highlighting with wly extension
+
+|> code-blocks-test
+    language=mixed
+    nesting=supported
+
+Testing code block handling:
+
+```
+This is a code block that should be highlighted as markup.
+Content inside should maintain consistent coloring.
+
+    ```python
+    # This inner block should be treated as content
+    print("Hello from nested code!")
+    ```
+
+More content in the outer block.
+```
+
+The code block above should respect same-indentation closing rules.
+
+|> validation-test
+    good=attribute
+    bad =space-before-equals
+    ignored=should-be-plain-text
+
+The "bad =space-before-equals" should trigger validation errors,
+and "ignored=should-be-plain-text" should appear as plain text.
+
+|> tag-validation
+    test=valid-tags
+
+Valid tag examples:
+- Simple tags work
+- Complex tags with hyphens, dots, colons work
+- Invalid tags should show immediate error feedback
+
+|> invalid-tag-test
+
+This should work fine.
+
+|> 123invalid-start
+    error=Should show validation error
+
+The tag above should trigger validation error for starting with number.
+
+Expected behavior with wly extension:
+1. Language ID recognized as "wly"
+2. Semantic highlighting active
+3. Validation errors shown immediately
+4. Code blocks handle nesting correctly
+5. All Writerly language features work with .wly files
+
+Testing successful if all features work with the wly language identifier!

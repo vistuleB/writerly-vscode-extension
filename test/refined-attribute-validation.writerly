@@ -1,0 +1,116 @@
+|> section
+    title=Refined Attribute Validation Test
+    class=comprehensive
+
+This file tests the refined attribute validation that only considers lines
+matching the exact pattern [a-zA-Z_][-a-zA-Z0-9\._\:]*=value as potential attributes.
+
+Valid attributes (should be highlighted and validated):
+- Must be indented
+- Must start with letter or underscore
+- Can contain hyphens, letters, numbers, underscores, dots, colons
+- Must have equals sign
+
+|> valid-attributes
+    simple=value
+    with_underscore=value
+    with-hyphen=value
+    with.dot=value
+    with:colon=value
+    _private=value
+    complex.key:namespace-name=value
+    a=single-letter
+    Z=uppercase-letter
+    key123=with-numbers
+    data.api.endpoint:v2=complex-example
+
+All above should be properly validated as attributes.
+
+|> invalid-but-ignored-content
+    valid=attribute
+
+Mathematical expressions (should be IGNORED, no validation errors):
+    $\alpha = \beta + \gamma$ in Greek letters
+    $f(x) = x^2 + 2x + 1$ quadratic function
+    $\lim_{n \to \infty} \frac{1}{n} = 0$ limit definition
+    $\int_a^b f(x)dx = F(b) - F(a)$ fundamental theorem
+
+Programming code (should be IGNORED):
+    result = calculate_function(input)
+    config = load_settings_from_file()
+    data = process_raw_input(stream)
+    if condition = True: execute()
+
+Natural language with equals (should be IGNORED):
+    The equation E = mc² is Einstein's formula
+    When x = 5, then y = 10 in this context
+    Set A = {1, 2, 3} and B = {4, 5, 6}
+    Variable assignment: value = computation
+
+Special characters starting lines (should be IGNORED):
+    $variable = mathematical_expression$
+    @property = decorator_syntax
+    #define MACRO = value
+    %config = jupyter_magic
+    !command = shell_execution
+    &reference = memory_address
+    *pointer = dereferenced_value
+    123invalid = starts_with_number
+
+|> mixed-indentation-test
+    real=attribute
+
+        Deeply indented mathematical content:
+        $\sum_{i=1}^n x_i = \frac{n(n+1)}{2}$ summation formula
+        $\prod_{i=1}^n x_i = x_1 \cdot x_2 \cdot \ldots \cdot x_n$ product
+
+        Code examples:
+        for i in range(n): total = total + i
+        while condition = True: process()
+
+    back=to-attributes
+
+The deeply indented content should be ignored (doesn't start with valid identifier).
+
+|> space-validation-test
+    good=no-space-before-equals
+    also= space-after-equals-ok
+    bad =space-before-equals-breaks-parsing
+    ignored=should-be-plain-text
+
+The "bad =space-before-equals-breaks-parsing" should trigger validation error,
+and "ignored=should-be-plain-text" should become plain text.
+
+Non-indented content with equals signs (should be completely IGNORED):
+The formula a = b + c appears at root level
+Programming: result = function_call() at root level
+Mathematics: $\theta = \arctan(\frac{y}{x})$ at root level
+
+|> recovery-test
+    working=fine-again
+    normal= space-after-ok
+    complex.namespace:attribute=recovered
+
+New tag should recover and validate attributes normally.
+
+|> edge-cases
+    _=single-underscore-key
+    a_=letter-underscore
+    x1=alphanumeric
+    data.x:y=all-allowed-chars
+
+    Content that looks similar but should be IGNORED:
+    1key=starts-with-number
+    -key=starts-with-hyphen
+    .key=starts-with-dot
+    :key=starts-with-colon
+    key with spaces = not valid identifier
+
+|> final-validation
+    success=true
+    pattern=refined-and-precise
+    validation=context-aware
+
+Summary: Only indented lines starting with [a-zA-Z_] followed by
+[-a-zA-Z0-9\._\:]* and then = should be considered for attribute validation.
+Everything else should be treated as regular content and ignored.

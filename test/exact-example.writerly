@@ -1,0 +1,35 @@
+|> Tag
+    attr1=  val1
+    attr2= val2
+    attr3=
+    attr4=val4
+    attr5 =val5
+    attr6=val6
+
+In the above example:
+- attr1, attr2, attr3, attr4 should be valid attributes (highlighted properly)
+- attr5 and attr6 should appear as ordinary text (not highlighted as attributes)
+- The space before = in attr5 breaks attribute parsing
+- Everything after attr5 becomes plain text until the next tag
+
+|> AnotherTag
+    working=fine
+    also= working with space after
+    broken =space before equals
+    notattribute=plain text now
+
+The "broken =space before equals" line should break parsing,
+so "notattribute=plain text now" appears as regular text.
+
+|> EmptyKeyTest
+    valid=attribute
+    =invalid-empty-key
+    subsequent=should-be-text
+
+The line starting with "=" (empty key) should break parsing.
+
+|> RecoveryTest
+    success=true
+    normal= attribute with space after equals
+
+New tags should recover and parse attributes normally again.

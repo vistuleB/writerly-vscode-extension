@@ -1,0 +1,10 @@
+|> simple-test
+    key=value
+    name= value with space
+    id=test
+
+|> debug-attributes
+    standard=normal
+    spaced= has space after equals
+    empty=
+    long= this is a longer value to test

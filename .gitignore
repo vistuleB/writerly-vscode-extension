@@ -3,4 +3,3 @@ elm-stuff
 out
 *.vsix
 .vscode/
-test/
