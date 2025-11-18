@@ -1,0 +1,11 @@
+|> section
+    title=Missing Closure Detection Test
+    description=Testing immediate error detection for missing code block closures
+
+    ```javascript
+        const code = `template with backticks`;
+        ```bash
+        echo "nested"
+        ```
+        console.log('this should still be highlighted as JS');
+    ```
