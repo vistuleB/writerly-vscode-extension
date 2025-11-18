@@ -1,0 +1,75 @@
+|> section
+    title=Basic attribute with simple name
+    class=standard-attribute
+
+|> data-binding
+    data.value=dot-notation-attribute
+    data.nested.property=deep-dot-notation
+    user.name=user-property
+    config.api.url=multi-level-dots
+
+|> xml-namespaces
+    xml:lang=en
+    xmlns:custom=http://example.com
+    xmlns:xsi=http://www.w3.org/2001/XMLSchema-instance
+    xsi:type=string
+
+|> framework-style
+    v-bind:click=vue-style-binding
+    ng:controller=angular-namespace
+    react:key=react-style-prop
+    custom:directive=framework-directive
+
+|> mixed-formats
+    standard=regular-attribute
+    data-attr=hyphen-style
+    my_underscore=underscore-style
+    namespace:prop=colon-style
+    object.property=dot-style
+    complex.nested:namespace=all-combined
+
+|> edge-cases
+    a=single-letter-key
+    _private.config:dev=starts-with-underscore
+    config.debug.level:production=complex-combination
+    data.set.value.deeply.nested=very-deep-dots
+    app:component:directive=multiple-colons
+    my-app.config:env.debug=mixing-all-styles
+
+|> html-style
+    aria-label=accessibility-attribute
+    data-toggle=bootstrap-style
+    data.bind.text=knockout-style
+    ng-if=angular-directive
+    v-for:item=vue-loop
+
+|> css-like
+    font.size=css-property-style
+    margin.top=spacing-property
+    border.width.left=detailed-css-prop
+    animation:duration=css-with-colon
+
+|> valid-combinations
+    app.module:main=module-namespace
+    user.profile.settings:theme=deep-nested-with-namespace
+    data.api.endpoint:v2=api-versioning
+    config.database.connection:pool=database-config
+
+This text should be normal paragraph content.
+
+|> commented-attributes
+    active=true
+    !!disabled.feature:beta=commented-flexible-attribute
+    !!config.debug:on=another-commented-attribute
+    working.fine=still-valid
+
+|> validation-test
+    good.attribute=valid
+    bad .attribute=should-fail-parsing
+    also.broken=should-be-plain-text
+
+Everything after "bad .attribute" should be plain text due to space before equals.
+
+|> final-test
+    success:complete=true
+    test.result.status:passed=all-flexible-keys-working

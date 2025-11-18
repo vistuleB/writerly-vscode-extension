@@ -1,0 +1,88 @@
+|> section
+    title=NoSpaces
+    name= SpaceAfterEqualsOK
+    id=basic-test
+
+This should work - space after equals is allowed, no space before equals.
+
+|> valid-formats
+    standard=value
+    after= value with space after equals
+    multiple= spaces    after equals
+    empty=
+    empty=
+    colon:key= value after equals
+    dot.key= value after equals
+    complex.key:ns= value with space
+
+All these should be valid attributes with proper highlighting.
+
+|> invalid-format-breaks-parsing
+    good=value
+    bad= space-before-equals
+    should=be-plain-text
+    also=plain-text
+
+The "bad =space-before-equals" line has space before =, so everything after should be plain text.
+
+|> another-break
+    works= fine with space after
+    breaks =space before equals
+    ignored=plain-text-now
+
+Same here - "breaks =space before" should break parsing.
+
+|> both-sides-invalid
+    valid=attribute
+    invalid = spaces on both sides
+    notparsed=plain-text
+
+    $\gamma = w \in \Sigma^*$ und somit
+
+Spaces on both sides should break parsing since space before = is not allowed.
+
+|> mixed-valid-invalid
+    good.key:ns=valid
+    also.good= valid with space after
+    bad.key =invalid
+    remaining=plain-text
+
+Testing mixed valid and invalid in same block.
+
+|> edge-cases
+    key==double-equals
+    key= =space-equals-space
+    key=value= weird but technically valid key name
+    another= trailing space
+    final=value
+
+Testing edge cases with multiple equals signs and trailing spaces.
+
+|> commented-attributes
+    active=true
+    !!disabled= commented with space after
+    !!also =commented with space before
+    working= still valid
+
+Commented attributes should work regardless of spacing.
+
+|> recovery-after-break
+    first=valid
+    broken=space before
+    plain=text
+
+This text should be plain because of the broken attribute above.
+
+|> fresh-start
+    recovered=true
+    space.after= works fine true
+    normal=attribute
+
+New tag should recover and parse attributes normally again.
+
+Regular paragraph text for visual separation.
+
+|> final-validation
+    success= true with space
+    test.complete:status=passed
+    verified= all space-after-equals cases work

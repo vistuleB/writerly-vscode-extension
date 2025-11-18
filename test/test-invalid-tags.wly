@@ -1,0 +1,93 @@
+! This file tests invalid tag names that should NOT be recognized as tags
+
+|> 123invalid
+    number=cannot-start-with-number
+
+|> -invalid
+    hyphen=cannot-start-with-hyphen
+
+|> .invalid
+    dot=cannot-start-with-dot
+
+|> -test-tag
+    description=hyphen-at-start-invalid
+
+|> 9section
+    numeric=number-start-invalid
+
+|> .class-name
+    css=dot-start-invalid
+
+! These lines should be treated as regular text, not tags:
+|> 1header
+    should=be-plain-text
+
+|> 0tag
+    zero=start-invalid
+
+|> -menu
+    dash=start-invalid
+
+|> .navigation
+    period=start-invalid
+
+! Valid examples for comparison:
+
+|> section1
+    valid=number-at-end-ok
+
+|> header-main
+    valid=hyphen-in-middle-ok
+
+|> nav.item
+    valid=dot-in-middle-ok
+
+|> _private-section
+    valid=underscore-start-ok
+
+|> app:component
+    valid=colon-start-ok
+
+! Testing empty and minimal cases:
+
+|>
+    empty=tag-name-missing
+
+|>
+    space=after-pipe-only
+
+! Edge cases with special characters:
+
+|> tag@invalid
+    at=symbol-not-allowed
+
+|> tag#invalid
+    hash=symbol-not-allowed
+
+|> tag$invalid
+    dollar=symbol-not-allowed
+
+|> tag%invalid
+    percent=symbol-not-allowed
+
+! These should work (within allowed character set):
+
+|> valid-tag_name.component:namespace
+    all=allowed-characters
+
+|> a-b_c.d:e
+    minimal=valid-combinations
+
+Regular text to separate sections.
+
+|> test--multiple--hyphens
+    double=hyphens-should-work
+
+|> test__multiple__underscores
+    double=underscores-should-work
+
+|> test..multiple..dots
+    double=dots-should-work
+
+|> test::multiple::colons
+    double=colons-should-work
