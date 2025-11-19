@@ -1,3 +1,11 @@
+/* THIS FILE IS CURRENTLY UNUSED;
+   HERE FOR REFERENCE */
+
+/* AND FOR EMPHASIS I'M COMMENTING
+   EVERYTHING OUT */
+
+/*
+
 import * as vscode from "vscode";
 
 export default class WriterlyCodeActionProvider
@@ -54,3 +62,5 @@ export default class WriterlyCodeActionProvider
     return edit;
   }
 }
+
+*/

@@ -137,11 +137,12 @@ Expected results:
 3. NESTED CODE BLOCKS are entirely green - inner backticks don't break highlighting
 4. ERRORS appear immediately, not just at end of file
 
-```
-    <h1>HTML content</h1>
+|> Hi
     ```
-    print("nested code")
+        <h1>HTML content</h1>
+        ```
+        print("nested code")
+        ```
     ```
-```
 
 

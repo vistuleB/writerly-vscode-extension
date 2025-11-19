@@ -91,7 +91,7 @@
           "name": "punctuation.whitespace"
         }
       },
-      "end": "^(\\1)(```)\\s*$",
+      "end": "^(\\1)(```)[\\s\\t]*$",
       "endCaptures": {
         "1": {
           "name": "punctuation.whitespace.leading"
