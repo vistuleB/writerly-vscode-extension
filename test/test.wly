@@ -3,7 +3,7 @@
     !! cffsdf=./img/src
     !! a=b
     !!a=b
-    a =   boo
+    a=boo
     q=2
 
     $$
@@ -13,10 +13,14 @@
     |> HelloWorld
         |> HeyPeople
             class=babes
+            class=babes
+
             Hello world
             And your brethren
 
     ```mystery-language 
+        ```hi
+        ```
     case x {
         True -> 0
         False -> 1

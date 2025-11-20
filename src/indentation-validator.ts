@@ -1,4 +1,3 @@
-// import { assert } from "console";
 import * as vscode from "vscode";
 
 enum Zone {
@@ -12,7 +11,6 @@ class State {
   indent: number;
   start: number;
   thisParagraphIndentationDiagnostic: vscode.Diagnostic;
-  // thisCodeBlockIndentationDiagnostic: vscode.Diagnostic;
 }
 
 export default class WriterlyIndentationValidator2 {
@@ -26,7 +24,6 @@ export default class WriterlyIndentationValidator2 {
       indent: 0,
       start: -1,
       thisParagraphIndentationDiagnostic: null,
-      // thisCodeBlockIndentationDiagnostic: null,
     };
 
     for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
@@ -119,30 +116,22 @@ export default class WriterlyIndentationValidator2 {
       if (indent < state.indent && content !== "") {
         diagnostics.push(this.d3(lineNumber, indent));
       }
-      // else if (
-      //   state.thisCodeBlockIndentationDiagnostic !== null
-      // ) {
-      //   diagnostics.push(this.translate(state.thisCodeBlockIndentationDiagnostic, lineNumber));
-      // }
     } else {
       let isText = (
         !content.startsWith("|>") &&
         !content.startsWith("```")
       );
-      let isCodeBlockStart = content.startsWith("```");
 
       if (indent > state.indent) {
         let diagnostic = this.d1(lineNumber, indent)
         diagnostics.push(diagnostic);
         if (isText) { state.thisParagraphIndentationDiagnostic = diagnostic; }
-        // if (isCodeBlockStart) { state.thisCodeBlockIndentationDiagnostic = diagnostic; }
       }
       
       else if (indent % 4 !== 0) {
         let diagnostic = this.d2(lineNumber, indent);
         diagnostics.push(diagnostic);
         if (isText) { state.thisParagraphIndentationDiagnostic = diagnostic; }
-        // if (isCodeBlockStart) { state.thisCodeBlockIndentationDiagnostic = diagnostic; }
       }
 
       else if (
@@ -291,7 +280,6 @@ export default class WriterlyIndentationValidator2 {
       content === "```"
     ) {
       state.zone = Zone.Text;
-      // state.thisCodeBlockIndentationDiagnostic = null;
     } else if (
       content.startsWith("```")
     ) {
