@@ -13,7 +13,7 @@ class State {
   thisParagraphIndentationDiagnostic: vscode.Diagnostic;
 }
 
-export default class WriterlyIndentationValidator2 {
+export default class WriterlyDocumentValidator {
   constructor(private diagnosticCollection: vscode.DiagnosticCollection) {}
 
   validateDocument(document: vscode.TextDocument): void {

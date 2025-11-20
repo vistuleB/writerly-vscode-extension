@@ -1,18 +1,18 @@
 "use strict";
 import * as vscode from "vscode";
-import WriterlyIndentationValidator2 from "./indentation-validator";
+import WriterlyDocumentValidator from "./validator";
 
 export function activate(context: vscode.ExtensionContext) {
   const collection = vscode.languages.createDiagnosticCollection("writerly");
 
   // Register the indentation validator
-  const indentationValidator = new WriterlyIndentationValidator2(collection);
+  const validator = new WriterlyDocumentValidator(collection);
 
   // Validate on document open
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument((document) => {
       if (document.languageId === "writerly") {
-        indentationValidator.validateDocument(document);
+        validator.validateDocument(document);
       }
     }),
   );
@@ -21,7 +21,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument((event) => {
       if (event.document.languageId === "writerly") {
-        indentationValidator.validateDocument(event.document);
+        validator.validateDocument(event.document);
       }
     }),
   );
@@ -29,18 +29,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Validate already open documents
   vscode.workspace.textDocuments.forEach((document) => {
     if (document.languageId === "writerly") {
-      indentationValidator.validateDocument(document);
+      validator.validateDocument(document);
     }
   });
-
-  // John: code action was crappy but leaving for reference:
-
-  // Register code action provider for quick fixes
-  // const codeActionProvider = new WriterlyCodeActionProvider();
-  // context.subscriptions.push(
-  //   vscode.languages.registerCodeActionsProvider(
-  //     "writerly",
-  //     codeActionProvider,
-  //   ),
-  // );
 }
