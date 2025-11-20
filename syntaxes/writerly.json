@@ -22,14 +22,14 @@
               "name": "punctuation.definition.comment.mark"
             }
           },
-          "begin": "^\\s*!!",
+          "begin": "^ *!!",
           "end": "$",
           "name": "comment.line.mark"
         }
       ]
     },
     "block-with-attributes": {
-      "begin": "^(\\s*)(\\|\\>?)(\\s*)(|(?:.*[^\\s]))(\\s*)$",
+      "begin": "^( *)(\\|\\>?)( *)(|(?:.*[^ ]))( *)$",
       "beginCaptures": {
         "1": {
           "name": "punctuation.whitespace.leading"
@@ -47,7 +47,7 @@
           "name": "punctuation.whitespace"
         }
       },
-      "end": "^(?!(\\s*([a-zA-Z_][-a-zA-Z0-9\\._\\:]*)=(.*)$)|(\\s*!!(.*)$))",
+      "end": "^(?!(\\1    ([a-zA-Z_][-a-zA-Z0-9\\._\\:]*)=(.*)$)|(\\1    !!(.*)$))",
       "patterns": [
         {
           "include": "#comment"
@@ -60,7 +60,7 @@
     "attributes": {
       "patterns": [
         {
-          "match": "(?:\\s*)([a-zA-Z_][-a-zA-Z0-9\\._\\:]*)(=)(.*)$",
+          "match": "(?: *)([a-zA-Z_][-a-zA-Z0-9\\._\\:]*)(=)(.*)$",
           "captures": {
             "1": {
               "name": "text.html entity.other.attribute-name"
@@ -76,7 +76,7 @@
       ]
     },
     "codeblock": {
-      "begin": "^(\\s*)(```)(|(?:.*[^\\s]))(\\s*)$",
+      "begin": "^( *)(```)(.*)$",
       "beginCaptures": {
         "1": {
           "name": "punctuation.whitespace.leading"
@@ -86,12 +86,9 @@
         },
         "3": {
           "name": "fenced_code.block.language"
-        },
-        "4": {
-          "name": "punctuation.whitespace"
         }
       },
-      "end": "^(\\1)(```)[\\s\\t]*$",
+      "end": "^(\\1)(```)( *)$",
       "endCaptures": {
         "1": {
           "name": "punctuation.whitespace.leading"

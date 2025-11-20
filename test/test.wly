@@ -3,13 +3,18 @@
     !! cffsdf=./img/src
     !! a=b
     !!a=b
-    a=boo
+    a =   boo
+    q=2
 
     $$
     f(x) = 2
     $$
 
-    Hello world
+    |> HelloWorld
+        |> HeyPeople
+            class=babes
+            Hello world
+            And your brethren
 
     ```mystery-language 
     case x {
@@ -22,7 +27,8 @@
     
     My friend
 
-```
-    hello
-    \  hello
-    hello
+    ```
+        hello
+        \  hello
+        hello
+    ```

@@ -24,7 +24,7 @@ Empty tag above should show red underline error immediately.
 
 |> space-before-equals-test
     valid=attribute
-    invalid =space-before-equals
+    invalid=space-before-equals
     should=be-plain-text
 
 The "invalid =space-before-equals" should show red underline and make subsequent lines plain text.
@@ -33,6 +33,8 @@ The "invalid =space-before-equals" should show red underline and make subsequent
     error=This tag starts with number and should show red underline
 
 |> @invalid-special-character
+    attr=val
+    !! hello world
     error=This tag starts with @ symbol and should show red underline
 
 |> tag-highlighting-test
@@ -130,6 +132,7 @@ It should show error on next tag line.
 
 |> recovery-test
     success=Extension should recover after errors
+    attr2=val1
 
 Expected results:
 1. RED UNDERLINES appear on invalid syntax (tags, attributes, missing closures)
@@ -144,5 +147,7 @@ Expected results:
         print("nested code")
         ```
     ```
+
+    Hi world
 
 

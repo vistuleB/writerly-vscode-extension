@@ -1,13 +1,12 @@
 "use strict";
 import * as vscode from "vscode";
-import WriterlyIndentationValidator from "./indentation-validator";
-// import WriterlyCodeActionProvider from "./indentation-code-action";
+import WriterlyIndentationValidator2 from "./indentation-validator";
 
 export function activate(context: vscode.ExtensionContext) {
   const collection = vscode.languages.createDiagnosticCollection("writerly");
 
   // Register the indentation validator
-  const indentationValidator = new WriterlyIndentationValidator(collection);
+  const indentationValidator = new WriterlyIndentationValidator2(collection);
 
   // Validate on document open
   context.subscriptions.push(
