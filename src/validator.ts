@@ -10,6 +10,11 @@ class State {
   zone: Zone;
   indent: number;
   start: number;
+  // ---------------------------------------------------
+  // this is for an optional "bell & whistle", so that
+  // the indentation error at the start of a paragraph
+  // is propagated for all lines of the paragraph; can
+  // be removed without affecting other logic:
   thisParagraphIndentationDiagnostic: vscode.Diagnostic;
 }
 
