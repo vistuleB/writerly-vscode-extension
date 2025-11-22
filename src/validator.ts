@@ -14,69 +14,48 @@ class State {
   codeBlockStartLineNumber: number;
 }
 
+const lineRange = (lineNumber: number, start: number, end: number): vscode.Range  =>
+  new vscode.Range(lineNumber, start, lineNumber, end);
+
+const errorDiagnostic = (range: vscode.Range, message: string): vscode.Diagnostic =>
+  new vscode.Diagnostic(range, message, vscode.DiagnosticSeverity.Error);
+
+const d1 = (lineNumber: number, indent: number): vscode.Diagnostic =>
+  errorDiagnostic(lineRange(lineNumber, 0, indent), "Indentation too large");
+
+const d2 = (lineNumber: number, indent: number): vscode.Diagnostic =>
+  errorDiagnostic(lineRange(lineNumber, 0, indent), "Indentation not a multiple of 4");
+
+const d3 = (lineNumber: number, indent: number): vscode.Diagnostic =>
+  errorDiagnostic(lineRange(lineNumber, 0, indent), "Indentation too low");
+
+const d4 = (lineNumber: number, indent: number, content: string): vscode.Diagnostic =>
+  errorDiagnostic(lineRange(lineNumber, indent, indent + content.length), "Code block opening inside of code block");
+
+const d5 = (state: State): vscode.Diagnostic => {
+  let indent = state.codeBlockStartIndent;
+  let lineNumber = state.codeBlockStartLineNumber;
+  let range = lineRange(lineNumber, indent, indent + 3);
+  return errorDiagnostic(range, "Unclosed code block");
+}
+
+const d6 = (document: vscode.TextDocument): vscode.Diagnostic => {
+  let lastLine = document.lineCount - 1;
+  let range = lineRange(lastLine, 0, document.lineAt(lastLine).text.length)
+  return errorDiagnostic(range, "Unclosed code block");
+}
+
+const d7 = (lineNumber: number, indent: number, content: string) =>
+  errorDiagnostic(lineRange(lineNumber, indent + 2, indent + content.length), "Empty tag");
+
+const d8 = (lineNumber: number, indent: number, content: string, numSpaces: number) =>
+  errorDiagnostic(
+    lineRange(lineNumber, indent + 2 + numSpaces, indent + content.length),
+    "Invalid tag. Tag names must start with a letter, underscore, or colon, followed by letters, numbers, hyphens, underscores, dots, or colons.",
+  );
+
 export default class WriterlyDocumentValidator {
   constructor(private diagnosticCollection: vscode.DiagnosticCollection) {}
-
-  private d1(lineNumber: number, indent: number): vscode.Diagnostic {
-    return new vscode.Diagnostic(
-      new vscode.Range(lineNumber, 0, lineNumber, indent),
-      "Indentation too large",
-      vscode.DiagnosticSeverity.Error,
-    );
-  }
-
-  private d2(lineNumber: number, indent: number): vscode.Diagnostic {
-    return new vscode.Diagnostic(
-      new vscode.Range(lineNumber, 0, lineNumber, indent),
-      "Indentation not a multiple of 4",
-      vscode.DiagnosticSeverity.Error,
-    );
-  }
-
-  private d3(lineNumber: number, indent: number): vscode.Diagnostic {
-    return new vscode.Diagnostic(
-      new vscode.Range(lineNumber, 0, lineNumber, indent),
-      "Indentation too low",
-      vscode.DiagnosticSeverity.Error,
-    );
-  }
-
-  private d4(lineNumber: number, indent: number, content: string): vscode.Diagnostic {
-    return new vscode.Diagnostic(
-      new vscode.Range(lineNumber, indent, lineNumber, indent + 3 + content.length),
-      "Code block opening inside of code block",
-      vscode.DiagnosticSeverity.Error,
-    );
-  }
-  
-  private d5(state: State): vscode.Diagnostic {
-    let indent = state.codeBlockStartIndent;
-    let lineNumber = state.codeBlockStartLineNumber;
-    return new vscode.Diagnostic(
-      new vscode.Range(lineNumber, indent, lineNumber, indent + 3),
-      "Unclosed code block",
-      vscode.DiagnosticSeverity.Error,
-    );    
-  }
-  
-  private d6(document: vscode.TextDocument): vscode.Diagnostic {
-    const lastLine = document.lineCount - 1;
-    return new vscode.Diagnostic(
-      new vscode.Range(lastLine, 0, lastLine, document.lineAt(lastLine).text.length),
-      "Unclosed code block",
-      vscode.DiagnosticSeverity.Error,
-    );
-  }
-
-  private resetLine(diagnostic: vscode.Diagnostic, lineNumber: number): vscode.Diagnostic {
-    let range = new vscode.Range(
-      lineNumber,
-      diagnostic.range.start.character,
-      lineNumber,
-      diagnostic.range.end.character,
-    );
-    return new vscode.Diagnostic(range, diagnostic.message, diagnostic.severity);
-  }
 
   validateDocument(document: vscode.TextDocument): void {
     const diagnostics: vscode.Diagnostic[] = [];
@@ -90,18 +69,17 @@ export default class WriterlyDocumentValidator {
     };
 
     for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
-      const line = document.lineAt(lineNumber);
-      const trimEnd = line.text.trimEnd();
-      const spaces = trimEnd.match(/^( *)/)?.[1] || "";
+      const line = document.lineAt(lineNumber).text.trimEnd();
+      const spaces = line.match(/^( *)/)?.[1] || "";
       const indent = spaces.length;
-      const content = trimEnd.trimStart();
+      const content = line.trimStart();
       this.validateIndentation(diagnostics, state, lineNumber, indent, content);
       this.updateStateAndValidateContent(diagnostics, state, lineNumber, indent, content);
     }
 
     if (state.zone === Zone.CodeBlock) {
-      diagnostics.push(this.d5(state));
-      diagnostics.push(this.d6(document));
+      diagnostics.push(d5(state));
+      diagnostics.push(d6(document));
     }
 
     this.diagnosticCollection.set(document.uri, diagnostics);
@@ -115,14 +93,18 @@ export default class WriterlyDocumentValidator {
     content: string,
   ): void {
     if (content === "") return;
+    // the following special case is for when we are inside a code block zone, but
+    // really it's a text zone because the code block is about to be closed; the 
+    // state.maxIndent is about to be reverted to the current state.minIndent, and
+    // so we're checking for a leftover indent > state.maxIndent violation:
     if (state.zone === Zone.CodeBlock && content === "```" && indent === state.codeBlockStartIndent && state.codeBlockStartIndent > state.minIndent) {
-      diagnostics.push(this.d1(lineNumber, indent));
+      diagnostics.push(d1(lineNumber, indent));
     } else if (indent < state.minIndent) {
-      diagnostics.push(this.d3(lineNumber, indent));
+      diagnostics.push(d3(lineNumber, indent));
     } else if (indent > state.maxIndent) {
-      diagnostics.push(this.d1(lineNumber, indent));
+      diagnostics.push(d1(lineNumber, indent));
     } else if (indent % 4 !== 0) {
-      diagnostics.push(this.d2(lineNumber, indent));
+      diagnostics.push(d2(lineNumber, indent));
     }
   }
 
@@ -146,32 +128,24 @@ export default class WriterlyDocumentValidator {
     }
   }
 
-  private validateTag(
+  private validateTagName(
     diagnostics: vscode.Diagnostic[],
     lineNumber: number,
     indent: number,
     content: string,
   ): void {
     if (content === "|>") {
-      diagnostics.push(new vscode.Diagnostic(
-        new vscode.Range(lineNumber, indent + 2, lineNumber, indent + content.length),
-        "Empty tag",
-        vscode.DiagnosticSeverity.Error,
-      ));
+      diagnostics.push(d7(lineNumber, indent, content));
       return;
     }
 
     const isolatingPattern = content.match(/^\|\>( *)(.*)$/);
     const numSpaces = isolatingPattern[1].length;
-    const tag = isolatingPattern[2];
+    const tagName = isolatingPattern[2];
     const validTagPattern = /^[a-zA-Z_\:][-a-zA-Z0-9\._\:]*$/;
 
-    if (!validTagPattern.test(tag)) {
-      diagnostics.push(new vscode.Diagnostic(
-        new vscode.Range(lineNumber, indent + 2 + numSpaces, lineNumber, indent + 2 + numSpaces + content.length),
-        `Invalid tag. Tag names must start with a letter, underscore, or colon, followed by letters, numbers, hyphens, underscores, dots, or colons.`,
-        vscode.DiagnosticSeverity.Error,
-      ));
+    if (!validTagPattern.test(tagName)) {
+      diagnostics.push(d8(lineNumber, indent, content, numSpaces));
     }
   }
 
@@ -182,10 +156,9 @@ export default class WriterlyDocumentValidator {
     content: string,
   ): void {
     if (content.indexOf(" ") > 0) {
-     diagnostics.push(new vscode.Diagnostic(
-        new vscode.Range(lineNumber, indent + 3, lineNumber, indent + content.length),
+     diagnostics.push(errorDiagnostic(
+        lineRange(lineNumber, indent + 3, indent + content.length),
         "Spaces in code block info annotation",
-        vscode.DiagnosticSeverity.Error,
       ));
     }
   }
@@ -202,7 +175,7 @@ export default class WriterlyDocumentValidator {
     ) {
       state.zone = Zone.Attribute;
       state.maxIndent = Math.min(state.maxIndent, indent) + 4;
-      this.validateTag(diagnostics, lineNumber, indent, content)
+      this.validateTagName(diagnostics, lineNumber, indent, content)
     } else if (
       content.startsWith("```")
     ) {
@@ -266,7 +239,7 @@ export default class WriterlyDocumentValidator {
     } else if (
       content.startsWith("```")
     ) {
-      diagnostics.push(this.d4(lineNumber, indent, content));
+      diagnostics.push(d4(lineNumber, indent, content));
     }
   }
 }

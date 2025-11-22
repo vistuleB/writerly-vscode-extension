@@ -18,6 +18,9 @@
 
 |> _private
     visibility=hidden
+    ```
+    person
+    ```
 
 |> :global
     scope=global-namespace
