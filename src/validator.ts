@@ -8,9 +8,10 @@ enum Zone {
 
 class State {
   zone: Zone;
-  indent: number;
-  start: number;
-  lastNonCodeBlockIndentationDiagnostic: vscode.Diagnostic;
+  maxIndent: number;
+  minIndent: number;
+  codeBlockStartIndent: number;
+  codeBlockStartLineNumber: number;
 }
 
 export default class WriterlyDocumentValidator {
@@ -49,8 +50,8 @@ export default class WriterlyDocumentValidator {
   }
   
   private d5(state: State): vscode.Diagnostic {
-    let lineNumber = state.start;
-    let indent = state.indent;
+    let indent = state.codeBlockStartIndent;
+    let lineNumber = state.codeBlockStartLineNumber;
     return new vscode.Diagnostic(
       new vscode.Range(lineNumber, indent, lineNumber, indent + 3),
       "Unclosed code block",
@@ -82,9 +83,10 @@ export default class WriterlyDocumentValidator {
 
     let state: State = {
       zone: Zone.Text,
-      indent: 0,
-      start: -1,
-      lastNonCodeBlockIndentationDiagnostic: null,
+      maxIndent: 0,
+      minIndent: 0,
+      codeBlockStartIndent: 0,
+      codeBlockStartLineNumber: 0,
     };
 
     for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
@@ -112,24 +114,16 @@ export default class WriterlyDocumentValidator {
     indent: number,
     content: string,
   ): void {
-    let diagnostic = null;
-    if (state.zone === Zone.CodeBlock) {
-      if (indent < state.indent && content !== "") {
-        diagnostic = this.d3(lineNumber, indent);
-      } else if (indent === state.indent && content === "```" && state.lastNonCodeBlockIndentationDiagnostic !== null) {
-        diagnostic = this.resetLine(state.lastNonCodeBlockIndentationDiagnostic, lineNumber);
-      }
-    } else {
-      if (indent > state.indent) {
-        diagnostic = this.d1(lineNumber, indent);
-      } else if (indent % 4 !== 0) {
-        diagnostic = this.d2(lineNumber, indent);
-      } else if (indent === state.indent && state.lastNonCodeBlockIndentationDiagnostic !== null) {
-        diagnostic = this.resetLine(state.lastNonCodeBlockIndentationDiagnostic, lineNumber);
-      }
-      state.lastNonCodeBlockIndentationDiagnostic = diagnostic;
+    if (content === "") return;
+    if (state.zone === Zone.CodeBlock && content === "```" && indent === state.codeBlockStartIndent && state.codeBlockStartIndent > state.minIndent) {
+      diagnostics.push(this.d1(lineNumber, indent));
+    } else if (indent < state.minIndent) {
+      diagnostics.push(this.d3(lineNumber, indent));
+    } else if (indent > state.maxIndent) {
+      diagnostics.push(this.d1(lineNumber, indent));
+    } else if (indent % 4 !== 0) {
+      diagnostics.push(this.d2(lineNumber, indent));
     }
-    if (diagnostic !== null) { diagnostics.push(diagnostic); }
   }
 
   private updateStateAndValidateContent(
@@ -181,7 +175,7 @@ export default class WriterlyDocumentValidator {
     }
   }
 
-  private validateCodeBlockOpening(
+  private validateCodeBlockInfoAnnotation(
     diagnostics: vscode.Diagnostic[],
     lineNumber: number,
     indent: number,
@@ -207,22 +201,24 @@ export default class WriterlyDocumentValidator {
       content.startsWith("|>")
     ) {
       state.zone = Zone.Attribute;
-      state.indent = indent + 4;
+      state.maxIndent = Math.min(state.maxIndent, indent) + 4;
       this.validateTag(diagnostics, lineNumber, indent, content)
     } else if (
       content.startsWith("```")
     ) {
       state.zone = Zone.CodeBlock;
-      state.start = lineNumber;
-      state.indent = indent;
-      this.validateCodeBlockOpening(diagnostics, lineNumber, indent, content);
+      state.codeBlockStartIndent = indent;
+      state.codeBlockStartLineNumber = lineNumber;
+      state.minIndent = Math.min(state.maxIndent, indent);
+      state.maxIndent = Number.MAX_VALUE;
+      this.validateCodeBlockInfoAnnotation(diagnostics, lineNumber, indent, content);
     } else if (
       content === ""
     ) {
       state.zone = Zone.Text;
     } else {
       state.zone = Zone.Text;
-      state.indent = indent;
+      state.maxIndent = Math.min(state.maxIndent, indent);
     }
   }
 
@@ -241,7 +237,7 @@ export default class WriterlyDocumentValidator {
     content: string,
   ): void {
     if (
-      indent === state.indent &&
+      indent === state.maxIndent &&
       this.contentDoesNotBumpUsOutOfAttributeZone(content)
     ) {
       state.zone = Zone.Attribute;
@@ -259,12 +255,14 @@ export default class WriterlyDocumentValidator {
     content: string,
   ): void {
     if (
-      indent !== state.indent
+      indent !== state.codeBlockStartIndent
     ) {
     } else if (
       content === "```"
     ) {
       state.zone = Zone.Text;
+      state.maxIndent = state.minIndent;
+      state.minIndent = 0;
     } else if (
       content.startsWith("```")
     ) {
