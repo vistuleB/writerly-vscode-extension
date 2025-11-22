@@ -3,7 +3,7 @@
   "icon": "logo.png",
   "displayName": "Writerly",
   "description": "Writerly support for VS Code",
-  "version": "0.0.33",
+  "version": "0.0.34",
   "publisher": "TabbyNotes",
   "author": {
     "name": "Chaker Atallah"
