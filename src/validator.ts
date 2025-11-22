@@ -10,44 +10,11 @@ class State {
   zone: Zone;
   indent: number;
   start: number;
-  // ---------------------------------------------------
-  // this is for an optional "bell & whistle", so that
-  // the indentation error at the start of a paragraph
-  // is propagated for all lines of the paragraph; can
-  // be removed without affecting other logic:
-  thisParagraphIndentationDiagnostic: vscode.Diagnostic;
+  lastNonCodeBlockIndentationDiagnostic: vscode.Diagnostic;
 }
 
 export default class WriterlyDocumentValidator {
   constructor(private diagnosticCollection: vscode.DiagnosticCollection) {}
-
-  validateDocument(document: vscode.TextDocument): void {
-    const diagnostics: vscode.Diagnostic[] = [];
-
-    let state: State = {
-      zone: Zone.Text,
-      indent: 0,
-      start: -1,
-      thisParagraphIndentationDiagnostic: null,
-    };
-
-    for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
-      const line = document.lineAt(lineNumber);
-      const trimEnd = line.text.trimEnd();
-      const spaces = trimEnd.match(/^( *)/)?.[1] || "";
-      const indent = spaces.length;
-      const content = trimEnd.trimStart();
-      this.indentationValidation(diagnostics, state, lineNumber, indent, content);
-      this.contentValidationAndStateUpdate(diagnostics, state, lineNumber, indent, content);
-    }
-
-    if (state.zone === Zone.CodeBlock) {
-      diagnostics.push(this.d5(state));
-      diagnostics.push(this.d6(document));
-    }
-
-    this.diagnosticCollection.set(document.uri, diagnostics);
-  }
 
   private d1(lineNumber: number, indent: number): vscode.Diagnostic {
     return new vscode.Diagnostic(
@@ -100,7 +67,7 @@ export default class WriterlyDocumentValidator {
     );
   }
 
-  private translate(diagnostic: vscode.Diagnostic, lineNumber: number): vscode.Diagnostic {
+  private resetLine(diagnostic: vscode.Diagnostic, lineNumber: number): vscode.Diagnostic {
     let range = new vscode.Range(
       lineNumber,
       diagnostic.range.start.character,
@@ -110,46 +77,62 @@ export default class WriterlyDocumentValidator {
     return new vscode.Diagnostic(range, diagnostic.message, diagnostic.severity);
   }
 
-  private indentationValidation(
+  validateDocument(document: vscode.TextDocument): void {
+    const diagnostics: vscode.Diagnostic[] = [];
+
+    let state: State = {
+      zone: Zone.Text,
+      indent: 0,
+      start: -1,
+      lastNonCodeBlockIndentationDiagnostic: null,
+    };
+
+    for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+      const line = document.lineAt(lineNumber);
+      const trimEnd = line.text.trimEnd();
+      const spaces = trimEnd.match(/^( *)/)?.[1] || "";
+      const indent = spaces.length;
+      const content = trimEnd.trimStart();
+      this.validateIndentation(diagnostics, state, lineNumber, indent, content);
+      this.updateStateAndValidateContent(diagnostics, state, lineNumber, indent, content);
+    }
+
+    if (state.zone === Zone.CodeBlock) {
+      diagnostics.push(this.d5(state));
+      diagnostics.push(this.d6(document));
+    }
+
+    this.diagnosticCollection.set(document.uri, diagnostics);
+  }
+
+  private validateIndentation(
     diagnostics: vscode.Diagnostic[],
     state: State,
     lineNumber: number,
     indent: number,
     content: string,
   ): void {
+    let diagnostic = null;
     if (state.zone === Zone.CodeBlock) {
       if (indent < state.indent && content !== "") {
-        diagnostics.push(this.d3(lineNumber, indent));
+        diagnostic = this.d3(lineNumber, indent);
+      } else if (indent === state.indent && content === "```" && state.lastNonCodeBlockIndentationDiagnostic !== null) {
+        diagnostic = this.resetLine(state.lastNonCodeBlockIndentationDiagnostic, lineNumber);
       }
     } else {
-      let isText = (
-        !content.startsWith("|>") &&
-        !content.startsWith("```")
-      );
-
       if (indent > state.indent) {
-        let diagnostic = this.d1(lineNumber, indent)
-        diagnostics.push(diagnostic);
-        if (isText) { state.thisParagraphIndentationDiagnostic = diagnostic; }
+        diagnostic = this.d1(lineNumber, indent);
+      } else if (indent % 4 !== 0) {
+        diagnostic = this.d2(lineNumber, indent);
+      } else if (indent === state.indent && state.lastNonCodeBlockIndentationDiagnostic !== null) {
+        diagnostic = this.resetLine(state.lastNonCodeBlockIndentationDiagnostic, lineNumber);
       }
-      
-      else if (indent % 4 !== 0) {
-        let diagnostic = this.d2(lineNumber, indent);
-        diagnostics.push(diagnostic);
-        if (isText) { state.thisParagraphIndentationDiagnostic = diagnostic; }
-      }
-
-      else if (
-        state.thisParagraphIndentationDiagnostic !== null &&
-        isText &&
-        indent === state.indent
-      ) {
-        diagnostics.push(this.translate(state.thisParagraphIndentationDiagnostic, lineNumber));
-      }
+      state.lastNonCodeBlockIndentationDiagnostic = diagnostic;
     }
+    if (diagnostic !== null) { diagnostics.push(diagnostic); }
   }
 
-  private contentValidationAndStateUpdate(
+  private updateStateAndValidateContent(
     diagnostics: vscode.Diagnostic[],
     state: State,
     lineNumber: number,
@@ -158,13 +141,13 @@ export default class WriterlyDocumentValidator {
   ): void {
     switch (state.zone) {
       case Zone.Attribute:
-        this.contentValidationAndStateUpdateInAttributeZone(diagnostics, state, lineNumber, indent, content);
+        this.updateStateAndValidateContentInAttributeZone(diagnostics, state, lineNumber, indent, content);
         break;
       case Zone.Text:
-        this.contentValidationAndStateUpdateInTextZone(diagnostics, state, lineNumber, indent, content);
+        this.updateStateAndValidateContentInTextZone(diagnostics, state, lineNumber, indent, content);
         break;
       case Zone.CodeBlock:
-        this.contentValidationAndStateUpdateInCodeBlockZone(diagnostics, state, lineNumber, indent, content);
+        this.updateStateAndValidateContentInCodeBlockZone(diagnostics, state, lineNumber, indent, content);
         break;
     }
   }
@@ -213,7 +196,7 @@ export default class WriterlyDocumentValidator {
     }
   }
 
-  private contentValidationAndStateUpdateInTextZone(
+  private updateStateAndValidateContentInTextZone(
     diagnostics: vscode.Diagnostic[],
     state: State,
     lineNumber: number,
@@ -223,26 +206,23 @@ export default class WriterlyDocumentValidator {
     if (
       content.startsWith("|>")
     ) {
-      this.validateTag(diagnostics, lineNumber, indent, content)
       state.zone = Zone.Attribute;
       state.indent = indent + 4;
-      state.thisParagraphIndentationDiagnostic = null;
+      this.validateTag(diagnostics, lineNumber, indent, content)
     } else if (
       content.startsWith("```")
     ) {
-      this.validateCodeBlockOpening(diagnostics, lineNumber, indent, content);
       state.zone = Zone.CodeBlock;
       state.start = lineNumber;
       state.indent = indent;
-      state.thisParagraphIndentationDiagnostic = null;
+      this.validateCodeBlockOpening(diagnostics, lineNumber, indent, content);
     } else if (
-      content !== ""
+      content === ""
     ) {
       state.zone = Zone.Text;
-      state.indent = indent;
     } else {
       state.zone = Zone.Text;
-      state.thisParagraphIndentationDiagnostic = null;
+      state.indent = indent;
     }
   }
 
@@ -253,7 +233,7 @@ export default class WriterlyDocumentValidator {
     );
   }
 
-  private contentValidationAndStateUpdateInAttributeZone(
+  private updateStateAndValidateContentInAttributeZone(
     diagnostics: vscode.Diagnostic[],
     state: State,
     lineNumber: number,
@@ -267,11 +247,11 @@ export default class WriterlyDocumentValidator {
       state.zone = Zone.Attribute;
     } else {
       state.zone = Zone.Text;
-      this.contentValidationAndStateUpdateInTextZone(diagnostics, state, lineNumber, indent, content);
+      this.updateStateAndValidateContentInTextZone(diagnostics, state, lineNumber, indent, content);
     }
   }
 
-  private contentValidationAndStateUpdateInCodeBlockZone(
+  private updateStateAndValidateContentInCodeBlockZone(
     diagnostics: vscode.Diagnostic[],
     state: State,
     lineNumber: number,
