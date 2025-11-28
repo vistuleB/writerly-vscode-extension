@@ -149,6 +149,45 @@ export class FileOpener {
   }
 
   /**
+   * Checks if a file path is within any workspace folder
+   */
+  private static isPathInWorkspace(filePath: string): boolean {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) {
+      return false;
+    }
+
+    const normalizedPath = path.normalize(filePath);
+    return workspaceFolders.some((folder) => {
+      const workspacePath = path.normalize(folder.uri.fsPath);
+      return (
+        normalizedPath.startsWith(workspacePath + path.sep) ||
+        normalizedPath === workspacePath
+      );
+    });
+  }
+
+  /**
+   * Asks user for confirmation before opening files outside workspace
+   */
+  private static async confirmExternalFileAccess(
+    filePath: string,
+  ): Promise<boolean> {
+    const fileName = path.basename(filePath);
+    const result = await vscode.window.showWarningMessage(
+      `The file "${fileName}" is outside your workspace. Do you want to open it?`,
+      {
+        modal: true,
+        detail: `Path: ${filePath}\n\nOpening files outside your workspace may pose risks.`,
+      },
+      "Open Anyway",
+      "Cancel",
+    );
+
+    return result === "Open Anyway";
+  }
+
+  /**
    * Resolves a file path relative to the current workspace or document
    */
   public static async resolvePath(
@@ -162,9 +201,20 @@ export class FileOpener {
     // Clean the path
     filePath = filePath.trim();
 
-    // If it's an absolute path, use it directly
+    // If it's an absolute path, check workspace boundaries
     if (path.isAbsolute(filePath)) {
-      return fs.existsSync(filePath) ? filePath : undefined;
+      if (fs.existsSync(filePath)) {
+        // Check if path is within workspace
+        if (!FileOpener.isPathInWorkspace(filePath)) {
+          const confirmed =
+            await FileOpener.confirmExternalFileAccess(filePath);
+          if (!confirmed) {
+            return undefined;
+          }
+        }
+        return filePath;
+      }
+      return undefined;
     }
 
     // Try relative to current document directory
@@ -180,6 +230,7 @@ export class FileOpener {
       for (const folder of workspaceFolders) {
         resolvedPath = path.resolve(folder.uri.fsPath, filePath);
         if (fs.existsSync(resolvedPath)) {
+          // File is within workspace
           return resolvedPath;
         }
       }
@@ -201,6 +252,7 @@ export class FileOpener {
           for (const folder of workspaceFolders) {
             resolvedPath = path.resolve(folder.uri.fsPath, pathWithExt);
             if (fs.existsSync(resolvedPath)) {
+              // File is within workspace
               return resolvedPath;
             }
           }
@@ -212,84 +264,190 @@ export class FileOpener {
   }
 
   /**
-   * Opens a file with the system's default application
+   * Validates and sanitizes file path to prevent command injection
    */
-  public static async openWithDefaultApp(filePath: string): Promise<void> {
-    try {
-      // First try using VSCode's built-in openExternal
-      const uri = vscode.Uri.file(filePath);
-      await vscode.env.openExternal(uri);
-    } catch (error) {
-      // If VSCode method fails, fallback to spawn approach
-      console.log(`VSCode openExternal failed, trying spawn: ${error}`);
+  private static validateAndSanitizeFilePath(filePath: string): string {
+    if (!filePath || typeof filePath !== "string") {
+      throw new Error("Invalid file path: must be a non-empty string");
+    }
 
-      return new Promise((resolve, reject) => {
-        let command: string;
-        let args: string[] = [];
+    // Remove null bytes and other dangerous characters
+    const sanitized = filePath.replace(/\0/g, "").trim();
 
-        // Determine the command based on the platform
-        switch (process.platform) {
-          case "darwin": // macOS
-            command = "open";
-            args = [filePath];
-            break;
-          case "win32": // Windows
-            command = "cmd";
-            args = ["/c", "start", '""', `"${filePath}"`];
-            break;
-          default: // Linux and others
-            command = "xdg-open";
-            args = [filePath];
-            break;
-        }
+    // Check for path traversal attempts
+    if (sanitized.includes("..") || sanitized.match(/[<>:"|?*\x00-\x1f]/)) {
+      throw new Error("Invalid file path: contains dangerous characters");
+    }
 
-        const child = spawn(command, args, {
-          stdio: "ignore",
-          detached: true,
-          windowsHide: true,
-        });
+    // Normalize path to prevent traversal
+    const normalized = path.normalize(sanitized);
 
-        child.on("error", (error: Error) => {
-          reject(new Error(`Failed to open file: ${error.message}`));
-        });
+    // Additional check after normalization
+    if (normalized.includes("..")) {
+      throw new Error("Invalid file path: path traversal detected");
+    }
 
-        child.on("exit", (code: number | null) => {
-          if (code === 0 || code === null) {
-            resolve();
-          } else {
-            reject(new Error(`Process exited with code ${code}`));
-          }
-        });
+    // Check path length to prevent buffer overflow
+    if (normalized.length > 260) {
+      // Windows MAX_PATH limit
+      throw new Error("Invalid file path: path too long");
+    }
 
-        // Detach the child process so it can continue running after VS Code closes
-        if (process.platform !== "win32") {
-          child.unref();
-        }
-      });
+    return normalized;
+  }
+
+  /**
+   * Escapes file path for system command execution
+   */
+  private static escapeFilePath(filePath: string, platform: string): string {
+    switch (platform) {
+      case "win32":
+        // Escape quotes and special characters for Windows
+        return `"${filePath.replace(/"/g, '""')}"`;
+      case "darwin":
+      case "linux":
+      default:
+        // Escape shell special characters for Unix-like systems
+        return filePath.replace(/'/g, "'\"'\"'");
     }
   }
 
   /**
-   * Fallback method to open file in VSCode when system opening fails
+   * Opens a file with system's default application
    */
-  private static async openWithVSCode(filePath: string): Promise<void> {
+  public static async openWithDefaultApp(filePath: string): Promise<void> {
     try {
-      const uri = vscode.Uri.file(filePath);
+      // First, validate and sanitize the file path
+      const sanitizedPath = FileOpener.validateAndSanitizeFilePath(filePath);
 
-      // For images and binary files, try to open with system viewer first
-      if (FileOpener.isImageFile(filePath)) {
-        // Try to show in VSCode preview
-        await vscode.commands.executeCommand("vscode.open", uri);
-      } else {
-        // For text files, open as document in VSCode
-        const document = await vscode.workspace.openTextDocument(uri);
-        await vscode.window.showTextDocument(document);
+      // Verify file exists and is accessible
+      if (!fs.existsSync(sanitizedPath)) {
+        throw new Error("File does not exist");
       }
+
+      // Check if it's a regular file (not directory, symlink, etc.)
+      const stats = fs.statSync(sanitizedPath);
+      if (!stats.isFile()) {
+        throw new Error("Path does not point to a regular file");
+      }
+
+      // Try VSCode's built-in openExternal first
+      const uri = vscode.Uri.file(sanitizedPath);
+
+      try {
+        await vscode.env.openExternal(uri);
+        return;
+      } catch (vscodeError) {
+        console.log(
+          `VSCode openExternal failed, falling back to system command: ${vscodeError}`,
+        );
+      }
+
+      // Fallback to system command execution
+      await FileOpener.openWithSystemCommand(sanitizedPath);
     } catch (error) {
       throw new Error(
-        `VSCode failed to open file: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Failed to open file: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
+  }
+
+  /**
+   * Opens file using system command execution as fallback
+   */
+  private static async openWithSystemCommand(filePath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let command: string;
+      let args: string[];
+
+      // Use command construction based on platform
+      switch (process.platform) {
+        case "darwin": // macOS
+          command = "open";
+          args = [filePath]; // macOS open command handles paths
+          break;
+        case "win32": // Windows
+          // Use PowerShell's Invoke-Item for execution
+          command = "powershell.exe";
+          args = [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            `Invoke-Item -LiteralPath '${filePath.replace(/'/g, "''")}'`,
+          ];
+          break;
+        default: // Linux and others
+          command = "xdg-open";
+          args = [filePath];
+          break;
+      }
+
+      // Execute with options
+      const child = spawn(command, args, {
+        stdio: "ignore",
+        detached: true,
+        windowsHide: true,
+        shell: false, // Important: disable shell interpretation
+      });
+
+      let hasResolved = false;
+
+      // Set timeout to prevent hanging
+      const timeout = setTimeout(() => {
+        if (!hasResolved) {
+          hasResolved = true;
+          child.kill();
+          reject(new Error("Command execution timeout"));
+        }
+      }, 10000); // 10 second timeout
+
+      child.on("error", (error: Error) => {
+        if (!hasResolved) {
+          hasResolved = true;
+          clearTimeout(timeout);
+          reject(new Error(`Failed to execute command: ${error.message}`));
+        }
+      });
+
+      child.on("exit", (code: number | null) => {
+        if (!hasResolved) {
+          hasResolved = true;
+          clearTimeout(timeout);
+          if (code === 0 || code === null) {
+            resolve();
+          } else {
+            reject(new Error(`Command failed with exit code ${code}`));
+          }
+        }
+      });
+
+      // Detach the child process
+      if (process.platform !== "win32") {
+        child.unref();
+      }
+    });
+  }
+
+  /**
+   * Check if a file is a text file that should be opened in VSCode editor
+   */
+  private static isTextFile(filePath: string): boolean {
+    const textExtensions = [
+      ".txt",
+      ".md",
+      ".html",
+      ".css",
+      ".js",
+      ".ts",
+      ".json",
+      ".xml",
+      ".yml",
+      ".yaml",
+      ".writerly",
+      ".wly",
+    ];
+    const ext = path.extname(filePath).toLowerCase();
+    return textExtensions.includes(ext);
   }
 
   /**
@@ -320,26 +478,16 @@ export class FileOpener {
         return;
       }
 
-      // Try to open with system default app, fallback to VSCode
+      // Open file using only VSCode APIs
       try {
         await FileOpener.openWithDefaultApp(resolvedPath);
         vscode.window.showInformationMessage(
           `Opened: ${path.basename(resolvedPath)}`,
         );
-      } catch (systemError) {
-        console.log(
-          `System open failed, trying VSCode fallback: ${systemError}`,
+      } catch (error) {
+        throw new Error(
+          `Failed to open file: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
-        try {
-          await FileOpener.openWithVSCode(resolvedPath);
-          vscode.window.showInformationMessage(
-            `Opened in VSCode: ${path.basename(resolvedPath)}`,
-          );
-        } catch (vscodeError) {
-          throw new Error(
-            `Both system and VSCode opening failed. System: ${systemError}. VSCode: ${vscodeError}`,
-          );
-        }
       }
     } catch (error) {
       const errorMessage =
