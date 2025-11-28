@@ -1,0 +1,35 @@
+# Test File for Fixed Open File Under Cursor
+
+This file tests that the "Cannot read properties of undefined" error is fixed.
+
+## Simple Test Cases
+
+Place your cursor anywhere in these paths and press Cmd+Shift+O:
+
+### Basic files that should exist:
+../package.json
+../README.md
+../LICENSE
+
+### Quoted paths:
+"../logo.png"
+'../tsconfig.json'
+`../src/extension.ts`
+
+## Test Instructions
+
+1. Place cursor anywhere within a file path above
+2. Press Cmd+Shift+O (Mac) or Ctrl+Shift+O (Windows/Linux)
+3. The file should open without any "undefined" errors
+
+If you still get the error, check:
+- VSCode Developer Console (Help → Toggle Developer Tools)
+- Make sure you're in a .writerly file
+- Ensure the extension is activated
+
+## Expected Behavior
+
+✅ No "Cannot read properties of undefined" error
+✅ Files open with system default application
+✅ Error messages are clear and helpful
+✅ Hover still works for file information

@@ -1,0 +1,38 @@
+# Writerly Demo File
+
+This is a sample Writerly document that demonstrates the "Open File Under Cursor" functionality.
+
+## Image References
+
+Here are some image paths you can test with:
+
+- Logo file: ../logo.png
+- SVG version: ../logo.svg
+- Relative path: ./images/sample.jpg
+- Another image: "assets/header.png"
+- Background image: 'styles/bg.svg'
+
+## File References
+
+You can also open other file types:
+
+- Documentation: ../README.md
+- Package info: ../package.json
+- TypeScript config: ../tsconfig.json
+- License file: ../LICENSE
+
+## Usage Instructions
+
+1. Place your cursor on any file path above
+2. Press Cmd+Shift+O (Mac) or Ctrl+Shift+O to open the file
+3. Or use Cmd+Shift+P and search for "Open File Under Cursor"
+4. Hover over file paths to see preview information
+
+## Supported File Types
+
+The extension supports opening:
+- Images: .png, .jpg, .jpeg, .gif, .bmp, .svg, .webp, .ico
+- Documents: .pdf, .txt, .md, .html
+- Code files: .css, .js, .ts, .json, .xml, .yml, .yaml
+
+Files will open with your system's default application.

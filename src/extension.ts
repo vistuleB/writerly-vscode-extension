@@ -1,6 +1,8 @@
 "use strict";
 import * as vscode from "vscode";
 import WriterlyDocumentValidator from "./validator";
+import { FileOpener } from "./fileOpener";
+import { WriterlyHoverProvider } from "./hoverProvider";
 
 export function activate(context: vscode.ExtensionContext) {
   const collection = vscode.languages.createDiagnosticCollection("writerly");
@@ -32,4 +34,18 @@ export function activate(context: vscode.ExtensionContext) {
       validator.validateDocument(document);
     }
   });
+
+  // Register the "Open File Under Cursor" command
+  const openFileCommand = vscode.commands.registerCommand(
+    "writerly.openFileUnderCursor",
+    () => FileOpener.openFileUnderCursor(),
+  );
+  context.subscriptions.push(openFileCommand);
+
+  // Register hover provider for file paths
+  const hoverProvider = vscode.languages.registerHoverProvider(
+    { scheme: "file", language: "writerly" },
+    new WriterlyHoverProvider(),
+  );
+  context.subscriptions.push(hoverProvider);
 }

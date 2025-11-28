@@ -2,8 +2,8 @@
   "name": "writerly-vscode-extension",
   "icon": "logo.png",
   "displayName": "Writerly",
-  "description": "Writerly support for VS Code",
-  "version": "0.0.35",
+  "description": "Writerly support for VS Code with file navigation - open images, documents, and files under cursor",
+  "version": "0.0.37",
   "publisher": "TabbyNotes",
   "author": {
     "name": "Chaker Atallah"
@@ -15,7 +15,17 @@
     "url": "https://github.com/vistuleB/writerly-vscode-extension.git"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "writerly",
+    "file navigation",
+    "open file",
+    "cursor",
+    "image viewer",
+    "document opener",
+    "path resolver"
   ],
   "activationEvents": [
     "onLanguage:writerly"
@@ -36,7 +46,30 @@
         "configuration": "./writerly.configuration.json"
       }
     ],
-    "commands": [],
+    "commands": [
+      {
+        "command": "writerly.openFileUnderCursor",
+        "title": "Open File Under Cursor",
+        "category": "Writerly"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "writerly.openFileUnderCursor",
+        "key": "ctrl+shift+o",
+        "mac": "cmd+shift+o",
+        "when": "editorTextFocus && editorLangId == writerly"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "writerly.openFileUnderCursor",
+          "when": "editorLangId == writerly",
+          "group": "navigation@1"
+        }
+      ]
+    },
     "grammars": [
       {
         "language": "writerly",
@@ -70,6 +103,7 @@
     "which": "^4.0.0"
   },
   "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
     "@types/node": "20.x",
     "@types/vscode": "^1.74.0",
     "@vscode/vsce": "^2.22.0",

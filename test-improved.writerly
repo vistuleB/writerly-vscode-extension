@@ -1,0 +1,61 @@
+# Improved File Path Detection Test
+
+This file tests the improved path detection functionality.
+
+## Basic File Paths
+
+Place cursor anywhere in these paths and press Cmd+Shift+O:
+
+### Relative paths
+../package.json
+../logo.png
+../README.md
+./examples/demo.writerly
+../src/extension.ts
+
+### Quoted paths (should work better now)
+"../tsconfig.json"
+'../logo.svg'
+`../LICENSE`
+
+## Mixed Content (cursor detection improved)
+
+Check the main configuration at ../package.json for details.
+The logo image is located at "../logo.png" and you can also find the SVG version at '../logo.svg'.
+Documentation is available in `../README.md` file.
+
+## Complex Scenarios
+
+### Paths in sentences
+You can find the source code in ../src/fileOpener.ts which handles the opening logic.
+The hover functionality is implemented in "../src/hoverProvider.ts" file.
+
+### Multiple paths in one line
+Config: ../package.json, License: ../LICENSE, Logo: ../logo.png
+
+### Paths with different quote styles
+Primary: "../package.json", Secondary: '../tsconfig.json', Tertiary: `../README.md`
+
+## What's Improved
+
+1. **Better cursor detection**: Uses position-based approach like vscode-open-url
+2. **Smarter path extraction**: Handles quoted and unquoted paths better
+3. **Reliable opening**: Uses vscode.env.openExternal first, then fallback to spawn
+4. **VSCode fallback**: If system opening fails, opens in VSCode instead
+
+## Test Instructions
+
+1. Place cursor ANYWHERE within a file path (beginning, middle, end)
+2. Press Cmd+Shift+O (Mac) or Ctrl+Shift+O (Windows/Linux)
+3. Or use Command Palette: "Open File Under Cursor"
+4. Hover over paths to see file information (this feature is preserved!)
+
+## Expected Results
+
+- ✅ Paths should be detected even with cursor at any position
+- ✅ Quoted paths should work correctly
+- ✅ Files open with system default app or VSCode fallback
+- ✅ Hover previews still work for file information
+- ✅ Better error messages and handling
+
+Try moving your cursor to different positions within the same path to test the improved detection!

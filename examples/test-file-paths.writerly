@@ -1,0 +1,83 @@
+# Writerly File Path Testing
+
+This document contains various file path examples to test the "Open File Under Cursor" functionality.
+
+## Existing Files (These should work)
+
+### Relative Paths
+- Package info: ../package.json
+- README: ../README.md
+- License: ../LICENSE
+- TypeScript config: ../tsconfig.json
+- Logo PNG: ../logo.png
+- Logo SVG: ../logo.svg
+
+### Quoted Paths
+- "Package JSON": "../package.json"
+- 'License file': '../LICENSE'
+- `Config file`: `../writerly.configuration.json`
+
+### Mixed Content Examples
+Check the configuration in ../package.json for extension details.
+The main logo is stored at "../logo.png" and SVG version at '../logo.svg'.
+You can find the license terms in `../LICENSE` file.
+
+## Different File Types
+
+### Images (should open in image viewer)
+- PNG image: ../logo.png
+- SVG vector: ../logo.svg
+
+### Documents (should open in text editor/viewer)
+- Markdown: ../README.md
+- JSON config: ../package.json
+- TypeScript: ../tsconfig.json
+- Plain text: ../LICENSE
+
+### Code Files (should open in appropriate editor)
+- JavaScript: ../out/extension.js (if exists after compilation)
+- TypeScript: ../src/extension.ts
+- Configuration: ../writerly.configuration.json
+
+## Non-existent Files (These should show "File not found")
+
+### Images
+- missing-image.png
+- ./assets/header.jpg
+- "../images/logo.gif"
+
+### Documents
+- ./docs/manual.pdf
+- "../guides/tutorial.md"
+- `./config/settings.yaml`
+
+## Edge Cases
+
+### Paths with spaces
+- "file with spaces.txt"
+- '../folder with spaces/file.md'
+
+### Paths with special characters
+- file@name.txt
+- file&name.json
+- file%20encoded.html
+
+### URLs (should not work - only local files supported)
+- https://example.com/image.png
+- http://localhost:3000/api/data.json
+- ftp://server.com/file.txt
+
+## Instructions
+
+1. Place your cursor on any file path above
+2. Press Cmd+Shift+O (Mac) or Ctrl+Shift+O (Windows/Linux)
+3. Or use Command Palette: "Open File Under Cursor"
+4. Hover over paths to see file information
+
+## Expected Results
+
+- ✅ Green paths should open successfully
+- ❌ Red paths should show "File not found" message
+- ℹ️ Blue paths should show hover information when available
+
+Try different cursor positions within the same path to test the word detection logic.
