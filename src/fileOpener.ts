@@ -40,6 +40,11 @@ export class FileOpener {
     const lineText = line.text;
     const character = position.character;
 
+    // Validate line length to prevent excessive processing
+    if (lineText.length > 10000) {
+      return undefined;
+    }
+
     // Find file path at cursor position
     return FileOpener.findFilePathAtPosition(lineText, character);
   }
@@ -129,6 +134,12 @@ export class FileOpener {
   private static looksLikeFilePath(str: string): boolean {
     if (!str || str.length === 0) return false;
 
+    // Reject extremely long strings to prevent memory issues
+    if (str.length > 1000) return false;
+
+    // Reject strings with suspicious patterns
+    if (str.includes("\0") || str.match(/[<>:"|?*\x00-\x1f]/)) return false;
+
     // Has file extension
     const hasExtension = /\.[a-zA-Z0-9]{1,10}$/.test(str);
     if (hasExtension) return true;
@@ -137,7 +148,12 @@ export class FileOpener {
     if (str.startsWith("../") || str.startsWith("./")) return true;
 
     // Contains path separators and reasonable length
-    if (str.includes("/") && str.length > 2 && !str.startsWith("http"))
+    if (
+      str.includes("/") &&
+      str.length > 2 &&
+      str.length < 500 &&
+      !str.startsWith("http")
+    )
       return true;
 
     // Check against supported extensions
@@ -157,14 +173,29 @@ export class FileOpener {
       return false;
     }
 
-    const normalizedPath = path.normalize(filePath);
-    return workspaceFolders.some((folder) => {
-      const workspacePath = path.normalize(folder.uri.fsPath);
-      return (
-        normalizedPath.startsWith(workspacePath + path.sep) ||
-        normalizedPath === workspacePath
-      );
-    });
+    try {
+      // Resolve real path to handle symbolic links
+      const realPath = fs.realpathSync(filePath);
+      const normalizedPath = path.normalize(realPath);
+
+      return workspaceFolders.some((folder) => {
+        const workspacePath = path.normalize(folder.uri.fsPath);
+        return (
+          normalizedPath.startsWith(workspacePath + path.sep) ||
+          normalizedPath === workspacePath
+        );
+      });
+    } catch {
+      // If real path resolution fails, fall back to basic check
+      const normalizedPath = path.normalize(filePath);
+      return workspaceFolders.some((folder) => {
+        const workspacePath = path.normalize(folder.uri.fsPath);
+        return (
+          normalizedPath.startsWith(workspacePath + path.sep) ||
+          normalizedPath === workspacePath
+        );
+      });
+    }
   }
 
   /**
@@ -274,16 +305,20 @@ export class FileOpener {
     // Remove null bytes and other dangerous characters
     const sanitized = filePath.replace(/\0/g, "").trim();
 
-    // Check for path traversal attempts
-    if (sanitized.includes("..") || sanitized.match(/[<>:"|?*\x00-\x1f]/)) {
+    // Normalize path first to handle encoded traversal attempts
+    const normalized = path.normalize(sanitized);
+
+    // Check for path traversal attempts after normalization
+    if (normalized.includes("..") || sanitized.match(/[<>:"|?*\x00-\x1f]/)) {
       throw new Error("Invalid file path: contains dangerous characters");
     }
 
-    // Normalize path to prevent traversal
-    const normalized = path.normalize(sanitized);
-
-    // Additional check after normalization
-    if (normalized.includes("..")) {
+    // Additional check for various traversal patterns
+    if (
+      normalized.match(/\.\.[\\/]/) ||
+      normalized.startsWith("../") ||
+      normalized.startsWith("..\\")
+    ) {
       throw new Error("Invalid file path: path traversal detected");
     }
 
@@ -320,15 +355,30 @@ export class FileOpener {
       // First, validate and sanitize the file path
       const sanitizedPath = FileOpener.validateAndSanitizeFilePath(filePath);
 
-      // Verify file exists and is accessible
-      if (!fs.existsSync(sanitizedPath)) {
-        throw new Error("File does not exist");
+      // Use atomic file operation to avoid TOCTOU issues
+      let stats: fs.Stats;
+      try {
+        stats = fs.statSync(sanitizedPath);
+      } catch (statError) {
+        throw new Error("File does not exist or is not accessible");
       }
 
       // Check if it's a regular file (not directory, symlink, etc.)
-      const stats = fs.statSync(sanitizedPath);
       if (!stats.isFile()) {
         throw new Error("Path does not point to a regular file");
+      }
+
+      // Additional check for file size to prevent issues with very large files
+      if (stats.size > 100 * 1024 * 1024) {
+        // 100MB limit
+        const shouldOpen = await vscode.window.showWarningMessage(
+          "This file is very large. Opening it may affect performance.",
+          "Open Anyway",
+          "Cancel",
+        );
+        if (shouldOpen !== "Open Anyway") {
+          return;
+        }
       }
 
       // Try VSCode's built-in openExternal first
@@ -367,13 +417,15 @@ export class FileOpener {
           args = [filePath]; // macOS open command handles paths
           break;
         case "win32": // Windows
-          // Use PowerShell's Invoke-Item for execution
+          // Use PowerShell's Invoke-Item with proper argument separation
           command = "powershell.exe";
           args = [
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            `Invoke-Item -LiteralPath '${filePath.replace(/'/g, "''")}'`,
+            "Invoke-Item",
+            "-LiteralPath",
+            filePath,
           ];
           break;
         default: // Linux and others
@@ -490,9 +542,9 @@ export class FileOpener {
         );
       }
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      vscode.window.showErrorMessage(`Failed to open file: ${errorMessage}`);
+      // Generic error message to avoid information disclosure
+      vscode.window.showErrorMessage("Failed to open file");
+      console.error("File opening error:", error);
     }
   }
 
