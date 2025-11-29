@@ -3,310 +3,82 @@ import * as path from "path";
 import * as fs from "fs";
 import { spawn } from "cross-spawn";
 
+const forbiddenChars = /[\s'"=\[\]\{\}\(\);]/;
+
 export class FileOpener {
-  private static readonly IMAGE_EXTENSIONS = [
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".bmp",
-    ".svg",
-    ".webp",
-    ".ico",
-  ];
-
-  private static readonly SUPPORTED_EXTENSIONS = [
-    ...FileOpener.IMAGE_EXTENSIONS,
-    ".pdf",
-    ".txt",
-    ".md",
-    ".html",
-    ".css",
-    ".js",
-    ".ts",
-    ".json",
-    ".xml",
-    ".yml",
-    ".yaml",
-  ];
-
-  /**
-   * Gets the file path under the cursor
-   */
-  public static getWordAtPosition(
+  public static getPossiblePathAtPosition(
     document: vscode.TextDocument,
     position: vscode.Position,
-  ): string | undefined {
+  ): string {
     const line = document.lineAt(position);
-    const lineText = line.text;
-    const character = position.character;
-
-    // Validate line length to prevent excessive processing
-    if (lineText.length > 10000) {
-      return undefined;
-    }
-
-    // Find file path at cursor position
-    return FileOpener.findFilePathAtPosition(lineText, character);
+    const text = line.text;
+    return (
+      this.grabCharsBackwardWhileNotForbidden(text, position.character) + 
+      this.grabCharsForwardWhileNotForbidden(text, position.character)
+    );
   }
-
-  /**
-   * Find file path at specific character position in text
-   */
-  private static findFilePathAtPosition(
+  
+  private static grabCharsForwardWhileNotForbidden(
     text: string,
-    position: number,
-  ): string | undefined {
-    // Split text into potential file path segments
-    const segments = FileOpener.extractFilePathSegments(text);
-
-    // Track current position while iterating through segments
-    let currentPos = 0;
-
-    for (const segment of segments) {
-      // Find the start position of this segment in the text
-      const startPos = text.indexOf(segment.original, currentPos);
-      if (startPos === -1) continue;
-
-      // Update current position for next iteration
-      currentPos = startPos + segment.original.length;
-
-      // Check if cursor position is within this segment
-      if (
-        position >= startPos &&
-        position <= startPos + segment.original.length
-      ) {
-        return segment.cleaned;
-      }
+    from: number,
+  ): string {
+    let length = text.length;
+    let end = from;
+    while (end < length) {
+      let c = text.charAt(end);
+      if (forbiddenChars.test(c)) break;
+      end++;
     }
-
-    return undefined;
+    return text.substring(from, end);
   }
 
-  /**
-   * Extract potential file path segments from text
-   */
-  private static extractFilePathSegments(
+  private static grabCharsBackwardWhileNotForbidden(
     text: string,
-  ): Array<{ original: string; cleaned: string }> {
-    const segments: Array<{ original: string; cleaned: string }> = [];
-
-    // Find quoted strings first
-    const quoteChars = ['"', "'", "`"];
-    for (const quote of quoteChars) {
-      let inQuote = false;
-      let start = 0;
-
-      for (let i = 0; i < text.length; i++) {
-        if (text[i] === quote && (i === 0 || text[i - 1] !== "\\")) {
-          if (inQuote) {
-            // End of quoted string
-            const quoted = text.substring(start, i + 1);
-            const cleaned = text.substring(start + 1, i);
-            if (FileOpener.looksLikeFilePath(cleaned)) {
-              segments.push({ original: quoted, cleaned });
-            }
-            inQuote = false;
-          } else {
-            // Start of quoted string
-            start = i;
-            inQuote = true;
-          }
-        }
-      }
+    from: number,
+  ): string {
+    let start = from - 1;
+    while (start >= 0) {
+      let c = text.charAt(start);
+      if (forbiddenChars.test(c)) break;
+      start--;
     }
-
-    // Find unquoted file paths (space-separated words that look like paths)
-    // John changed this include '=' as a separator:
-    const words = text.split(/=|\s+/);
-    for (const word of words) {
-      // Skip if already found as quoted
-      const alreadyFound = segments.some((s) => s.original.includes(word));
-      if (!alreadyFound && FileOpener.looksLikeFilePath(word)) {
-        segments.push({ original: word, cleaned: word });
-      }
-    }
-
-    return segments;
+    return text.substring(start + 1, from);
   }
 
-  /**
-   * Check if a string looks like a file path
-   */
-  private static looksLikeFilePath(str: string): boolean {
-    if (!str || str.length === 0) return false;
-
-    // Reject extremely long strings to prevent memory issues
-    if (str.length > 1000) return false;
-
-    // Reject strings with suspicious patterns
-    if (str.includes("\0") || str.match(/[<>:"|?*\x00-\x1f]/)) return false;
-
-    // Has file extension
-    const hasExtension = /\.[a-zA-Z0-9]{1,10}$/.test(str);
-    if (hasExtension) return true;
-
-    // Starts with relative path indicators
-    if (str.startsWith("../") || str.startsWith("./")) return true;
-
-    // Contains path separators and reasonable length
-    if (
-      str.includes("/") &&
-      str.length > 2 &&
-      str.length < 500 &&
-      !str.startsWith("http")
-    )
-      return true;
-
-    // Check against supported extensions
-    for (const ext of FileOpener.SUPPORTED_EXTENSIONS) {
-      if (str.endsWith(ext)) return true;
+  public static isImageFile(filePath: string): boolean {
+    for (const ext of [
+      ".svg",
+      ".png",
+      ".ico",
+      ".jpeg",
+      ".jpg",
+      ".gif",
+    ]) {
+      if (filePath.endsWith(ext)) return true;
     }
-
     return false;
   }
 
-  /**
-   * Checks if a file path is within any workspace folder
-   */
-  private static isPathInWorkspace(filePath: string): boolean {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders) {
-      return false;
-    }
-
-    try {
-      // Resolve real path to handle symbolic links
-      const realPath = fs.realpathSync(filePath);
-      const normalizedPath = path.normalize(realPath);
-
-      return workspaceFolders.some((folder) => {
-        const workspacePath = path.normalize(folder.uri.fsPath);
-        return (
-          normalizedPath.startsWith(workspacePath + path.sep) ||
-          normalizedPath === workspacePath
-        );
-      });
-    } catch {
-      // If real path resolution fails, fall back to basic check
-      const normalizedPath = path.normalize(filePath);
-      return workspaceFolders.some((folder) => {
-        const workspacePath = path.normalize(folder.uri.fsPath);
-        return (
-          normalizedPath.startsWith(workspacePath + path.sep) ||
-          normalizedPath === workspacePath
-        );
-      });
-    }
-  }
-
-  /**
-   * Asks user for confirmation before opening files outside workspace
-   */
-  private static async confirmExternalFileAccess(
-    filePath: string,
-  ): Promise<boolean> {
-    const fileName = path.basename(filePath);
-    const result = await vscode.window.showWarningMessage(
-      `The file "${fileName}" is outside your workspace. Do you want to open it?`,
-      {
-        modal: true,
-        detail: `Path: ${filePath}\n\nOpening files outside your workspace may pose risks.`,
-      },
-      "Open Anyway",
-      "Cancel",
-    );
-
-    return result === "Open Anyway";
-  }
-
-  /**
-   * Resolves a file path relative to the current workspace or document
-   */
   public static async resolvePath(
     filePath: string,
-    currentDocument: vscode.TextDocument,
   ): Promise<string | undefined> {
-    if (!filePath) {
-      return undefined;
+    while (true) {
+      if (filePath.startsWith("/")) { filePath = filePath.slice(1); }
+      else if (filePath.startsWith("../")) { filePath = filePath.slice(3); }
+      else break;
     }
-
-    filePath = filePath.trim();
-
-    if (filePath.startsWith("/")) {
-      filePath = filePath.slice(1);
-    }
-
+    console.log(`got filePath: ${filePath}[end]`);
     let files = await vscode.workspace.findFiles(`**/${filePath}`, '{node_modules, .git}');
-
+    console.log("got files.length:", files.length);
     return (files.length > 0) ? files[0].fsPath : undefined;
   }
 
-  /**
-   * Validates and sanitizes file path to prevent command injection
-   */
-  private static validateAndSanitizeFilePath(filePath: string): string {
-    if (!filePath || typeof filePath !== "string") {
-      throw new Error("Invalid file path: must be a non-empty string");
-    }
-
-    // Remove null bytes and other dangerous characters
-    const sanitized = filePath.replace(/\0/g, "").trim();
-
-    // Normalize path first to handle encoded traversal attempts
-    const normalized = path.normalize(sanitized);
-
-    // Check for path traversal attempts after normalization
-    if (normalized.includes("..") || sanitized.match(/[<>:"|?*\x00-\x1f]/)) {
-      throw new Error("Invalid file path: contains dangerous characters");
-    }
-
-    // Additional check for various traversal patterns
-    if (
-      normalized.match(/\.\.[\\/]/) ||
-      normalized.startsWith("../") ||
-      normalized.startsWith("..\\")
-    ) {
-      throw new Error("Invalid file path: path traversal detected");
-    }
-
-    // Check path length to prevent buffer overflow
-    if (normalized.length > 260) {
-      // Windows MAX_PATH limit
-      throw new Error("Invalid file path: path too long");
-    }
-
-    return normalized;
-  }
-
-  /**
-   * Escapes file path for system command execution
-   */
-  private static escapeFilePath(filePath: string, platform: string): string {
-    switch (platform) {
-      case "win32":
-        // Escape quotes and special characters for Windows
-        return `"${filePath.replace(/"/g, '""')}"`;
-      case "darwin":
-      case "linux":
-      default:
-        // Escape shell special characters for Unix-like systems
-        return filePath.replace(/'/g, "'\"'\"'");
-    }
-  }
-
-  /**
-   * Opens a file with system's default application
-   */
   public static async openWithDefaultApp(filePath: string): Promise<void> {
     try {
-      // First, validate and sanitize the file path
-      const sanitizedPath = FileOpener.validateAndSanitizeFilePath(filePath);
-
       // Use atomic file operation to avoid TOCTOU issues
       let stats: fs.Stats;
       try {
-        stats = fs.statSync(sanitizedPath);
+        stats = fs.statSync(filePath);
       } catch (statError) {
         throw new Error("File does not exist or is not accessible");
       }
@@ -330,7 +102,7 @@ export class FileOpener {
       }
 
       // Try VSCode's built-in openExternal first
-      const uri = vscode.Uri.file(sanitizedPath);
+      const uri = vscode.Uri.file(filePath);
 
       try {
         await vscode.env.openExternal(uri);
@@ -342,7 +114,7 @@ export class FileOpener {
       }
 
       // Fallback to system command execution
-      await FileOpener.openWithSystemCommand(sanitizedPath);
+      await FileOpener.openWithSystemCommand(filePath);
     } catch (error) {
       throw new Error(
         `Failed to open file: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -428,31 +200,6 @@ export class FileOpener {
     });
   }
 
-  /**
-   * Check if a file is a text file that should be opened in VSCode editor
-   */
-  private static isTextFile(filePath: string): boolean {
-    const textExtensions = [
-      ".txt",
-      ".md",
-      ".html",
-      ".css",
-      ".js",
-      ".ts",
-      ".json",
-      ".xml",
-      ".yml",
-      ".yaml",
-      ".writerly",
-      ".wly",
-    ];
-    const ext = path.extname(filePath).toLowerCase();
-    return textExtensions.includes(ext);
-  }
-
-  /**
-   * Main function to open file under cursor
-   */
   public static async openFileUnderCursor(): Promise<void> {
     vscode.window.showWarningMessage("Main");
 
@@ -464,23 +211,25 @@ export class FileOpener {
 
     const document = editor.document;
     const position = editor.selection.active;
+    const filePath = FileOpener.getPossiblePathAtPosition(document, position);
 
-    // Get the word/path under cursor
-    const filePath = FileOpener.getWordAtPosition(document, position);
     if (!filePath) {
       vscode.window.showWarningMessage("No file path found under cursor");
       return;
     }
-
+    
+    console.log("got filePath:", filePath);
+    
     try {
-      // Resolve the file path
-      const resolvedPath = await FileOpener.resolvePath(filePath, document);
+      const resolvedPath = await FileOpener.resolvePath(filePath);
       if (!resolvedPath) {
+        console.log("resolvedPath was null or sth");
         vscode.window.showWarningMessage(`File not found: ${filePath}`);
         return;
       }
+      
+      console.log("got resolvedPath:", resolvedPath);
 
-      // Open file using only VSCode APIs
       try {
         await FileOpener.openWithDefaultApp(resolvedPath);
         vscode.window.showInformationMessage(
@@ -492,25 +241,8 @@ export class FileOpener {
         );
       }
     } catch (error) {
-      // Generic error message to avoid information disclosure
       vscode.window.showErrorMessage("Failed to open file");
       console.error("File opening error:", error);
     }
-  }
-
-  /**
-   * Check if a file extension is supported for opening
-   */
-  public static isSupportedFile(filePath: string): boolean {
-    const ext = path.extname(filePath).toLowerCase();
-    return FileOpener.SUPPORTED_EXTENSIONS.includes(ext);
-  }
-
-  /**
-   * Check if a file is an image
-   */
-  public static isImageFile(filePath: string): boolean {
-    const ext = path.extname(filePath).toLowerCase();
-    return FileOpener.IMAGE_EXTENSIONS.includes(ext);
   }
 }

@@ -1,8 +1,6 @@
 |> section
     title=Basic section with simple name
 
-logo.svg
-
 |> my-section
     class=hyphenated-tag-name
 

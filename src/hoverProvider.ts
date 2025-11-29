@@ -10,19 +10,14 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
     token: vscode.CancellationToken,
   ): Promise<vscode.Hover | undefined> {
     // Get the word/path under cursor
-    const filePath = FileOpener.getWordAtPosition(document, position);
+    const filePath = FileOpener.getPossiblePathAtPosition(document, position);
     if (!filePath) {
       return undefined;
     }
 
     // Try to resolve the file path
-    const resolvedPath = await FileOpener.resolvePath(filePath, document);
+    const resolvedPath = await FileOpener.resolvePath(filePath);
     if (!resolvedPath) {
-      return undefined;
-    }
-
-    // Check if it's a supported file type
-    if (!FileOpener.isSupportedFile(resolvedPath)) {
       return undefined;
     }
 
