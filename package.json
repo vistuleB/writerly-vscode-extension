@@ -3,13 +3,13 @@
   "icon": "logo.png",
   "displayName": "Writerly",
   "description": "Writerly support for VS Code with file navigation - open images, documents, and files under cursor",
-  "version": "0.0.39",
+  "version": "0.0.40",
   "publisher": "TabbyNotes",
   "author": {
     "name": "Chaker Atallah"
   },
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.106.0"
   },
   "repository": {
     "url": "https://github.com/vistuleB/writerly-vscode-extension.git"

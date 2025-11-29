@@ -117,7 +117,8 @@ export class FileOpener {
     }
 
     // Find unquoted file paths (space-separated words that look like paths)
-    const words = text.split(/\s+/);
+    // John changed this include '=' as a separator:
+    const words = text.split(/=|\s+/);
     for (const word of words) {
       // Skip if already found as quoted
       const alreadyFound = segments.some((s) => s.original.includes(word));
