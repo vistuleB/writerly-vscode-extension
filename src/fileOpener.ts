@@ -14,6 +14,7 @@ export class FileOpener {
     ".webp",
     ".ico",
   ];
+
   private static readonly SUPPORTED_EXTENSIONS = [
     ...FileOpener.IMAGE_EXTENSIONS,
     ".pdf",
@@ -229,69 +230,15 @@ export class FileOpener {
       return undefined;
     }
 
-    // Clean the path
     filePath = filePath.trim();
 
-    // If it's an absolute path, check workspace boundaries
-    if (path.isAbsolute(filePath)) {
-      if (fs.existsSync(filePath)) {
-        // Check if path is within workspace
-        if (!FileOpener.isPathInWorkspace(filePath)) {
-          const confirmed =
-            await FileOpener.confirmExternalFileAccess(filePath);
-          if (!confirmed) {
-            return undefined;
-          }
-        }
-        return filePath;
-      }
-      return undefined;
+    if (filePath.startsWith("/")) {
+      filePath = filePath.slice(1);
     }
 
-    // Try relative to current document directory
-    const currentDir = path.dirname(currentDocument.uri.fsPath);
-    let resolvedPath = path.resolve(currentDir, filePath);
-    if (fs.existsSync(resolvedPath)) {
-      return resolvedPath;
-    }
+    let files = await vscode.workspace.findFiles(`**/${filePath}`, '{node_modules, .git}');
 
-    // Try relative to workspace root
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (workspaceFolders) {
-      for (const folder of workspaceFolders) {
-        resolvedPath = path.resolve(folder.uri.fsPath, filePath);
-        if (fs.existsSync(resolvedPath)) {
-          // File is within workspace
-          return resolvedPath;
-        }
-      }
-    }
-
-    // Try with different extensions if no extension provided
-    if (!path.extname(filePath)) {
-      for (const ext of FileOpener.SUPPORTED_EXTENSIONS) {
-        const pathWithExt = filePath + ext;
-
-        // Try relative to current document
-        resolvedPath = path.resolve(currentDir, pathWithExt);
-        if (fs.existsSync(resolvedPath)) {
-          return resolvedPath;
-        }
-
-        // Try relative to workspace root
-        if (workspaceFolders) {
-          for (const folder of workspaceFolders) {
-            resolvedPath = path.resolve(folder.uri.fsPath, pathWithExt);
-            if (fs.existsSync(resolvedPath)) {
-              // File is within workspace
-              return resolvedPath;
-            }
-          }
-        }
-      }
-    }
-
-    return undefined;
+    return (files.length > 0) ? files[0].fsPath : undefined;
   }
 
   /**
@@ -506,6 +453,8 @@ export class FileOpener {
    * Main function to open file under cursor
    */
   public static async openFileUnderCursor(): Promise<void> {
+    vscode.window.showWarningMessage("Main");
+
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       vscode.window.showWarningMessage("No active editor found");

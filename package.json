@@ -3,7 +3,7 @@
   "icon": "logo.png",
   "displayName": "Writerly",
   "description": "Writerly support for VS Code with file navigation - open images, documents, and files under cursor",
-  "version": "0.0.37",
+  "version": "0.0.39",
   "publisher": "TabbyNotes",
   "author": {
     "name": "Chaker Atallah"
@@ -28,7 +28,7 @@
     "path resolver"
   ],
   "activationEvents": [
-    "onLanguage:writerly"
+    "*"
   ],
   "main": "./out/extension",
   "contributes": {
@@ -44,6 +44,13 @@
           ".wly"
         ],
         "configuration": "./writerly.configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "writerly",
+        "scopeName": "source.writerly",
+        "path": "./syntaxes/writerly.json"
       }
     ],
     "commands": [
@@ -69,44 +76,25 @@
           "group": "navigation@1"
         }
       ]
-    },
-    "grammars": [
-      {
-        "language": "writerly",
-        "scopeName": "source.writerly",
-        "path": "./syntaxes/writerly.json"
-      }
-    ],
-    "configurationDefaults": {
-      "editor.tokenColorCustomizations": {
-        "[*]": {
-          "textMateRules": [
-            {
-              "scope": "markup.raw.block.wly",
-              "settings": {
-                "foreground": "#228B22"
-              }
-            }
-          ]
-        }
-      }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "compile-watch": "onchange 'src/**/*.ts' -- npm run compile"
   },
   "dependencies": {
-    "cross-spawn": "^7.0.3",
+    "cross-spawn": "^7.0.6",
     "glob": "^10.3.10",
     "which": "^4.0.0"
   },
   "devDependencies": {
-    "@types/cross-spawn": "^6.0.6",
+    "@types/cross-spawn": "6.0.6",
     "@types/node": "20.x",
-    "@types/vscode": "^1.74.0",
+    "@types/vscode": "^1.106.1",
     "@vscode/vsce": "^2.22.0",
+    "onchange": "^7.1.0",
     "typescript": "^5.3.3"
   }
 }

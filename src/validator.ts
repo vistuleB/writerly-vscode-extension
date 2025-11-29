@@ -81,7 +81,7 @@ const d8 = (
 export default class WriterlyDocumentValidator {
   constructor(private diagnosticCollection: vscode.DiagnosticCollection) {}
 
-  validateDocument(document: vscode.TextDocument): void {
+  public validateDocument(document: vscode.TextDocument): void {
     const diagnostics: vscode.Diagnostic[] = [];
 
     let state: State = {

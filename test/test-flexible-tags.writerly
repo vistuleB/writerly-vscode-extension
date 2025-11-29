@@ -1,6 +1,8 @@
 |> section
     title=Basic section with simple name
 
+logo.svg
+
 |> my-section
     class=hyphenated-tag-name
 
@@ -69,7 +71,7 @@ These should all be valid tag names with the new regex pattern.
 ! Regular comment at root level
 
 |> valid-tag
-    !!commented=attribute
+    !! commented=attribute
     active=true
     name=test
 

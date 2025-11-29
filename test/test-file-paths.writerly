@@ -10,7 +10,8 @@ This document contains various file path examples to test the "Open File Under C
 - License: ../LICENSE
 - TypeScript config: ../tsconfig.json
 - Logo PNG: ../logo.png
-- Logo SVG: ../logo.svg
+- Logo SVG: logo.svg
+- src=: img/game-of-life/game-of-life-01-02.svg
 
 ### Quoted Paths
 - "Package JSON": "../package.json"

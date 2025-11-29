@@ -12,7 +12,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Validate on document open
   context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument((document) => {
+    vscode.workspace.onDidOpenTextDocument((document: vscode.TextDocument) => {
       if (document.languageId === "writerly") {
         validator.validateDocument(document);
       }
@@ -21,7 +21,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Validate on document change
   context.subscriptions.push(
-    vscode.workspace.onDidChangeTextDocument((event) => {
+    vscode.workspace.onDidChangeTextDocument((event: vscode.TextDocumentChangeEvent) => {
       if (event.document.languageId === "writerly") {
         validator.validateDocument(event.document);
       }
@@ -29,7 +29,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Validate already open documents
-  vscode.workspace.textDocuments.forEach((document) => {
+  vscode.workspace.textDocuments.forEach((document: vscode.TextDocument) => {
     if (document.languageId === "writerly") {
       validator.validateDocument(document);
     }
