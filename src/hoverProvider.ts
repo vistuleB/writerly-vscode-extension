@@ -24,36 +24,36 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
     try {
       const stats = fs.statSync(resolvedPath);
       const fileName = path.basename(resolvedPath);
-      const fileExt = path.extname(resolvedPath).toLowerCase();
+      // const fileExt = path.extname(resolvedPath).toLowerCase();
       const fileSize = this.formatFileSize(stats.size);
       const lastModified = stats.mtime.toLocaleDateString();
 
       let hoverContent = new vscode.MarkdownString();
       hoverContent.supportHtml = true;
       hoverContent.isTrusted = true;
-
-      // Add file icon based on type
-      const icon = this.getFileIcon(fileExt);
-      hoverContent.appendMarkdown(`${icon} **${fileName}**\n\n`);
-
-      // Add file information
-      hoverContent.appendMarkdown(`📁 **Path:** \`${resolvedPath}\`\n\n`);
-      hoverContent.appendMarkdown(`📏 **Size:** ${fileSize}\n\n`);
-      hoverContent.appendMarkdown(`📅 **Modified:** ${lastModified}\n\n`);
-
+      
+      // Add action buttons
+      const openCommand = `command:writerly.openFileUnderCursor`;
+      hoverContent.appendMarkdown(
+        `[🔗 Open with default app](${openCommand} "Open ${fileName}")\n\n`,
+      );
+      
       // Add special handling for images
       if (FileOpener.isImageFile(resolvedPath)) {
         const imageUri = vscode.Uri.file(resolvedPath);
         hoverContent.appendMarkdown(
           `![Image Preview](${imageUri.toString()})\n\n`,
-        );
-      }
-
-      // Add action buttons
-      const openCommand = `command:writerly.openFileUnderCursor`;
-      hoverContent.appendMarkdown(
-        `[🔗 Open with default app](${openCommand} "Open ${fileName}")`,
-      );
+        );  
+      }  
+      
+      // // Add file icon based on type
+      // const icon = this.getFileIcon(fileExt);
+      // hoverContent.appendMarkdown(`${icon} **${fileName}**\n\n`);
+      
+      // Add file information
+      hoverContent.appendMarkdown(`📁 **Path:** \`${resolvedPath}\`\n\n`);
+      hoverContent.appendMarkdown(`📏 **Size:** ${fileSize}\n\n`);
+      hoverContent.appendMarkdown(`📅 **Modified:** ${lastModified}\n\n`);
 
       return new vscode.Hover(hoverContent);
     } catch (error) {
@@ -84,29 +84,28 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
   /**
    * Get appropriate icon for file type
    */
-  private getFileIcon(extension: string): string {
-    const iconMap: { [key: string]: string } = {
-      ".png": "🖼️",
-      ".jpg": "🖼️",
-      ".jpeg": "🖼️",
-      ".gif": "🖼️",
-      ".bmp": "🖼️",
-      ".svg": "🎨",
-      ".webp": "🖼️",
-      ".ico": "🖼️",
-      ".pdf": "📄",
-      ".txt": "📝",
-      ".md": "📝",
-      ".html": "🌐",
-      ".css": "🎨",
-      ".js": "📜",
-      ".ts": "📜",
-      ".json": "🔧",
-      ".xml": "🔧",
-      ".yml": "🔧",
-      ".yaml": "🔧",
-    };
-
-    return iconMap[extension] || "📄";
-  }
+  // private getFileIcon(extension: string): string {
+  //   const iconMap: { [key: string]: string } = {
+  //     ".png": "🖼️",
+  //     ".jpg": "🖼️",
+  //     ".jpeg": "🖼️",
+  //     ".gif": "🖼️",
+  //     ".bmp": "🖼️",
+  //     ".svg": "🎨",
+  //     ".webp": "🖼️",
+  //     ".ico": "🖼️",
+  //     ".pdf": "📄",
+  //     ".txt": "📝",
+  //     ".md": "📝",
+  //     ".html": "🌐",
+  //     ".css": "🎨",
+  //     ".js": "📜",
+  //     ".ts": "📜",
+  //     ".json": "🔧",
+  //     ".xml": "🔧",
+  //     ".yml": "🔧",
+  //     ".yaml": "🔧",
+  //   };
+  //   return iconMap[extension] || "📄";
+  // }
 }
