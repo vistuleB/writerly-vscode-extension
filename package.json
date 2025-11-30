@@ -28,7 +28,8 @@
     "path resolver"
   ],
   "activationEvents": [
-    "*"
+    "onLanguage:writerly",
+    "onCommand:writerly.openFileUnderCursor"
   ],
   "main": "./out/extension",
   "contributes": {
