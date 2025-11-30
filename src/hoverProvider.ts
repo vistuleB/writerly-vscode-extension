@@ -45,7 +45,6 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
       // Add file information
       hoverContent.appendMarkdown(`📁 \`${resolvedPath}\` ${fileSize}, ${lastModified}\n\n`);
 
-      // let separator = "\n\n"
       let separator = "&emsp;|&emsp;"
 
       hoverContent.appendMarkdown(
@@ -62,7 +61,7 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
         hoverContent.appendMarkdown(
           `[️️️️️️🖼️ Open as image](${openCommand}?${
             encodeURI(JSON.stringify([resolvedPath, OpeningMethod.AS_IMAGE_WITH_VSCODE]))
-          })${separator}`,
+          })`,
         );
       } else {
         hoverContent.appendMarkdown(
