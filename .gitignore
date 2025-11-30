@@ -4,3 +4,5 @@ out
 *.vsix
 .vscode/
 this.code-workspace
+.DS_Store
+**/.DS_Store
