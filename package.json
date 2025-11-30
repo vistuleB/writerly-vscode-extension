@@ -3,7 +3,7 @@
   "icon": "logo.png",
   "displayName": "Writerly",
   "description": "Writerly support for VS Code with file navigation - open images, documents, and files under cursor",
-  "version": "0.0.43",
+  "version": "0.0.44",
   "publisher": "TabbyNotes",
   "author": {
     "name": "Chaker Atallah"
@@ -55,14 +55,29 @@
     ],
     "commands": [
       {
-        "command": "writerly.openFileUnderCursor",
-        "title": "Open File Under Cursor",
+        "command": "writerly.openUnderCursorWithDefault",
+        "title": "Open File Under Cursor With Default",
+        "category": "Writerly"
+      },
+      {
+        "command": "writerly.openUnderCursorWithVSCode",
+        "title": "Open File Under Cursor With VSCode",
+        "category": "Writerly"
+      },
+      {
+        "command": "writerly.openUnderCursorAsImageWithVSCode",
+        "title": "Open File Under Cursor As Image With VSCode",
+        "category": "Writerly"
+      },
+      {
+        "command": "writerly.openResolvedPath",
+        "title": "---",
         "category": "Writerly"
       }
     ],
     "keybindings": [
       {
-        "command": "writerly.openFileUnderCursor",
+        "command": "writerly.openUnderCursorWithDefault",
         "key": "ctrl+shift+o",
         "mac": "cmd+shift+o",
         "when": "editorTextFocus && editorLangId == writerly"
@@ -71,7 +86,7 @@
     "menus": {
       "editor/context": [
         {
-          "command": "writerly.openFileUnderCursor",
+          "command": "writerly.openUnderCursorWithDefault",
           "when": "editorLangId == writerly",
           "group": "navigation@1"
         }
