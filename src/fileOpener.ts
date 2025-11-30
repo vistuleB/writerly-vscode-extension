@@ -67,9 +67,7 @@ export class FileOpener {
       else if (filePath.startsWith("../")) { filePath = filePath.slice(3); }
       else break;
     }
-    console.log(`got filePath: ${filePath}[end]`);
     let files = await vscode.workspace.findFiles(`**/${filePath}`, '{node_modules, .git}');
-    console.log("got files.length:", files.length);
     return (files.length > 0) ? files[0].fsPath : undefined;
   }
 
@@ -218,17 +216,12 @@ export class FileOpener {
       return;
     }
     
-    console.log("got filePath:", filePath);
-    
     try {
       const resolvedPath = await FileOpener.resolvePath(filePath);
       if (!resolvedPath) {
-        console.log("resolvedPath was null or sth");
         vscode.window.showWarningMessage(`File not found: ${filePath}`);
         return;
       }
-      
-      console.log("got resolvedPath:", resolvedPath);
 
       try {
         await FileOpener.openWithDefaultApp(resolvedPath);
