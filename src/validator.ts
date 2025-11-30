@@ -80,8 +80,11 @@ const d8 = (
 
 export default class WriterlyDocumentValidator {
   constructor(private diagnosticCollection: vscode.DiagnosticCollection) {}
-
+  
   public validateDocument(document: vscode.TextDocument): void {
+    if (document.languageId !== "writerly")
+        return;
+
     const diagnostics: vscode.Diagnostic[] = [];
 
     let state: State = {
