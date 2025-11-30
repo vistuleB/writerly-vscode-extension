@@ -5,6 +5,12 @@ import { spawn } from "cross-spawn";
 
 const forbiddenChars = /[\s'"=\[\]\{\}\(\);]/;
 
+export enum OpeningMethod {
+  WITH_DEFAULT,
+  WITH_VSCODE,
+  AS_IMAGE_WITH_VSCODE,
+}
+
 export class FileOpener {
   public static getPossiblePathAtPosition(
     document: vscode.TextDocument,
@@ -71,52 +77,81 @@ export class FileOpener {
     return (files.length > 0) ? files[0].fsPath : undefined;
   }
 
-  public static async openWithDefaultApp(filePath: string): Promise<boolean> {
-    // Use atomic file operation to avoid TOCTOU issues
-    let stats: fs.Stats;
-
-    try {
-      stats = fs.statSync(filePath);
-    } catch (statError) {
-      throw new Error("File does not exist or is not accessible");
-    }
-
-    // Check if it's a regular file (not directory, symlink, etc.)
-    if (!stats.isFile()) {
-      throw new Error("Path does not point to a regular file");
-    }
-
-    // Additional check for file size to prevent issues with very large files
-    if (stats.size > 100 * 1024 * 1024) {
-      // 100MB limit
-      const shouldOpen = await vscode.window.showWarningMessage(
-        "This file is very large. Opening it may affect performance.",
-        "Open Anyway",
-        "Cancel",
-      );
-      if (shouldOpen !== "Open Anyway") {
-        return false;
+  private static async okJustFinallyOpenItAlready(
+    resolvedPath: string,
+    method: OpeningMethod,
+  ): Promise<void> {
+    const uri = vscode.Uri.file(resolvedPath);
+    switch (method) {
+      case OpeningMethod.WITH_DEFAULT: {
+        try {
+          await vscode.env.openExternal(uri)
+        } catch(vscodeError) {
+          console.log(
+            `VSCode openExternal failed, falling back to system command: ${vscodeError}`,
+          );
+          await FileOpener.openWithSystemCommand(resolvedPath);
+        }
+        vscode.window.showInformationMessage(
+          `Opened: ${path.basename(resolvedPath)}`,
+        );
+        break;
+      }
+      case OpeningMethod.WITH_VSCODE: {
+        await vscode.window.showTextDocument(uri);
+        break;
+      }
+      case OpeningMethod.AS_IMAGE_WITH_VSCODE: {
+        await vscode.commands.executeCommand('vscode.open', uri);
+        break;
       }
     }
+  }
 
-    // Try VSCode's built-in openExternal first
-    const uri = vscode.Uri.file(filePath);
+  public static async openResolvedPath(
+    resolvedPath: string,
+    method: OpeningMethod,
+  ): Promise<void> {
+    try {
+      if (resolvedPath === undefined) {
+        throw new Error("Received 'undefined' as argument");
+      }
 
-    try {
-      await vscode.env.openExternal(uri);
-      return true;
-    } catch (vscodeError) {
-      console.log(
-        `VSCode openExternal failed, falling back to system command: ${vscodeError}`,
-      );
-    }
-    
-    // Fallback to system command execution
-    try {
-      await FileOpener.openWithSystemCommand(filePath);
-      return true;
+      if (resolvedPath === "") {
+        throw new Error("Received empty string as argument");
+      }
+
+      // Use atomic file operation to avoid TOCTOU issues
+      let stats: fs.Stats;
+
+      try {
+        stats = fs.statSync(resolvedPath);
+      } catch (statError) {
+        throw new Error("File does not exist or is not accessible");
+      }
+
+      // Check if it's a regular file (not directory, symlink, etc.)
+      if (!stats.isFile()) {
+        throw new Error("Path does not point to a regular file");
+      }
+
+      // Additional check for file size to prevent issues with very large files
+      if (stats.size > 100 * 1024 * 1024) {
+        // 100MB limit
+        const shouldOpen = await vscode.window.showWarningMessage(
+          "This file is very large. Opening it may affect performance.",
+          "Open Anyway",
+          "Cancel",
+        );
+        if (shouldOpen !== "Open Anyway") {
+          return;
+        }
+      }
+
+      this.okJustFinallyOpenItAlready(resolvedPath, method);
     } catch (error) {
-      throw error;
+      vscode.window.showErrorMessage("Failed to open file");
+      console.error("File opening error:", error);
     }
   }
 
@@ -198,17 +233,11 @@ export class FileOpener {
     });
   }
 
-  public static async openFileUnderCursor(): Promise<void> {
-    const editor = vscode.window.activeTextEditor;
-
-    if (!editor) {
-      vscode.window.showWarningMessage("No active editor found");
-      return;
-    }
-
-    const document = editor.document;
-    const position = editor.selection.active;
-
+  public static async openAtPosition(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    method: OpeningMethod,
+  ): Promise<void> {
     const filePath = FileOpener.getPossiblePathAtPosition(document, position);
     if (!filePath) {
       vscode.window.showWarningMessage("No file path found under cursor");
@@ -221,16 +250,21 @@ export class FileOpener {
       return;
     }
 
-    try {
-      let didOpen = await FileOpener.openWithDefaultApp(resolvedPath);
-      if (didOpen) {
-        vscode.window.showInformationMessage(
-          `Opened: ${path.basename(filePath)}`,
-        );
-      }
-    } catch (error) {
-      vscode.window.showErrorMessage("Failed to open file");
-      console.error("File opening error:", error);
+    await FileOpener.openResolvedPath(resolvedPath, method);
+  }
+
+  public static async openUnderCursor(method: OpeningMethod): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+
+    if (!editor) {
+      vscode.window.showWarningMessage("No active editor found");
+      return;
     }
+
+    this.openAtPosition(
+      editor.document,
+      editor.selection.active,
+      method,
+    );
   }
 }

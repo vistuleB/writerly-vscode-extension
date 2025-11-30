@@ -32,7 +32,7 @@
     ```mystery-language 
         ```hi
         ```
-    case x {
+    case x { logo.svg
         True -> 0
         False -> 1
     }
@@ -47,3 +47,5 @@
         \  hello
         hello
     ```
+
+    logo.svg
