@@ -11,6 +11,8 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
   ): Promise<vscode.Hover | undefined> {
     const [range, _filePath, resolvedPath] = await FileOpener.getResolvedFilePathAtPosition(document, position);
 
+    if (!resolvedPath) return undefined;
+
     let hoverContent = new vscode.MarkdownString();
     hoverContent.supportHtml = true;
     hoverContent.isTrusted = true;
