@@ -78,7 +78,7 @@ const d8 = (
     "Invalid tag. Tag names must start with a letter, underscore, or colon, followed by letters, numbers, hyphens, underscores, dots, or colons.",
   );
 
-export default class WriterlyDocumentValidator {
+export class WriterlyDocumentValidator {
   constructor(private diagnosticCollection: vscode.DiagnosticCollection) {}
   
   public validateDocument(document: vscode.TextDocument): void {

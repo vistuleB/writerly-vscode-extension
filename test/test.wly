@@ -6,7 +6,7 @@
     a=boo
     q=2
 
-    logo.svg
+    logo.svg >>quizz
     svg_ch4_5_euler_velocity_vectors.svg
 
     $$
@@ -53,3 +53,6 @@
     ```
 
     logo.svg
+
+    |> Something
+        handle=quizz

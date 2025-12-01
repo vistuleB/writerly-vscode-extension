@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import * as path from "path";
 import * as fs from "fs";
 import { spawn } from "cross-spawn";
 
@@ -52,45 +51,6 @@ export class FileOpener {
     }
     return start + 1;
   }
-
-  // public static getPossiblePathAtPosition(
-  //   document: vscode.TextDocument,
-  //   position: vscode.Position,
-  // ): string {
-  //   const line = document.lineAt(position);
-  //   const text = line.text;
-  //   return (
-  //     this.grabCharsBackwardWhileNotForbidden(text, position.character) + 
-  //     this.grabCharsForwardWhileNotForbidden(text, position.character)
-  //   );
-  // }
-  
-  // private static grabCharsForwardWhileNotForbidden(
-  //   text: string,
-  //   from: number,
-  // ): string {
-  //   let length = text.length;
-  //   let end = from;
-  //   while (end < length) {
-  //     let c = text.charAt(end);
-  //     if (forbiddenChars.test(c)) break;
-  //     end++;
-  //   }
-  //   return text.substring(from, end);
-  // }
-
-  // private static grabCharsBackwardWhileNotForbidden(
-  //   text: string,
-  //   from: number,
-  // ): string {
-  //   let start = from - 1;
-  //   while (start >= 0) {
-  //     let c = text.charAt(start);
-  //     if (forbiddenChars.test(c)) break;
-  //     start--;
-  //   }
-  //   return text.substring(start + 1, from);
-  // }
 
   public static isImageFile(filePath: string): boolean {
     for (const ext of [
@@ -207,7 +167,7 @@ export class FileOpener {
           await FileOpener.openWithSystemCommand(resolvedPath);
         }
         vscode.window.showInformationMessage(
-          `Opened: ${path.basename(resolvedPath)}`,
+          `Opened: ${resolvedPath}`,
         );
         break;
       }
@@ -275,20 +235,23 @@ export class FileOpener {
     return [range, filePath, resolvedPath];
   }
 
-  public static async openAtPosition(
+  private static async openAtPosition(
     document: vscode.TextDocument,
     position: vscode.Position,
     method: OpeningMethod,
   ): Promise<void> {
     const [_, filePath, resolvedPath] = await FileOpener.getResolvedFilePathAtPosition(document, position);
+
     if (!filePath) {
       vscode.window.showWarningMessage("No file path found under cursor");
       return;
     }
+
     if (!resolvedPath) {
       vscode.window.showWarningMessage(`File not found: ${filePath}`);
       return;
     }
+
     await FileOpener.openResolvedPath(resolvedPath, method);
   }
 
@@ -300,10 +263,6 @@ export class FileOpener {
       return;
     }
 
-    this.openAtPosition(
-      editor.document,
-      editor.selection.active,
-      method,
-    );
+    await this.openAtPosition(editor.document, editor.selection.active, method);
   }
 }
