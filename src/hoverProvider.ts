@@ -7,7 +7,7 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
   public async provideHover(
     document: vscode.TextDocument,
     position: vscode.Position,
-    token: vscode.CancellationToken,
+    _token: vscode.CancellationToken,
   ): Promise<vscode.Hover | undefined> {
     // Get the word/path under cursor
     const filePath = FileOpener.getPossiblePathAtPosition(document, position);
@@ -21,32 +21,14 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
       return undefined;
     }
 
-    try {
-      const stats = fs.statSync(resolvedPath);
-      const fileSize = this.formatFileSize(stats.size);
-      const lastModified = stats.mtime.toLocaleDateString();
+    let hoverContent = new vscode.MarkdownString();
+    hoverContent.supportHtml = true;
+    hoverContent.isTrusted = true;
 
-      let hoverContent = new vscode.MarkdownString();
-      hoverContent.supportHtml = true;
-      hoverContent.isTrusted = true;
+    let separator = "&emsp;|&emsp;"
+    const openCommand = `command:writerly.openResolvedPath`;
 
-      // Opening link
-      const openCommand = `command:writerly.openResolvedPath`;
-
-      if (FileOpener.isImageFile(resolvedPath)) {
-        const imageUri = vscode.Uri.file(resolvedPath);
-        hoverContent.appendMarkdown(
-          `[<img src="${imageUri.toString()}">](${openCommand}?${
-            encodeURI(JSON.stringify([resolvedPath, OpeningMethod.WITH_DEFAULT]))
-          })\n\n`,
-        );  
-      }
-      
-      // Add file information
-      hoverContent.appendMarkdown(`📁 \`${resolvedPath}\` ${fileSize}, ${lastModified}\n\n`);
-
-      let separator = "&emsp;|&emsp;"
-
+    const appendOpeningLinks = () => {
       hoverContent.appendMarkdown(
         `[← Open with default](${openCommand}?${
           encodeURI(JSON.stringify([resolvedPath, OpeningMethod.WITH_DEFAULT]))
@@ -61,30 +43,51 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
         hoverContent.appendMarkdown(
           `[️️️️️️🖼️ Open as image](${openCommand}?${
             encodeURI(JSON.stringify([resolvedPath, OpeningMethod.AS_IMAGE_WITH_VSCODE]))
-          })`,
+          })\n\n`,
         );
       } else {
         hoverContent.appendMarkdown(
           `[📄 Open with VSCode](${openCommand}?${
             encodeURI(JSON.stringify([resolvedPath, OpeningMethod.WITH_VSCODE]))
-          })`,
+          })\n\n`,
         );
       }
-            
-      return new vscode.Hover(hoverContent);
-    } catch (error) {
-      // If there's an error reading file stats, just return basic hover
-      let hoverContent = new vscode.MarkdownString();
-      hoverContent.appendMarkdown(
-        `📄 **File:** ${path.basename(resolvedPath)}\n\n`,
-      );
-      hoverContent.appendMarkdown(`📁 **Path:** \`${resolvedPath}\`\n\n`);
-
-      const openCommand = `command:writerly.openFileUnderCursor`;
-      hoverContent.appendMarkdown(`[🔗 Open with default app](${openCommand})`);
-
-      return new vscode.Hover(hoverContent);
     }
+
+    const appendLinkedImage = () => {
+      if (FileOpener.isImageFile(resolvedPath)) {
+        const imageUri = vscode.Uri.file(resolvedPath);
+        hoverContent.appendMarkdown(
+          `[<img src="${imageUri.toString()}">](${openCommand}?${
+            encodeURI(JSON.stringify([resolvedPath, OpeningMethod.WITH_DEFAULT]))
+          })\n\n`,
+        );
+      }
+    }
+
+    const appendFilePath = () => {
+      hoverContent.appendMarkdown(`📁 \`${resolvedPath}\`\n\n`);
+    }
+
+    const appendFileSize = () => {
+      try {
+        const stats = fs.statSync(resolvedPath);
+        const kbFileSize = this.kb(stats.size);
+        const mbFileSize = this.mb(stats.size);
+        if (kbFileSize < 2000) {
+          hoverContent.appendMarkdown(`㎅ ${kbFileSize}\n\n`);
+        } else {
+          hoverContent.appendMarkdown(`㎆ ${mbFileSize}\n\n`);
+        }
+      } catch (error) {}
+    }
+
+    appendOpeningLinks();
+    appendFilePath();
+    appendLinkedImage();
+    appendFileSize();
+
+    return new vscode.Hover(hoverContent);
   }
 
   /**
@@ -94,6 +97,14 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
     const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
     if (bytes === 0) return "0 Bytes";
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + " " + sizes[i];
+    return Math.round(100 * (bytes / Math.pow(1024, i))) / 100 + " " + sizes[i];
+  }
+
+  private kb(bytes: number): number {
+    return Math.round(10 * bytes / 1024) / 10;
+  }
+
+  private mb(bytes: number): number {
+    return Math.round(100 * bytes / (1024**2)) / 100;
   }
 }

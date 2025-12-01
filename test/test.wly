@@ -7,6 +7,7 @@
     q=2
 
     logo.svg
+    svg_ch4_5_euler_velocity_vectors.svg
 
     $$
     f(x) = 2
@@ -14,7 +15,6 @@
 
     |> HelloWorld
         |> HeyPeople
-            class=babes
             class=babes
 
         And your brethren
@@ -40,6 +40,10 @@
         ```markdown!
     ```
     
+    logo.svg
+    |> hi
+        src=svg_ch4_5_euler_velocity_vectors.svg
+
     My friend
 
     ```
