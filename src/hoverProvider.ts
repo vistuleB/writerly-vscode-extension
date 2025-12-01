@@ -9,17 +9,7 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
     position: vscode.Position,
     _token: vscode.CancellationToken,
   ): Promise<vscode.Hover | undefined> {
-    // Get the word/path under cursor
-    const filePath = FileOpener.getPossiblePathAtPosition(document, position);
-    if (!filePath) {
-      return undefined;
-    }
-
-    // Try to resolve the file path
-    const resolvedPath = await FileOpener.resolvePath(filePath);
-    if (!resolvedPath) {
-      return undefined;
-    }
+    const [range, _filePath, resolvedPath] = await FileOpener.getResolvedFilePathAtPosition(document, position);
 
     let hoverContent = new vscode.MarkdownString();
     hoverContent.supportHtml = true;
@@ -87,18 +77,18 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
     appendLinkedImage();
     appendFileSize();
 
-    return new vscode.Hover(hoverContent);
+    return new vscode.Hover(hoverContent, range);
   }
 
   /**
    * Format file size in human readable format
    */
-  private formatFileSize(bytes: number): string {
-    const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
-    if (bytes === 0) return "0 Bytes";
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(100 * (bytes / Math.pow(1024, i))) / 100 + " " + sizes[i];
-  }
+  // private formatFileSize(bytes: number): string {
+  //   const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+  //   if (bytes === 0) return "0 Bytes";
+  //   const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  //   return Math.round(100 * (bytes / Math.pow(1024, i))) / 100 + " " + sizes[i];
+  // }
 
   private kb(bytes: number): number {
     return Math.round(10 * bytes / 1024) / 10;
