@@ -29,58 +29,69 @@ export function activate(context: vscode.ExtensionContext) {
   // 4. ...and renamings
   // ...ok so I guess we should start with:
   // a. changing the link.data type to be a string + Uri value
-  // b. 
+  // b. declaring the dictionary type
+  // c. writing a function that populates the dictionary for 1 document
+  // d. calling this for all .wly docs on load
+  // e. listen to uri deletions
 
   // Validate already open documents
   vscode.workspace.textDocuments.forEach(
     (document: vscode.TextDocument) => validator.validateDocument(document)
   );
 
+  let linkProvider = new WriterlyLinkProvider();
+  linkProvider.name = "sellers";
+  linkProvider.onStart();
+
   let disposables: Array<vscode.Disposable> = [
-    // Validate on document open
     vscode.workspace.onDidOpenTextDocument(
       (document: vscode.TextDocument) => validator.validateDocument(document)
     ),  
 
-    // Validate on document change
     vscode.workspace.onDidChangeTextDocument(
       (event: vscode.TextDocumentChangeEvent) => validator.validateDocument(event.document)
     ),  
 
-    // Register the "Open File Under Cursor With Default" command
+    vscode.workspace.onDidChangeTextDocument(
+      (event: vscode.TextDocumentChangeEvent) => linkProvider.onDidChange(event.document)
+    ),
+    
+    vscode.workspace.onDidRenameFiles(
+      (event: vscode.FileRenameEvent) => linkProvider.onDidRename(event)
+    ),
+
+    vscode.workspace.onDidDeleteFiles(
+      (event: vscode.FileDeleteEvent) => linkProvider.onDidDelete(event)
+    ),
+
     vscode.commands.registerCommand(
       "writerly.openUnderCursorWithDefault",
       () => FileOpener.openUnderCursor(OpeningMethod.WITH_DEFAULT),
     ),
 
-    // Register the "Open File Under Cursor With VSCode" command
     vscode.commands.registerCommand(
       "writerly.openUnderCursorWithVSCode",
       () => FileOpener.openUnderCursor(OpeningMethod.WITH_VSCODE),
     ),
 
-    // Register the "Open File Under Cursor As Image With VSCode" command
     vscode.commands.registerCommand(
       "writerly.openUnderCursorAsImageWithVSCode",
       () => FileOpener.openUnderCursor(OpeningMethod.AS_IMAGE_WITH_VSCODE),
     ),
 
-    // This one is for API-centric usage:
     vscode.commands.registerCommand(
       "writerly.openResolvedPath",
       (path, method) => FileOpener.openResolvedPath(path, method),
     ),
 
-    // Register hover provider for file paths
     vscode.languages.registerHoverProvider(
       { scheme: "file", language: "writerly" },
       new WriterlyHoverProvider(),
     ),
 
-    // Register hover provider for file paths
     vscode.languages.registerDocumentLinkProvider(
       { scheme: "file", language: "writerly" },
-      new WriterlyLinkProvider(),
+      linkProvider,
     ),
   ];
 

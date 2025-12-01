@@ -17,9 +17,7 @@
         |> HeyPeople
             class=babes
 
-        And your brethren
-        Hello world 
-        Hey
+        And your brethren Hello world Hey
         |> TagName
             douche=grueling
             ```good
@@ -55,4 +53,5 @@
     logo.svg
 
     |> Something
+        hi=2
         handle=quizz

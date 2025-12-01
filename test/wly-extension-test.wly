@@ -11,10 +11,11 @@ The language ID should now be "wly" instead of "writerly".
     status=active
 
 Testing semantic token highlighting:
-- |> pipe symbols should be highlighted as keywords
-- Tag names should be highlighted as types
-- Attribute keys should be highlighted as properties
-- Values should be highlighted as strings
+
+-   pipe symbols should be highlighted as keywords
+-   Tag names should be highlighted as types
+-   Attribute keys should be highlighted as properties
+-   Values should be highlighted as strings
 
 |> attributes-test
     simple=value
@@ -77,8 +78,10 @@ Valid tag examples:
 
 This should work fine.
 
-|> 123invalid-start
+|> invalid-start
     error=Should show validation error
+
+>>quizz
 
 The tag above should trigger validation error for starting with number.
 
