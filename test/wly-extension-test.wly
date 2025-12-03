@@ -77,8 +77,11 @@ Valid tag examples:
 
 This should work fine.
 
-|> 123invalid-start
+|> invalid-start
+    handle=2
     error=Should show validation error
+
+    Hello world.
 
 The tag above should trigger validation error for starting with number.
 

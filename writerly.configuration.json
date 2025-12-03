@@ -18,5 +18,13 @@
   ],
   "folding": {
     "offSide": true
-  }
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*\\|>.*$",
+      "action": {
+        "indent": "indent"
+      }
+    }
+  ]
 }
