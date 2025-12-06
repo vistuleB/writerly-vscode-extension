@@ -163,9 +163,7 @@ export default class WriterlyDocumentValidator {
         this.validateCodeBlockInfoAnnotation(lineNumber, indent, content);
         break;
       case LineType.CodeBlockLine:
-        if (content.startsWith("```") && indent === stateBeforeLine.codeBlockStartIndent) {
-          this.diagnostics.push(d4(lineNumber, indent, content));
-        }
+        this.validateCodeBlockLine(stateBeforeLine, lineNumber, indent, content);
         break;
     }
   }
@@ -200,6 +198,17 @@ export default class WriterlyDocumentValidator {
   ): void {
     if (content.indexOf(" ") > 0) {
       this.diagnostics.push(d9(lineNumber, indent, content));
+    }
+  }
+
+  private validateCodeBlockLine(
+    stateBeforeLine: State,
+    lineNumber: number,
+    indent: number,
+    content: string,
+  ): void {
+    if (content.startsWith("```") && indent === stateBeforeLine.codeBlockStartIndent) {
+      this.diagnostics.push(d4(lineNumber, indent, content));
     }
   }
 }
