@@ -16,17 +16,17 @@ const errorDiagnostic = (
 const d1 = (lineNumber: number, indent: number): vscode.Diagnostic => {
   const range = lineRange(lineNumber, 0, indent);
   return errorDiagnostic(range, "Indentation too large");
-}
+};
 
 const d2 = (lineNumber: number, indent: number): vscode.Diagnostic => {
   const range = lineRange(lineNumber, 0, indent);
   return errorDiagnostic(range, "Indentation not a multiple of 4");
-}
+};
 
 const d3 = (lineNumber: number, indent: number): vscode.Diagnostic => {
   const range = lineRange(lineNumber, 0, indent);
   return errorDiagnostic(range, "Indentation tew low");
-}
+};
 
 const d4 = (
   lineNumber: number,
@@ -35,7 +35,7 @@ const d4 = (
 ): vscode.Diagnostic => {
   const range = lineRange(lineNumber, indent, indent + content.length);
   return errorDiagnostic(range, "Code block opening inside of code block");
-}
+};
 
 const d5 = (state: State): vscode.Diagnostic => {
   let indent = state.codeBlockStartIndent;
@@ -53,44 +53,42 @@ const d6 = (document: vscode.TextDocument): vscode.Diagnostic => {
 const d7 = (lineNumber: number, indent: number, content: string) => {
   const range = lineRange(lineNumber, indent + 2, indent + content.length);
   return errorDiagnostic(range, "Empty tag");
-}
+};
 
 const d8 = (
   lineNumber: number,
   indent: number,
   content: string,
-  numSpaces: number,
+  numSpaces: number
 ) => {
-  const range = lineRange(lineNumber, indent + 2 + numSpaces, indent + content.length);
+  const range = lineRange(
+    lineNumber,
+    indent + 2 + numSpaces,
+    indent + content.length
+  );
   return errorDiagnostic(
     range,
     "Invalid tag. Tag names must start with a letter, underscore, or colon, followed by letters, numbers, hyphens, underscores, dots, or colons."
   );
-}
-  
-const d9 = (
-  lineNumber: number,
-  indent: number,
-  content: string,
-) => {
+};
+
+const d9 = (lineNumber: number, indent: number, content: string) => {
   const range = lineRange(lineNumber, indent + 3, indent + content.length);
-  return errorDiagnostic(
-    range,
-    "Spaces in code block info annotation"
-  );
-}
+  return errorDiagnostic(range, "Spaces in code block info annotation");
+};
 
 export default class WriterlyDocumentValidator {
   constructor(private diagnosticCollection: vscode.DiagnosticCollection) {}
   diagnostics: vscode.Diagnostic[] = [];
+  validTagPattern = /^[a-zA-Z_\:][-a-zA-Z0-9\._\:]*$/;
+  tagIsolatingPattern = /^\|\>(\s*)(.*)$/;
 
   public validateDocument(document: vscode.TextDocument): void {
     console.log("hello!");
     if (document.languageId !== "writerly") return;
     this.diagnostics = [];
-    let state = WriterlyDocumentWalker.walk(
-      document,
-      (s1, l, s2, lN, i, c) => this.callback(s1, l, s2, lN, i, c),
+    let state = WriterlyDocumentWalker.walk(document, (s1, l, s2, lN, i, c) =>
+      this.callback(s1, l, s2, lN, i, c)
     );
     if (state.zone === Zone.CodeBlock) {
       this.diagnostics.push(d5(state));
@@ -105,32 +103,32 @@ export default class WriterlyDocumentValidator {
     stateAfterLine: State,
     lineNumber: number,
     indent: number,
-    content: string,
-  ):void {
+    content: string
+  ): void {
     this.validateIndentation(
       stateBeforeLine,
       lineType,
       stateAfterLine,
       lineNumber,
       indent,
-      content,
+      content
     );
     this.validateContent(
       stateBeforeLine,
       lineType,
       lineNumber,
       indent,
-      content,
+      content
     );
   }
-  
+
   private validateIndentation(
     stateBeforeLine: State,
     lineType: LineType,
     stateAfterLine: State,
     lineNumber: number,
     indent: number,
-    content: string,
+    content: string
   ): void {
     if (content === "") return;
     if (
@@ -139,7 +137,9 @@ export default class WriterlyDocumentValidator {
     ) {
       this.diagnostics.push(d1(lineNumber, indent));
     } else if (indent < stateBeforeLine.minIndent) {
-      console.log(`indent: ${indent}, stateBeforeLine.minIndent: ${stateBeforeLine.minIndent}`);
+      console.log(
+        `indent: ${indent}, stateBeforeLine.minIndent: ${stateBeforeLine.minIndent}`
+      );
       this.diagnostics.push(d3(lineNumber, stateBeforeLine.minIndent));
     } else if (indent > stateBeforeLine.maxIndent) {
       this.diagnostics.push(d1(lineNumber, indent));
@@ -147,14 +147,14 @@ export default class WriterlyDocumentValidator {
       this.diagnostics.push(d2(lineNumber, indent));
     }
   }
-  
+
   private validateContent(
     stateBeforeLine: State,
     lineType: LineType,
     lineNumber: number,
     indent: number,
-    content: string,
-  ):void {
+    content: string
+  ): void {
     switch (lineType) {
       case LineType.Tag:
         this.validateTag(lineNumber, indent, content);
@@ -163,7 +163,12 @@ export default class WriterlyDocumentValidator {
         this.validateCodeBlockInfoAnnotation(lineNumber, indent, content);
         break;
       case LineType.CodeBlockLine:
-        this.validateCodeBlockLine(stateBeforeLine, lineNumber, indent, content);
+        this.validateCodeBlockLine(
+          stateBeforeLine,
+          lineNumber,
+          indent,
+          content
+        );
         break;
     }
   }
@@ -171,22 +176,19 @@ export default class WriterlyDocumentValidator {
   private validateTag(
     lineNumber: number,
     indent: number,
-    content: string,
-  ):void {
+    content: string
+  ): void {
     if (content === "|>") {
       this.diagnostics.push(d7(lineNumber, indent, content));
       return;
     }
 
-    const isolatingPattern = content.match(/^\|\>( *)(.*)$/);
-    if (!isolatingPattern) {
-      return;
-    }
-    const numSpaces = isolatingPattern[1].length;
-    const tagName = isolatingPattern[2];
-    const validTagPattern = /^[a-zA-Z_\:][-a-zA-Z0-9\._\:]*$/;
+    const isolatingMatch = content.match(this.tagIsolatingPattern);
+    if (!isolatingMatch) return;
+    const numSpaces = isolatingMatch[1].length;
+    const tagName = isolatingMatch[2];
 
-    if (!validTagPattern.test(tagName)) {
+    if (!this.validTagPattern.test(tagName)) {
       this.diagnostics.push(d8(lineNumber, indent, content, numSpaces));
     }
   }
@@ -194,7 +196,7 @@ export default class WriterlyDocumentValidator {
   private validateCodeBlockInfoAnnotation(
     lineNumber: number,
     indent: number,
-    content: string,
+    content: string
   ): void {
     if (content.indexOf(" ") > 0) {
       this.diagnostics.push(d9(lineNumber, indent, content));
@@ -205,9 +207,12 @@ export default class WriterlyDocumentValidator {
     stateBeforeLine: State,
     lineNumber: number,
     indent: number,
-    content: string,
+    content: string
   ): void {
-    if (content.startsWith("```") && indent === stateBeforeLine.codeBlockStartIndent) {
+    if (
+      content.startsWith("```") &&
+      indent === stateBeforeLine.codeBlockStartIndent
+    ) {
       this.diagnostics.push(d4(lineNumber, indent, content));
     }
   }
