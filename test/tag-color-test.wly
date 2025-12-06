@@ -14,8 +14,15 @@
 |> sidebar
     position=left
 
-|> footer
+|> Empty
     copyright=2024
+    !! copyright=2024
+    copyright=2024
+
+    ```python-mister
+    hello-world
+    ```
+
 
 This file tests that tag names appear in the same color as the |> pipe symbols.
 All tag names (section, header, navigation, content-area, sidebar, footer)
