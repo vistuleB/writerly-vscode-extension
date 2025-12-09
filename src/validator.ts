@@ -84,7 +84,6 @@ export default class WriterlyDocumentValidator {
   tagIsolatingPattern = /^\|\>(\s*)(.*)$/;
 
   public validateDocument(document: vscode.TextDocument): void {
-    console.log("hello!");
     if (document.languageId !== "writerly") return;
     this.diagnostics = [];
     let state = WriterlyDocumentWalker.walk(document, (s1, l, s2, lN, i, c) =>

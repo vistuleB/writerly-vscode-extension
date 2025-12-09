@@ -15,6 +15,13 @@ type HandleDefinition = {
   range: vscode.Range;
 };
 
+const regexStartChar = "a-zA-Z_";
+const regexBodyChar = "-a-zA-Z0-9\\._\\:";
+const regexEndChar = "a-zA-Z0-9_";
+const regexHandleName = `([${regexStartChar}][${regexBodyChar}]*[${regexEndChar}])|[${regexStartChar}]`;
+const defRegex = new RegExp(`^handle=\\s*(${regexHandleName})(\s|$)`);
+const usageRegex = new RegExp(`>>(${regexHandleName})`, 'g');
+
 export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   definitions: Map<HandleName, HandleDefinition[]> = new Map([]);
   parents: FSPath[] = [];
@@ -119,10 +126,6 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     }
   }
 
-  // private processDocument(document: vscode.TextDocument): void {
-  //   // todo
-  // }
-
   private processDocument(
     document: vscode.TextDocument,
   ): vscode.DocumentLink[] {
@@ -146,18 +149,15 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     WriterlyDocumentWalker.walk(
       document,
       (
-        stateBeforeLine,
+        _stateBeforeLine,
         lineType,
-        stateAfterLine,
+        _stateAfterLine,
         lineNumber,
         indent,
         content,
       ) => {
-        // find handle definitions in attributes
         if (lineType === LineType.Attribute) {
-          const handleMatch = content.match(
-            /handle\s*=\s*([a-zA-Z_][-a-zA-Z0-9\._\:]*)/,
-          );
+          const handleMatch = content.match(defRegex);
           if (handleMatch) {
             const handleName = handleMatch[1];
             const handleStart = content.indexOf(handleMatch[0]);
@@ -187,9 +187,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
           lineType !== LineType.CodeBlockOpening &&
           lineType !== LineType.CodeBlockClosing
         ) {
-          const usageRegex = />>\s*([a-zA-Z_][-a-zA-Z0-9\._\:]*)/g;
           let usageMatch;
-
           while ((usageMatch = usageRegex.exec(content)) !== null) {
             const handleName = usageMatch[1];
             const matchStart = usageMatch.index;
@@ -227,7 +225,6 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     link: vscode.DocumentLink,
     token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.DocumentLink> {
-    // lookup link.data.handleName in definitions dictionary
     const handleName = link.data?.handleName;
     const currentFsPath = link.data?.fsPath;
 
@@ -240,12 +237,10 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
       return undefined;
     }
 
-    // filter out those entries that are not part of the same document tree
     const filteredDefinitions = definitions.filter((def) =>
       this.isInSameDocumentTree(currentFsPath, def.fsPath),
     );
 
-    // if exactly one HandleDefinition remains, create target
     if (filteredDefinitions.length !== 1) {
       return undefined;
     }
@@ -283,35 +278,4 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
       );
     });
   }
-
-  // public resolveDocumentLink(
-  //   link: vscode.DocumentLink,
-  //   token: vscode.CancellationToken,
-  // ): vscode.ProviderResult<vscode.DocumentLink> {
-  //   // get the handle name from the link data
-  //   const handleName = link.data?.handleName;
-  //   if (!handleName) {
-  //     return undefined;
-  //   }
-
-  //   // look up the handle in our definitions map
-  //   const definitions = this.definitions.get(handleName);
-  //   if (!definitions || definitions.length === 0) {
-  //     return undefined;
-  //   }
-
-  //   // use the first definition (you could enhance this to be smarter - e.g., prefer same file, closest match, etc.)
-  //   const definition = definitions[0];
-
-  //   // create a URI pointing to the definition location with line/column info
-  //   const uri = vscode.Uri.file(definition.fsPath).with({
-  //     fragment: `L${definition.range.start.line + 1},${definition.range.start.character + 1}`,
-  //   });
-
-  //   // create a new DocumentLink with the target URI
-  //   const resolvedLink = new vscode.DocumentLink(link.range, uri);
-  //   resolvedLink.data = link.data;
-
-  //   return resolvedLink;
-  // }
 }
