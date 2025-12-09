@@ -1,0 +1,95 @@
+|> main-document
+    title=Cross Reference Test Document B
+    handle=doc-b-main
+    version=2.1
+
+This is document B, designed to test cross-file handle linking with document A.
+
+|> overview
+    handle=doc-b-overview
+    category=testing
+
+Overview of document B functionality. References >>doc-a from the first test file.
+
+|> shared-functionality
+    handle=shared-utils
+    type=utility
+    dependencies=doc-a
+
+Utilities that work with >>user-data and >>core-algorithm from document A.
+
+|> integration-test
+    handle=integration-demo
+    status=active
+
+Integration testing section that uses >>doc-a-intro and >>config-settings from the main document.
+
+|> data-processing
+    handle=data-processor
+    input-source=user-api
+
+This processor works with >>user-data and calls >>core-algorithm for processing.
+
+```javascript
+function processUserData() {
+    // This code block should not detect >>fake-handle
+    const data = fetchFromAPI();
+    return processData(data);
+}
+```
+
+After the code block, we can reference >>doc-b-main again.
+
+|> cross-validation
+    handle=validator-b
+    validates=doc-a
+
+Cross-validation logic that checks >>doc-a-conclusion and >>user-api endpoints.
+
+References to handles in this document: >>doc-b-overview and >>shared-utils.
+
+|> external-references
+    handle=ext-refs
+
+Testing references to document A handles:
+- >>doc-a (main document)
+- >>doc-a-intro (introduction)
+- >>user-data (data section)
+- >>core-algorithm (algorithm implementation)
+- >>config-settings (configuration)
+- >>cross-ref-demo (cross-reference demonstration)
+- >>user-api (API endpoint)
+- >>doc-a-conclusion (conclusion)
+
+And references to document C (should exist in test-cross-references-c.wly):
+- >>doc-c-main
+- >>doc-c-footer
+
+|> bidirectional-test
+    handle=bidirectional-demo
+    links-to=doc-a,doc-c
+
+This section tests bidirectional linking. Document A should reference >>doc-b-main, and document C should reference >>bidirectional-demo
+
+|> component-library
+    handle=components-b
+    exports=widgets
+
+Component library that works with >>shared-component from the shared components file.
+
+Text with multiple cross-file references: >>doc-a, >>shared-component, and >>doc-c-main should all link properly.
+
+|> error-handling
+    handle=error-handler-b
+    handles=api-errors
+
+Error handling that works with >>user-api and >>validator-b for robust operation.
+
+|> performance-metrics
+    handle=perf-metrics-b
+    measures=response-time
+
+Performance measurement for >>core-algorithm and >>data-processor operations.
+
+Final paragraph with comprehensive cross-references:
+The system combines >>doc-a with >>doc-b-main, uses >>shared-utils for >>user-data processing, and validates with >>validator-b. The >>perf-metrics-b tracks >>core-algorithm performance while >>error-handler-b manages >>user-api failures.

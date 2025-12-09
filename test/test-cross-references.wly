@@ -1,0 +1,66 @@
+|> document
+    title=Cross Reference Test Document A
+    handle=doc-a
+    version=1.0
+
+This is document A. It defines several handles that will be referenced from other files.
+
+|> introduction
+    handle=doc-a-intro
+    type=overview
+
+This introduction explains the cross-referencing system. See >>doc-a for the main document info.
+
+|> data-section
+    handle=user-data
+    format=json
+    source=external
+
+Important user data is stored here. This >>user-data can be referenced from other documents.
+
+|> algorithm
+    handle=core-algorithm
+    complexity=O(n)
+
+The core algorithm implementation:
+
+```python
+def core_process(data):
+    return process(data)
+```
+
+The >>core-algorithm is used throughout the system.
+
+|> configuration
+    handle=config-settings
+    env=production
+
+Configuration settings for the application. These >>config-settings are critical.
+
+Regular text that references handles from this document: >>doc-a-intro and >>user-data.
+
+|> cross-file-usage
+    handle=cross-ref-demo
+
+This section will be referenced from other test files. The >>cross-ref-demo shows how cross-file references work.
+
+References to handles that should exist in other files:
+- >>doc-b-main (from test-cross-references-b.wly)
+- >>shared-component (from test-shared-components.wly)
+- >>doc-c-footer (from test-cross-references-c.wly)
+
+|> api-endpoint
+    handle=user-api
+    path=/api/users
+    method=GET
+
+The >>user-api endpoint provides access to >>user-data.
+
+Text with mixed local and cross-file references: >>doc-a combined with >>doc-b-main creates the full system.
+
+|> conclusion
+    handle=doc-a-conclusion
+
+Summary of document A. References: >>core-algorithm, >>config-settings, and >>user-api are the main components.
+
+Cross-references to verify: >>shared-component and >>doc-c-footer should link to other files.

@@ -1,0 +1,97 @@
+|> article
+    title=Main Article
+    handle=main-article
+
+This is the main article content.
+
+|> section
+    id=intro
+    handle=introduction-section
+    class=highlight
+
+This section introduces the topic. You can reference >>main-article from here.
+
+|> subsection
+    handle=code-examples
+    type=technical
+
+Here are some code examples:
+
+```javascript
+function hello() {
+    console.log("Hello world");
+}
+```
+
+Note that >>introduction-section has more details.
+
+|> figure
+    handle=diagram-1
+    src=./images/diagram.png
+    caption=System Architecture
+
+The >>diagram-1 shows the overall system design. For more context, see >>main-article.
+
+|> list
+    handle=feature-list
+    ordered=false
+
+Key features:
+- Fast performance (see >>code-examples)
+- Easy setup
+- Good documentation in >>introduction-section
+
+|> note
+    handle=important-note
+    type=warning
+
+⚠️ Important: Always check >>feature-list before deployment.
+
+Regular text with handle usage: >>main-article and >>diagram-1 are essential.
+
+|> footer
+    handle=page-footer
+    class=footer
+
+End of document. References: >>introduction-section, >>code-examples, >>important-note.
+
+Some text with multiple references: >>main-article, >>diagram-1, and >>feature-list.
+
+|> nested
+    handle=outer-block
+
+    |> inner
+        handle=inner-block
+        parent=outer-block
+
+    Content referencing >>inner-block and >>outer-block.
+
+Text outside any tag can also reference >>page-footer or >>important-note.
+
+|> codeblock-test
+    handle=cb-test
+
+This has a codeblock where references should be ignored:
+
+```
+This >>main-article reference should NOT be detected as a link
+Same with >>diagram-1 and >>feature-list
+```
+
+But this >>cb-test reference after the codeblock should work.
+
+|> edge-cases
+    handle=edge_case.test
+    handle-secondary=another-handle
+
+Testing edge cases with >>edge_case.test and unusual formatting.
+
+Some >>non-existent-handle that doesn't have a definition.
+
+References with spaces: >> spaced-handle (should not work)
+References without space: >>valid-handle (should work if defined)
+
+|> final
+    handle=conclusion
+
+Final thoughts referencing >>main-article one more time.

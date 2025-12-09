@@ -1,0 +1,212 @@
+|> edge-case-document
+    title=Edge Cases for Link Provider Testing
+    handle=edge-doc
+    version=test
+
+This document tests various edge cases for the WriterlyLinkProvider.
+
+|> whitespace-testing
+    handle=whitespace-test
+    spaces-around-equals = value
+
+Testing handle references with various whitespace patterns:
+- >>edge-doc (normal)
+- >> edge-doc (space after >>)
+- >>  edge-doc (multiple spaces after >>)
+- >>edge-doc (normal again)
+
+|> special-characters
+    handle=special_chars.test-123
+    unicode=émojis🎯
+
+Handle with special characters: >>special_chars.test-123 should work.
+
+|> namespaced-handles
+    handle=namespace:component
+    handle=another.namespace:widget
+    category=testing
+
+Testing namespaced handles:
+- >>namespace:component
+- >>another.namespace:widget
+
+|> multiple-handles-per-tag
+    handle=primary-handle
+    handle=secondary-handle
+    handle=tertiary-handle
+
+This tag defines multiple handles. References:
+- >>primary-handle
+- >>secondary-handle
+- >>tertiary-handle
+
+|> empty-and-malformed
+    handle=
+    handle
+    handle=valid-after-malformed
+
+Only >>valid-after-malformed should be detected from this tag.
+
+|> inline-codeblocks
+    handle=inline-test
+
+Text with `inline code >>not-a-link` should not detect the handle reference.
+But this >>inline-test should work normally.
+
+Regular text: `>>also-not-a-link` vs >>inline-test comparison.
+
+|> multiline-codeblock-test
+    handle=multiblock-test
+
+Before codeblock >>multiblock-test works.
+
+```python
+def function():
+    # These should NOT be detected:
+    # >>multiblock-test
+    # >>edge-doc
+    # >>namespace:component
+    print(">>fake-handle")
+    return ">>another-fake"
+```
+
+```javascript
+// Another codeblock
+const x = ">>still-fake";
+// >>not-detected
+```
+
+After codeblocks >>multiblock-test works again.
+
+|> line-boundary-testing
+    handle=line-boundary
+
+Testing references at line boundaries:>>line-boundary
+>>edge-doc at start of line
+End of line reference >>line-boundary
+
+|> punctuation-adjacent
+    handle=punct-test
+
+References adjacent to punctuation:
+- >>punct-test.
+- >>punct-test,
+- >>punct-test;
+- >>punct-test:
+- >>punct-test!
+- >>punct-test?
+- (>>punct-test)
+- [>>punct-test]
+- {>>punct-test}
+- ">>punct-test"
+- '>>punct-test'
+
+|> case-sensitivity
+    handle=CaseSensitive
+    handle=casesensitive
+
+Testing case sensitivity:
+- >>CaseSensitive
+- >>casesensitive
+- >>CASESENSITIVE (should not match if case sensitive)
+
+|> unicode-handles
+    handle=unicöde-tëst
+    handle=测试handle
+    handle=مقبض_عربي
+
+Unicode handle references:
+- >>unicöde-tëst
+- >>测试handle
+- >>مقبض_عربي
+
+|> nested-references
+    handle=outer-ref
+
+Content with >>inner-ref and >>outer-ref where >>inner-ref is defined inside:
+
+    |> inner-tag
+        handle=inner-ref
+        parent=outer-ref
+
+    Inner content references >>outer-ref and >>inner-ref.
+
+Back to outer content >>outer-ref and >>inner-ref.
+
+|> attribute-zone-comments
+    handle=comment-test
+    !! This is an attribute zone comment
+    !! >>comment-test should NOT be detected in comments
+    class=normal
+
+Regular content >>comment-test should work.
+
+!! Text zone comment with >>comment-test should NOT be detected
+
+|> extremely-long-handle
+    handle=this-is-an-extremely-long-handle-name-that-tests-the-limits-of-identifier-parsing-and-should-still-work-correctly-even-though-it-is-quite-verbose-and-unwieldy
+
+Reference to >>this-is-an-extremely-long-handle-name-that-tests-the-limits-of-identifier-parsing-and-should-still-work-correctly-even-though-it-is-quite-verbose-and-unwieldy should work.
+
+|> numbers-in-handles
+    handle=handle123
+    handle=123handle
+    handle=handle-v2.1
+
+Numeric handle testing:
+- >>handle123
+- >>123handle (should work with number at start)
+- >>handle-v2.1
+
+|> boundary-characters
+    handle=test_handle
+    handle=test-handle
+    handle=test.handle
+
+Testing boundary characters:
+- >>test_handle
+- >>test-handle
+- >>test.handle
+
+|> false-positives
+    handle=real-handle
+
+Testing potential false positives:
+- Email: user@example.com>>fake (should not detect >>fake)
+- URL: https://example.com>>nothandle (should not detect >>nothandle)
+- Math: x>>y (should not detect >>y)
+- Comparison: value>>threshold (should not detect >>threshold)
+- But >>real-handle should still work
+
+|> indented-references
+    handle=indent-test
+
+    Indented content with >>indent-test
+        Deeply indented >>indent-test
+            Very deep >>indent-test
+    Back to normal >>indent-test
+
+|> mixed-content-test
+    handle=mixed-content
+
+Testing mixed content scenarios:
+
+Regular text >>mixed-content works.
+
+```
+Code block >>should-not-work
+```
+
+More text >>mixed-content works again.
+
+    |> nested-tag
+        handle=nested-mixed
+
+    Nested content >>nested-mixed and >>mixed-content.
+
+Final >>mixed-content reference.
+
+|> document-end
+    handle=final-handle
+
+This is the end of the document. Final reference: >>final-handle.

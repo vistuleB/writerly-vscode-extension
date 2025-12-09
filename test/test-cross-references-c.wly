@@ -1,0 +1,125 @@
+|> header
+    title=Cross Reference Test Document C
+    handle=doc-c-main
+    author=test-suite
+    version=3.0
+
+This is document C, the final piece in the cross-reference testing triangle.
+
+|> introduction
+    handle=doc-c-intro
+    references=doc-a,doc-b
+
+Introduction to document C. This connects to >>doc-a and >>doc-b-main from the other test files.
+
+|> shared-components
+    handle=shared-component
+    type=reusable
+    used-by=all-docs
+
+Shared components that are referenced by both >>doc-a and >>doc-b-main. The >>shared-component is available across all documents.
+
+|> linking-test
+    handle=link-validator-c
+    validates=cross-references
+
+Testing cross-document linking functionality with references to:
+- >>doc-a-intro (from document A)
+- >>doc-b-overview (from document B)
+- >>user-data (from document A)
+- >>shared-utils (from document B)
+
+|> middleware
+    handle=middleware-c
+    layer=business-logic
+
+Middleware that processes data from >>core-algorithm and >>data-processor.
+
+|> aggregation
+    handle=data-aggregator
+    sources=multiple
+
+Data aggregation service that combines:
+- >>user-data from document A
+- >>shared-utils from document B
+- >>middleware-c processing layer
+
+```sql
+SELECT * FROM users
+WHERE active = true;
+-- This >>fake-reference in code should not be detected
+```
+
+Post-codeblock references work: >>doc-c-main and >>data-aggregator.
+
+|> integration-layer
+    handle=integration-c
+    connects=all-systems
+
+Integration layer connecting >>doc-a, >>doc-b-main, and >>doc-c-intro for seamless operation.
+
+|> api-gateway
+    handle=gateway-c
+    proxies=user-api
+
+API Gateway that routes requests to >>user-api and >>data-processor endpoints.
+
+|> monitoring
+    handle=monitor-c
+    tracks=performance
+
+Monitoring system for >>core-algorithm performance and >>perf-metrics-b data collection.
+
+Text with complex cross-references: The >>gateway-c routes to >>user-api, processes via >>core-algorithm, validates with >>validator-b, and monitors using >>monitor-c.
+
+|> security-layer
+    handle=security-c
+    protects=all-endpoints
+
+Security layer protecting >>user-api, >>gateway-c, and >>data-aggregator from unauthorized access.
+
+|> configuration-manager
+    handle=config-manager-c
+    manages=settings
+
+Configuration manager that works with >>config-settings from document A and >>shared-component utilities.
+
+|> event-system
+    handle=event-hub-c
+    distributes=notifications
+
+Event distribution hub that notifies about >>user-data changes, >>core-algorithm results, and >>integration-c status updates.
+
+Testing bidirectional references: >>bidirectional-demo from document B should link back here, while we reference >>components-b and >>error-handler-b.
+
+|> cache-layer
+    handle=cache-c
+    stores=processed-data
+
+Caching layer for >>data-aggregator results and >>core-algorithm computations.
+
+|> workflow-engine
+    handle=workflow-c
+    orchestrates=processes
+
+Workflow engine that orchestrates:
+1. >>user-data retrieval
+2. >>core-algorithm processing
+3. >>data-aggregator compilation
+4. >>cache-c storage
+5. >>event-hub-c notifications
+
+|> reporting
+    handle=reports-c
+    generates=analytics
+
+Reporting system using data from >>perf-metrics-b, >>monitor-c, and >>workflow-c for comprehensive analytics.
+
+|> footer
+    handle=doc-c-footer
+    status=complete
+
+Document C footer. This >>doc-c-footer is referenced by document A to test cross-file linking.
+
+Final comprehensive test paragraph:
+The complete system spans >>doc-a (core definitions), >>doc-b-main (integration logic), and >>doc-c-main (orchestration layer). Key components include >>shared-component (utilities), >>user-data (storage), >>core-algorithm (processing), >>gateway-c (routing), >>security-c (protection), >>workflow-c (orchestration), and >>reports-c (analytics). The >>event-hub-c distributes notifications while >>cache-c optimizes performance and >>monitor-c tracks metrics across all >>integration-c connections.

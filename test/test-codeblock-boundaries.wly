@@ -1,0 +1,208 @@
+|> codeblock-boundary-tests
+    title=Codeblock Boundary Testing
+    handle=boundary-test-doc
+    version=1.0
+
+This document tests edge cases around codeblock boundaries for the WriterlyLinkProvider.
+
+|> simple-codeblock
+    handle=simple-test
+
+Reference before codeblock: >>simple-test
+
+```
+This >>fake-reference should not be detected
+Also >>another-fake should be ignored
+```
+
+Reference after codeblock: >>simple-test
+
+|> adjacent-references
+    handle=adjacent-test
+
+Reference right before:>>adjacent-test
+```
+Code content >>not-detected
+```
+Reference right after:>>adjacent-test
+
+|> language-specified-codeblock
+    handle=lang-test
+
+Testing language-specified codeblocks >>lang-test
+
+```python
+def function():
+    # >>not-python-link should be ignored
+    return ">>also-ignored"
+```
+
+```javascript
+const x = ">>js-ignored";
+// >>comment-ignored
+```
+
+Back to normal text >>lang-test
+
+|> nested-backticks
+    handle=nested-test
+
+Reference before >>nested-test
+
+```
+Outer codeblock
+```inner
+This is tricky >>still-in-code
+```
+Still in outer codeblock >>also-in-code
+```
+
+Reference after >>nested-test
+
+|> indented-codeblocks
+    handle=indent-cb-test
+
+Normal reference >>indent-cb-test
+
+    ```
+    Indented codeblock
+    >>indented-fake should not work
+    ```
+
+    Reference in indented text >>indent-cb-test
+
+        ```
+        Deeply indented codeblock
+        >>deep-fake ignored
+        ```
+
+        Deep indented reference >>indent-cb-test
+
+Back to normal >>indent-cb-test
+
+|> malformed-codeblocks
+    handle=malformed-test
+
+Reference >>malformed-test before malformed blocks
+
+```unclosed
+This codeblock never closes >>unclosed-fake
+The rest of the document might be affected
+
+|> next-tag-after-unclosed
+    handle=after-unclosed
+
+This >>after-unclosed might be in a codeblock state
+
+```
+
+Now we close the original codeblock >>malformed-test
+
+|> empty-codeblocks
+    handle=empty-cb-test
+
+Reference >>empty-cb-test before empty block
+
+```
+```
+
+Reference >>empty-cb-test after empty block
+
+```
+
+```
+
+Another reference >>empty-cb-test
+
+|> multiple-consecutive-codeblocks
+    handle=multi-cb-test
+
+Reference >>multi-cb-test before multiple blocks
+
+```
+First block >>fake1
+```
+
+```
+Second block >>fake2
+```
+
+```python
+Third block >>fake3
+```
+
+Reference >>multi-cb-test after all blocks
+
+|> codeblock-in-attributes
+    handle=attr-cb-test
+    description=```inline code``` here
+    code-sample=```not a real codeblock```
+
+The attribute values with backticks should not affect >>attr-cb-test detection.
+
+```
+Real codeblock >>ignored-ref
+```
+
+Normal reference >>attr-cb-test works.
+
+|> mixed-indentation-codeblocks
+    handle=mixed-indent-test
+
+Reference >>mixed-indent-test
+
+```
+Normal codeblock
+    >>fake-indented
+```
+
+    ```
+    Indented start
+>>fake-at-margin
+    ```
+
+        ```
+        Deep indent start
+        >>fake-deep
+        ```
+
+Back to normal >>mixed-indent-test
+
+|> codeblock-edge-whitespace
+    handle=whitespace-cb-test
+
+Reference >>whitespace-cb-test
+
+```
+Codeblock with trailing space on opening
+>>fake-with-space
+```
+
+```
+Codeblock with tab on opening
+>>fake-with-tab
+```
+
+Reference >>whitespace-cb-test after whitespace tests
+
+|> codeblock-with-attributes-nearby
+    handle=nearby-attrs-test
+
+    ```
+    Codeblock near attributes
+    >>fake-near-attrs
+    ```
+
+Reference >>nearby-attrs-test
+
+|> final-codeblock-test
+    handle=final-cb-test
+
+Last reference >>final-cb-test
+
+```
+Final codeblock in document
+>>final-fake-ref should not work
+```
+
+Document ends with reference >>final-cb-test
