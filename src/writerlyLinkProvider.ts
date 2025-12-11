@@ -16,9 +16,9 @@ type HandleDefinition = {
 };
 
 const regexStartChar = "a-zA-Z_";
-const regexBodyChar = "-a-zA-Z0-9\\._\\:";
-const regexEndChar = "a-zA-Z0-9_";
-const regexUsageBodyChar = "-a-zA-Z0-9\\._";
+const regexBodyChar = "-a-zA-Z0-9\\._\\:\\^";
+const regexEndChar = "a-zA-Z0-9_\\^";
+const regexUsageBodyChar = "-a-zA-Z0-9\\._\\^";
 const regexHandleName = `([${regexStartChar}][${regexBodyChar}]*[${regexEndChar}])|[${regexStartChar}]`;
 const regexUsageHandleName = `([${regexStartChar}][${regexUsageBodyChar}]*[${regexEndChar}])|[${regexStartChar}]`;
 const defRegex = new RegExp(`^handle=\\s*(${regexHandleName})(\s|$)`);
