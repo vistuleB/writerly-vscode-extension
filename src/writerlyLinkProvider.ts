@@ -209,8 +209,10 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     // extract definitions and usage
     const documentLinks = this.extractHandlesFromDocument(document);
 
-    // validate and report errors
-    this.validateHandleUsage(document, documentLinks);
+    // only validate if initialization is complete
+    if (this.isInitialized) {
+      this.validateHandleUsage(document, documentLinks);
+    }
 
     return documentLinks;
   }
