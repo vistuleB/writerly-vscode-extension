@@ -206,7 +206,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
         // find handle usage (>>handleName) outside of codeblocks
         if (
           lineType !== LineType.CodeBlockLine &&
-          lineType !== LineType.CodeBlockOpening &&
+          lineType !== LineType.Tag &&
           lineType !== LineType.CodeBlockClosing
         ) {
           let usageMatch;
