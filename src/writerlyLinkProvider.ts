@@ -18,9 +18,11 @@ type HandleDefinition = {
 const regexStartChar = "a-zA-Z_";
 const regexBodyChar = "-a-zA-Z0-9\\._\\:";
 const regexEndChar = "a-zA-Z0-9_";
+const regexUsageBodyChar = "-a-zA-Z0-9\\._";
 const regexHandleName = `([${regexStartChar}][${regexBodyChar}]*[${regexEndChar}])|[${regexStartChar}]`;
+const regexUsageHandleName = `([${regexStartChar}][${regexUsageBodyChar}]*[${regexEndChar}])|[${regexStartChar}]`;
 const defRegex = new RegExp(`^handle=\\s*(${regexHandleName})(\s|$)`);
-const usageRegex = new RegExp(`>>(${regexHandleName})`, "g");
+const usageRegex = new RegExp(`>>(${regexUsageHandleName})`, "g");
 
 export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   definitions: Map<HandleName, HandleDefinition[]> = new Map([]);
@@ -178,7 +180,9 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
         if (lineType === LineType.Attribute) {
           const handleMatch = content.match(defRegex);
           if (handleMatch) {
-            const handleName = handleMatch[1];
+            const fullHandleName = handleMatch[1];
+            // truncate everything after ':' for the handle name
+            const handleName = fullHandleName.split(":")[0];
             const handleStart = content.indexOf(handleMatch[0]);
             const range = new vscode.Range(
               lineNumber,
