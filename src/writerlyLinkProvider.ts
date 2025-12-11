@@ -15,161 +15,226 @@ type HandleDefinition = {
   range: vscode.Range;
 };
 
-const regexStartChar = "a-zA-Z_";
-const regexBodyChar = "-a-zA-Z0-9\\._\\:\\^";
-const regexEndChar = "a-zA-Z0-9_\\^";
-const regexUsageBodyChar = "-a-zA-Z0-9\\._\\^";
-const regexHandleName = `([${regexStartChar}][${regexBodyChar}]*[${regexEndChar}])|[${regexStartChar}]`;
-const regexUsageHandleName = `([${regexStartChar}][${regexUsageBodyChar}]*[${regexEndChar}])|[${regexStartChar}]`;
-const defRegex = new RegExp(`^handle=\\s*(${regexHandleName})(\s|$)`);
-const usageRegex = new RegExp(`>>(${regexUsageHandleName})`, "g");
+// constants
+const CONSTANTS = {
+  FILE_EXTENSION: ".wly",
+  PARENT_FILE_NAME: "__parent.wly",
+  MAX_FILES: 1500,
+  DIAGNOSTIC_COLLECTION_NAME: "writerly-links",
+} as const;
+
+// Simplified regex patterns
+const HANDLE_CHAR_CLASSES = {
+  START: "a-zA-Z_",
+  BODY: "-a-zA-Z0-9\\._\\^",
+  BODY_WITH_COLON: "-a-zA-Z0-9\\._\\^\\:",
+  END: "a-zA-Z0-9_\\^",
+} as const;
+
+// build regex patterns
+const buildHandleRegex = (bodyChars: string) =>
+  `([${HANDLE_CHAR_CLASSES.START}][${bodyChars}]*[${HANDLE_CHAR_CLASSES.END}])|[${HANDLE_CHAR_CLASSES.START}]`;
+
+const DEF_REGEX = new RegExp(
+  `^handle=\\s*(${buildHandleRegex(HANDLE_CHAR_CLASSES.BODY_WITH_COLON)})(\\s|$)`,
+);
+const USAGE_REGEX = new RegExp(
+  `>>(${buildHandleRegex(HANDLE_CHAR_CLASSES.BODY)})`,
+  "g",
+);
 
 export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
-  definitions: Map<HandleName, HandleDefinition[]> = new Map([]);
-  parents: FSPath[] = [];
-  private diagnosticCollection: vscode.DiagnosticCollection;
+  private definitions: Map<HandleName, HandleDefinition[]> = new Map();
+  private parents: FSPath[] = [];
+  private diagnosticCollection!: vscode.DiagnosticCollection;
+  private isInitialized = false;
 
   constructor(context: vscode.ExtensionContext) {
-    this.diagnosticCollection =
-      vscode.languages.createDiagnosticCollection("writerly-links");
+    this.setupDiagnostics(context);
+    this.registerEventHandlers(context);
+    this.initializeAsync();
+  }
+
+  private setupDiagnostics(context: vscode.ExtensionContext): void {
+    this.diagnosticCollection = vscode.languages.createDiagnosticCollection(
+      CONSTANTS.DIAGNOSTIC_COLLECTION_NAME,
+    );
     context.subscriptions.push(this.diagnosticCollection);
-    this.onDidStart();
+  }
 
-    let subscriptions = [
-      vscode.workspace.onDidChangeTextDocument(
-        (event: vscode.TextDocumentChangeEvent) =>
-          this.onDidChange(event.document),
+  private registerEventHandlers(context: vscode.ExtensionContext): void {
+    const subscriptions = [
+      vscode.workspace.onDidChangeTextDocument((event) =>
+        this.onDidChange(event.document),
       ),
-
-      vscode.workspace.onDidRenameFiles((event: vscode.FileRenameEvent) =>
-        this.onDidRename(event),
-      ),
-
-      vscode.workspace.onDidDeleteFiles((event: vscode.FileDeleteEvent) =>
-        this.onDidDelete(event),
-      ),
-
-      vscode.workspace.onDidCreateFiles((event: vscode.FileCreateEvent) =>
-        this.onDidCreate(event),
-      ),
-
+      vscode.workspace.onDidRenameFiles((event) => this.onDidRename(event)),
+      vscode.workspace.onDidDeleteFiles((event) => this.onDidDelete(event)),
+      vscode.workspace.onDidCreateFiles((event) => this.onDidCreate(event)),
       vscode.languages.registerDocumentLinkProvider(
-        {
-          scheme: "file",
-          language: "writerly",
-        },
+        { scheme: "file", language: "writerly" },
         this,
       ),
     ];
 
-    for (const subscription of subscriptions) {
-      context.subscriptions.push(subscription);
+    subscriptions.forEach((sub) => context.subscriptions.push(sub));
+  }
+
+  private async initializeAsync(): Promise<void> {
+    try {
+      await this.discoverParentDirectories();
+      await this.processAllDocuments();
+      this.isInitialized = true;
+    } catch (error) {
+      console.error("WriterlyLinkProvider initialization failed:", error);
     }
   }
 
-  private async onDidStart() {
-    // discover all parent directories containing __parent.wly files
-    await this.discoverParentDirectories();
-
-    // then process all existing .wly files in the workspace
-    const uris = await vscode.workspace.findFiles("**/*.wly", null, 1500);
-    for (const uri of uris) {
-      this.processUri(uri);
-    }
-  }
-
-  private async discoverParentDirectories() {
-    // find all __parent.wly files
-    const parentFiles = await vscode.workspace.findFiles(
-      "**/__parent.wly",
+  private async processAllDocuments(): Promise<void> {
+    const uris = await vscode.workspace.findFiles(
+      `**/*${CONSTANTS.FILE_EXTENSION}`,
       null,
-      1500,
+      CONSTANTS.MAX_FILES,
     );
 
-    // extract directory paths containing __parent.wly files
-    this.parents = parentFiles.map((uri) => {
-      // remove the filename to get just the directory path
-      const dirPath = uri.fsPath.replace(/[\/\\]__parent\.wly$/, "");
-      return dirPath;
-    });
+    // process all files and await completion
+    await Promise.all(uris.map((uri) => this.processUri(uri)));
   }
 
+  private async discoverParentDirectories(): Promise<void> {
+    const parentFiles = await vscode.workspace.findFiles(
+      `**/${CONSTANTS.PARENT_FILE_NAME}`,
+      null,
+      CONSTANTS.MAX_FILES,
+    );
+
+    this.parents = parentFiles.map((uri) =>
+      uri.fsPath.replace(
+        new RegExp(`[/\\\\]${CONSTANTS.PARENT_FILE_NAME}$`),
+        "",
+      ),
+    );
+  }
+
+  // event handlers
   private onDidChange(document: vscode.TextDocument): void {
+    if (!this.isWriterlyFile(document.uri.fsPath)) return;
     this.processDocument(document);
   }
 
   private onDidRename(event: vscode.FileRenameEvent): void {
-    for (const file of event.files) {
-      this.renameUri(file.oldUri, file.newUri);
-    }
+    const writerlyFiles = event.files.filter((file) =>
+      this.isWriterlyFile(file.oldUri.fsPath),
+    );
+
+    writerlyFiles.forEach((file) => this.renameUri(file.oldUri, file.newUri));
   }
 
   private onDidDelete(event: vscode.FileDeleteEvent): void {
-    for (const uri of event.files) {
-      this.deleteUri(uri);
-    }
+    const writerlyFiles = event.files.filter((uri) =>
+      this.isWriterlyFile(uri.fsPath),
+    );
+
+    writerlyFiles.forEach((uri) => this.deleteUri(uri));
   }
 
   private async onDidCreate(event: vscode.FileCreateEvent): Promise<void> {
-    for (const uri of event.files) {
-      if (!uri.fsPath.endsWith(".wly")) return;
-      this.processUri(uri);
+    const writerlyFiles = event.files.filter((uri) =>
+      this.isWriterlyFile(uri.fsPath),
+    );
+
+    await Promise.all(writerlyFiles.map((uri) => this.processUri(uri)));
+  }
+
+  // utility methods
+  private isWriterlyFile(fsPath: string): boolean {
+    return fsPath.endsWith(CONSTANTS.FILE_EXTENSION);
+  }
+
+  private extractHandleName(fullName: string): string {
+    return fullName.split(":")[0];
+  }
+
+  private async renameUri(
+    oldUri: vscode.Uri,
+    newUri: vscode.Uri,
+  ): Promise<void> {
+    const oldPath = oldUri.fsPath;
+    const newPath = newUri.fsPath;
+
+    for (const [handleName, definitions] of this.definitions) {
+      const hasChanges = definitions.some((def) => def.fsPath === oldPath);
+
+      if (hasChanges) {
+        const updatedDefinitions = definitions.map((def) =>
+          def.fsPath === oldPath ? { ...def, fsPath: newPath } : def,
+        );
+        this.definitions.set(handleName, updatedDefinitions);
+      }
     }
   }
 
-  private async renameUri(oldUri: vscode.Uri, newUri: vscode.Uri) {
+  private deleteUri(uri: vscode.Uri): void {
+    const targetPath = uri.fsPath;
+
     for (const [handleName, definitions] of this.definitions) {
-      this.definitions.set(
-        handleName,
-        definitions.map((def) =>
-          def.fsPath === oldUri.fsPath
-            ? { ...def, fsPath: newUri.fsPath }
-            : def,
-        ),
+      const filteredDefinitions = definitions.filter(
+        (def) => def.fsPath !== targetPath,
       );
+
+      if (filteredDefinitions.length === 0) {
+        this.definitions.delete(handleName);
+      } else if (filteredDefinitions.length !== definitions.length) {
+        this.definitions.set(handleName, filteredDefinitions);
+      }
     }
   }
 
-  private deleteUri(uri: vscode.Uri) {
-    // remove all items from the dictionary where def.fsPath === uri.fsPath
-    for (const [handleName, definitions] of this.definitions) {
-      const filtered = definitions.filter((def) => def.fsPath !== uri.fsPath);
-      filtered.length === 0
-        ? this.definitions.delete(handleName)
-        : this.definitions.set(handleName, filtered);
-    }
-  }
-
-  private async processUri(uri: vscode.Uri) {
+  private async processUri(uri: vscode.Uri): Promise<void> {
     try {
-      const document: vscode.TextDocument =
-        await vscode.workspace.openTextDocument(uri);
+      const document = await vscode.workspace.openTextDocument(uri);
       this.processDocument(document);
-    } catch (e) {
-      console.error("...");
+    } catch (error) {
+      console.error(`Failed to process document ${uri.fsPath}:`, error);
     }
   }
 
   private processDocument(
     document: vscode.TextDocument,
   ): vscode.DocumentLink[] {
-    const documentLinks: vscode.DocumentLink[] = [];
     const currentFsPath = document.uri.fsPath;
 
-    // filter out all existing entries for this document
+    // clear existing definitions for this document
+    this.clearDocumentDefinitions(currentFsPath);
+
+    // extract definitions and usage
+    const documentLinks = this.extractHandlesFromDocument(document);
+
+    // validate and report errors
+    this.validateHandleUsage(document, documentLinks);
+
+    return documentLinks;
+  }
+
+  private clearDocumentDefinitions(fsPath: string): void {
     for (const [handleName, definitions] of this.definitions) {
       const filteredDefinitions = definitions.filter(
-        (def) => def.fsPath !== currentFsPath,
+        (def) => def.fsPath !== fsPath,
       );
 
       if (filteredDefinitions.length === 0) {
         this.definitions.delete(handleName);
-      } else {
+      } else if (filteredDefinitions.length !== definitions.length) {
         this.definitions.set(handleName, filteredDefinitions);
       }
     }
+  }
 
-    // use walker to find handle definitions and usage
+  private extractHandlesFromDocument(
+    document: vscode.TextDocument,
+  ): vscode.DocumentLink[] {
+    const documentLinks: vscode.DocumentLink[] = [];
+    const currentFsPath = document.uri.fsPath;
+
     WriterlyDocumentWalker.walk(
       document,
       (
@@ -180,67 +245,97 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
         indent,
         content,
       ) => {
+        // extract handle definitions
         if (lineType === LineType.Attribute) {
-          const handleMatch = content.match(defRegex);
-          if (handleMatch) {
-            const fullHandleName = handleMatch[1];
-            // truncate everything after ':' for the handle name
-            const handleName = fullHandleName.split(":")[0];
-            const handleStart = content.indexOf(handleMatch[0]);
-            const range = new vscode.Range(
-              lineNumber,
-              indent + handleStart,
-              lineNumber,
-              indent + handleStart + handleMatch[0].length,
-            );
-
-            const definition: HandleDefinition = {
-              fsPath: currentFsPath,
-              range: range,
-            };
-
-            // add to definitions map
-            if (!this.definitions.has(handleName)) {
-              this.definitions.set(handleName, []);
-            }
-            this.definitions.get(handleName)!.push(definition);
-          }
+          this.extractHandleDefinition(
+            content,
+            lineNumber,
+            indent,
+            currentFsPath,
+          );
         }
 
-        // find handle usage (>>handleName) outside of codeblocks
-        if (
-          lineType !== LineType.CodeBlockLine &&
-          lineType !== LineType.Tag &&
-          lineType !== LineType.CodeBlockClosing
-        ) {
-          let usageMatch;
-          while ((usageMatch = usageRegex.exec(content)) !== null) {
-            const handleName = usageMatch[1];
-            const matchStart = usageMatch.index;
-            const range = new vscode.Range(
-              lineNumber,
-              indent + matchStart,
-              lineNumber,
-              indent + matchStart + usageMatch[0].length,
-            );
-
-            // create DocumentLink for handle usage
-            const link = new vscode.DocumentLink(range);
-            link.data = {
-              handleName: handleName,
-              fsPath: currentFsPath,
-            };
-
-            documentLinks.push(link);
-          }
+        // extract handle usage (skip certain line types)
+        if (this.shouldProcessUsageInLine(lineType)) {
+          const usageLinks = this.extractHandleUsage(
+            content,
+            lineNumber,
+            indent,
+            currentFsPath,
+          );
+          documentLinks.push(...usageLinks);
         }
       },
     );
 
-    // error reporting: validate all handle usage
-    this.validateHandleUsage(document, documentLinks);
-
     return documentLinks;
+  }
+
+  private shouldProcessUsageInLine(lineType: LineType): boolean {
+    return (
+      lineType !== LineType.CodeBlockLine &&
+      lineType !== LineType.Tag &&
+      lineType !== LineType.CodeBlockClosing
+    );
+  }
+
+  private extractHandleDefinition(
+    content: string,
+    lineNumber: number,
+    indent: number,
+    fsPath: string,
+  ): void {
+    const handleMatch = content.match(DEF_REGEX);
+    if (!handleMatch) return;
+
+    const fullHandleName = handleMatch[1];
+    const handleName = this.extractHandleName(fullHandleName);
+    const handleStart = content.indexOf(handleMatch[0]);
+
+    const range = new vscode.Range(
+      lineNumber,
+      indent + handleStart,
+      lineNumber,
+      indent + handleStart + handleMatch[0].length,
+    );
+
+    const definition: HandleDefinition = { fsPath, range };
+
+    if (!this.definitions.has(handleName)) {
+      this.definitions.set(handleName, []);
+    }
+    this.definitions.get(handleName)!.push(definition);
+  }
+
+  private extractHandleUsage(
+    content: string,
+    lineNumber: number,
+    indent: number,
+    fsPath: string,
+  ): vscode.DocumentLink[] {
+    const links: vscode.DocumentLink[] = [];
+    let usageMatch;
+
+    // reset regex state
+    USAGE_REGEX.lastIndex = 0;
+
+    while ((usageMatch = USAGE_REGEX.exec(content)) !== null) {
+      const handleName = usageMatch[1];
+      const matchStart = usageMatch.index;
+
+      const range = new vscode.Range(
+        lineNumber,
+        indent + matchStart,
+        lineNumber,
+        indent + matchStart + usageMatch[0].length,
+      );
+
+      const link = new vscode.DocumentLink(range);
+      link.data = { handleName, fsPath };
+      links.push(link);
+    }
+
+    return links;
   }
 
   private validateHandleUsage(
@@ -259,21 +354,13 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
         handleName,
         currentFsPath,
       );
+      const diagnostic = this.createDiagnosticForUsage(
+        link,
+        handleName,
+        validDefinitions.length,
+      );
 
-      // if not exactly 1 valid definition, add error diagnostic
-      if (validDefinitions.length === 0) {
-        const diagnostic = new vscode.Diagnostic(
-          link.range,
-          `Handle '${handleName}' not found`,
-          vscode.DiagnosticSeverity.Error,
-        );
-        diagnostics.push(diagnostic);
-      } else if (validDefinitions.length > 1) {
-        const diagnostic = new vscode.Diagnostic(
-          link.range,
-          `Handle '${handleName}' has multiple definitions (${validDefinitions.length} found)`,
-          vscode.DiagnosticSeverity.Error,
-        );
+      if (diagnostic) {
         diagnostics.push(diagnostic);
       }
     }
@@ -281,32 +368,52 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     this.diagnosticCollection.set(document.uri, diagnostics);
   }
 
+  private createDiagnosticForUsage(
+    link: vscode.DocumentLink,
+    handleName: string,
+    definitionCount: number,
+  ): vscode.Diagnostic | null {
+    if (definitionCount === 1) {
+      return null; // No error
+    }
+
+    const message =
+      definitionCount === 0
+        ? `Handle '${handleName}' not found`
+        : `Handle '${handleName}' has multiple definitions (${definitionCount} found)`;
+
+    return new vscode.Diagnostic(
+      link.range,
+      message,
+      vscode.DiagnosticSeverity.Error,
+    );
+  }
+
   private findValidDefinitions(
     handleName: string,
     currentFsPath: string,
   ): HandleDefinition[] {
-    // lookup handleName in definitions dictionary
     const definitions = this.definitions.get(handleName);
     if (!definitions || definitions.length === 0) {
       return [];
     }
 
-    // filter out those entries not part of same document tree
     return definitions.filter((def) =>
       this.isInSameDocumentTree(currentFsPath, def.fsPath),
     );
   }
 
+  // VS Code interface implementations
   public provideDocumentLinks(
     document: vscode.TextDocument,
-    token: vscode.CancellationToken,
+    _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.DocumentLink[]> {
     return this.processDocument(document);
   }
 
   public resolveDocumentLink(
     link: vscode.DocumentLink,
-    token: vscode.CancellationToken,
+    _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.DocumentLink> {
     const handleName = link.data?.handleName;
     const currentFsPath = link.data?.fsPath;
@@ -315,20 +422,19 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
       return undefined;
     }
 
-    const filteredDefinitions = this.findValidDefinitions(
+    const validDefinitions = this.findValidDefinitions(
       handleName,
       currentFsPath,
     );
 
-    if (filteredDefinitions.length !== 1) {
+    if (validDefinitions.length !== 1) {
       return undefined;
     }
 
-    const definition = filteredDefinitions[0];
+    const definition = validDefinitions[0];
     const uri = vscode.Uri.file(definition.fsPath);
     const targetUri = this.attachRangeToUri(uri, definition.range);
 
-    // set the target on the existing link
     link.target = targetUri;
     return link;
   }
@@ -337,7 +443,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     const line = range.start.line + 1;
     const character = range.start.character + 1;
     const fragment = `${line},${character}`;
-    return uri.with({ fragment: fragment });
+    return uri.with({ fragment });
   }
 
   private isInSameDocumentTree(
@@ -348,13 +454,24 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
       return true;
     }
 
-    // check if they share a common ancestor directory that contains __parent.wly
-    // this is where we use the parents list
     return this.parents.some((parentPath) => {
-      return (
-        currentFsPath.startsWith(parentPath) &&
-        definitionFsPath.startsWith(parentPath)
+      const currentUnderParent = this.isPathUnderParent(
+        currentFsPath,
+        parentPath,
       );
+      const definitionUnderParent = this.isPathUnderParent(
+        definitionFsPath,
+        parentPath,
+      );
+      return currentUnderParent && definitionUnderParent;
     });
+  }
+
+  private isPathUnderParent(filePath: string, parentPath: string): boolean {
+    return (
+      filePath === parentPath ||
+      filePath.startsWith(parentPath + "/") ||
+      filePath.startsWith(parentPath + "\\")
+    );
   }
 }
