@@ -20,7 +20,7 @@ const regexBodyChar = "-a-zA-Z0-9\\._\\:";
 const regexEndChar = "a-zA-Z0-9_";
 const regexHandleName = `([${regexStartChar}][${regexBodyChar}]*[${regexEndChar}])|[${regexStartChar}]`;
 const defRegex = new RegExp(`^handle=\\s*(${regexHandleName})(\s|$)`);
-const usageRegex = new RegExp(`>>(${regexHandleName})`, 'g');
+const usageRegex = new RegExp(`>>(${regexHandleName})`, "g");
 
 export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   definitions: Map<HandleName, HandleDefinition[]> = new Map([]);
@@ -62,11 +62,30 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   }
 
   private async onDidStart() {
-    // process all existing .wly files in the workspace:
+    // discover all parent directories containing __parent.wly files
+    await this.discoverParentDirectories();
+
+    // then process all existing .wly files in the workspace
     const uris = await vscode.workspace.findFiles("**/*.wly", null, 1500);
     for (const uri of uris) {
       this.processUri(uri);
     }
+  }
+
+  private async discoverParentDirectories() {
+    // find all __parent.wly files
+    const parentFiles = await vscode.workspace.findFiles(
+      "**/__parent.wly",
+      null,
+      1500,
+    );
+
+    // extract directory paths containing __parent.wly files
+    this.parents = parentFiles.map((uri) => {
+      // remove the filename to get just the directory path
+      const dirPath = uri.fsPath.replace(/[\/\\]__parent\.wly$/, "");
+      return dirPath;
+    });
   }
 
   private onDidChange(document: vscode.TextDocument): void {
