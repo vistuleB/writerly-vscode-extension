@@ -110,7 +110,6 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     for (const uri of event.files) {
       if (!uri.fsPath.endsWith(".wly")) return;
       this.processUri(uri);
-      // todo (more work later)
     }
   }
 
