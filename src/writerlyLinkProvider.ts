@@ -27,8 +27,12 @@ const usageRegex = new RegExp(`>>(${regexUsageHandleName})`, "g");
 export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   definitions: Map<HandleName, HandleDefinition[]> = new Map([]);
   parents: FSPath[] = [];
+  private diagnosticCollection: vscode.DiagnosticCollection;
 
   constructor(context: vscode.ExtensionContext) {
+    this.diagnosticCollection =
+      vscode.languages.createDiagnosticCollection("writerly-links");
+    context.subscriptions.push(this.diagnosticCollection);
     this.onDidStart();
 
     let subscriptions = [
@@ -233,7 +237,64 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
       },
     );
 
+    // error reporting: validate all handle usage
+    this.validateHandleUsage(document, documentLinks);
+
     return documentLinks;
+  }
+
+  private validateHandleUsage(
+    document: vscode.TextDocument,
+    documentLinks: vscode.DocumentLink[],
+  ): void {
+    const diagnostics: vscode.Diagnostic[] = [];
+
+    for (const link of documentLinks) {
+      const handleName = link.data?.handleName;
+      const currentFsPath = link.data?.fsPath;
+
+      if (!handleName || !currentFsPath) continue;
+
+      const validDefinitions = this.findValidDefinitions(
+        handleName,
+        currentFsPath,
+      );
+
+      // if not exactly 1 valid definition, add error diagnostic
+      if (validDefinitions.length === 0) {
+        const diagnostic = new vscode.Diagnostic(
+          link.range,
+          `Handle '${handleName}' not found`,
+          vscode.DiagnosticSeverity.Error,
+        );
+        diagnostics.push(diagnostic);
+      } else if (validDefinitions.length > 1) {
+        const diagnostic = new vscode.Diagnostic(
+          link.range,
+          `Handle '${handleName}' has multiple definitions (${validDefinitions.length} found)`,
+          vscode.DiagnosticSeverity.Error,
+        );
+        diagnostics.push(diagnostic);
+      }
+    }
+
+    this.diagnosticCollection.set(document.uri, diagnostics);
+  }
+
+  private findValidDefinitions(
+    handleName: string,
+    currentFsPath: string,
+  ): HandleDefinition[] {
+    // lookup handleName in definitions dictionary
+    const definitions = this.definitions.get(handleName);
+    if (!definitions || definitions.length === 0) {
+      return [];
+    }
+
+    // filter out those entries not part of same document tree
+    return definitions.filter((def) =>
+      this.isInSameDocumentTree(currentFsPath, def.fsPath),
+    );
   }
 
   public provideDocumentLinks(
@@ -254,13 +315,9 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
       return undefined;
     }
 
-    const definitions = this.definitions.get(handleName);
-    if (!definitions || definitions.length === 0) {
-      return undefined;
-    }
-
-    const filteredDefinitions = definitions.filter((def) =>
-      this.isInSameDocumentTree(currentFsPath, def.fsPath),
+    const filteredDefinitions = this.findValidDefinitions(
+      handleName,
+      currentFsPath,
     );
 
     if (filteredDefinitions.length !== 1) {
