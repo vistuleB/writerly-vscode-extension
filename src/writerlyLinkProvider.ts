@@ -1,9 +1,15 @@
 import * as vscode from "vscode";
 import { WriterlyDocumentWalker, LineType } from "./walker";
 
+enum ValidationState {
+  UNKNOWN = "unknown",
+  OK = "ok",
+  ERROR = "error",
+}
+
 declare module "vscode" {
   export interface DocumentLink {
-    data: { handleName: string; fsPath: string };
+    data: { handleName: string; fsPath: string; validated: ValidationState };
   }
 }
 
@@ -238,7 +244,10 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
       this.validateHandleUsage(document, documentLinks);
     }
 
-    return documentLinks;
+    // filter out ERROR links to avoid visual conflict between underlines and squiggles
+    return documentLinks.filter(
+      (link) => link.data.validated !== ValidationState.ERROR,
+    );
   }
 
   private clearDocumentDefinitions(fsPath: string): void {
@@ -355,7 +364,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
       );
 
       const link = new vscode.DocumentLink(range);
-      link.data = { handleName, fsPath };
+      link.data = { handleName, fsPath, validated: ValidationState.UNKNOWN };
       links.push(link);
     }
 
@@ -378,14 +387,20 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
         handleName,
         currentFsPath,
       );
-      const diagnostic = this.createDiagnosticForUsage(
-        link,
-        handleName,
-        validDefinitions.length,
-      );
 
-      if (diagnostic) {
-        diagnostics.push(diagnostic);
+      if (validDefinitions.length === 1) {
+        link.data.validated = ValidationState.OK;
+      } else {
+        link.data.validated = ValidationState.ERROR;
+        const diagnostic = this.createDiagnosticForUsage(
+          link,
+          handleName,
+          validDefinitions.length,
+        );
+
+        if (diagnostic) {
+          diagnostics.push(diagnostic);
+        }
       }
     }
 
