@@ -15,33 +15,17 @@ type HandleDefinition = {
   range: vscode.Range;
 };
 
-// constants
-const CONSTANTS = {
-  FILE_EXTENSION: ".wly",
-  PARENT_FILE_NAME: "__parent.wly",
-  MAX_FILES: 1500,
-  DIAGNOSTIC_COLLECTION_NAME: "writerly-links",
-} as const;
+const FILE_EXTENSION: string = ".wly";
+const PARENT_FILE_NAME: string = "__parent.wly";
+const MAX_FILES: number = 1500;
+const DIAGNOSTIC_COLLECTION_NAME: string = "writerly-links";
 
-// Simplified regex patterns
-const HANDLE_CHAR_CLASSES = {
-  START: "a-zA-Z_",
-  BODY: "-a-zA-Z0-9\\._\\^",
-  BODY_WITH_COLON: "-a-zA-Z0-9\\._\\^\\:",
-  END: "a-zA-Z0-9_\\^",
-} as const;
-
-// build regex patterns
-const buildHandleRegex = (bodyChars: string) =>
-  `([${HANDLE_CHAR_CLASSES.START}][${bodyChars}]*[${HANDLE_CHAR_CLASSES.END}])|[${HANDLE_CHAR_CLASSES.START}]`;
-
-const DEF_REGEX = new RegExp(
-  `^handle=\\s*(${buildHandleRegex(HANDLE_CHAR_CLASSES.BODY_WITH_COLON)})(\\s|$)`,
-);
-const USAGE_REGEX = new RegExp(
-  `>>(${buildHandleRegex(HANDLE_CHAR_CLASSES.BODY)})`,
-  "g",
-);
+const HANDLE_START_CHARS: string = "a-zA-Z_"
+const HANDLE_BODY_CHARS: string = "-a-zA-Z0-9\\._\\^";
+const HANDLE_END_CHARS: string = "a-zA-Z0-9_\\^";
+const HANDLE_REGEX_STRING: string = `([${HANDLE_START_CHARS}][${HANDLE_BODY_CHARS}]*[${HANDLE_END_CHARS}])|[${HANDLE_START_CHARS}]`;
+const DEF_REGEX = new RegExp(`^handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`);
+const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "g");
 
 export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   private definitions: Map<HandleName, HandleDefinition[]> = new Map();
@@ -57,7 +41,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
   private setupDiagnostics(context: vscode.ExtensionContext): void {
     this.diagnosticCollection = vscode.languages.createDiagnosticCollection(
-      CONSTANTS.DIAGNOSTIC_COLLECTION_NAME,
+      DIAGNOSTIC_COLLECTION_NAME
     );
     context.subscriptions.push(this.diagnosticCollection);
   }
@@ -65,14 +49,14 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   private registerEventHandlers(context: vscode.ExtensionContext): void {
     const subscriptions = [
       vscode.workspace.onDidChangeTextDocument((event) =>
-        this.onDidChange(event.document),
+        this.onDidChange(event.document)
       ),
       vscode.workspace.onDidRenameFiles((event) => this.onDidRename(event)),
       vscode.workspace.onDidDeleteFiles((event) => this.onDidDelete(event)),
       vscode.workspace.onDidCreateFiles((event) => this.onDidCreate(event)),
       vscode.languages.registerDocumentLinkProvider(
         { scheme: "file", language: "writerly" },
-        this,
+        this
       ),
     ];
 
@@ -91,9 +75,9 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
   private async processAllDocuments(): Promise<void> {
     const uris = await vscode.workspace.findFiles(
-      `**/*${CONSTANTS.FILE_EXTENSION}`,
+      `**/*${FILE_EXTENSION}`,
       null,
-      CONSTANTS.MAX_FILES,
+      MAX_FILES
     );
 
     // process all files and await completion
@@ -102,16 +86,16 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
   private async discoverParentDirectories(): Promise<void> {
     const parentFiles = await vscode.workspace.findFiles(
-      `**/${CONSTANTS.PARENT_FILE_NAME}`,
+      `**/${PARENT_FILE_NAME}`,
       null,
-      CONSTANTS.MAX_FILES,
+      MAX_FILES
     );
 
     this.parents = parentFiles.map((uri) =>
       uri.fsPath.replace(
-        new RegExp(`[/\\\\]${CONSTANTS.PARENT_FILE_NAME}$`),
-        "",
-      ),
+        new RegExp(`[/\\\\]${PARENT_FILE_NAME}$`),
+        ""
+      )
     );
   }
 
@@ -123,7 +107,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
   private onDidRename(event: vscode.FileRenameEvent): void {
     const writerlyFiles = event.files.filter((file) =>
-      this.isWriterlyFile(file.oldUri.fsPath),
+      this.isWriterlyFile(file.oldUri.fsPath)
     );
 
     writerlyFiles.forEach((file) => this.renameUri(file.oldUri, file.newUri));
@@ -131,7 +115,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
   private onDidDelete(event: vscode.FileDeleteEvent): void {
     const writerlyFiles = event.files.filter((uri) =>
-      this.isWriterlyFile(uri.fsPath),
+      this.isWriterlyFile(uri.fsPath)
     );
 
     writerlyFiles.forEach((uri) => this.deleteUri(uri));
@@ -139,7 +123,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
   private async onDidCreate(event: vscode.FileCreateEvent): Promise<void> {
     const writerlyFiles = event.files.filter((uri) =>
-      this.isWriterlyFile(uri.fsPath),
+      this.isWriterlyFile(uri.fsPath)
     );
 
     await Promise.all(writerlyFiles.map((uri) => this.processUri(uri)));
@@ -147,16 +131,12 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
   // utility methods
   private isWriterlyFile(fsPath: string): boolean {
-    return fsPath.endsWith(CONSTANTS.FILE_EXTENSION);
-  }
-
-  private extractHandleName(fullName: string): string {
-    return fullName.split(":")[0];
+    return fsPath.endsWith(FILE_EXTENSION);
   }
 
   private async renameUri(
     oldUri: vscode.Uri,
-    newUri: vscode.Uri,
+    newUri: vscode.Uri
   ): Promise<void> {
     const oldPath = oldUri.fsPath;
     const newPath = newUri.fsPath;
@@ -166,7 +146,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
       if (hasChanges) {
         const updatedDefinitions = definitions.map((def) =>
-          def.fsPath === oldPath ? { ...def, fsPath: newPath } : def,
+          def.fsPath === oldPath ? { ...def, fsPath: newPath } : def
         );
         this.definitions.set(handleName, updatedDefinitions);
       }
@@ -178,7 +158,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
     for (const [handleName, definitions] of this.definitions) {
       const filteredDefinitions = definitions.filter(
-        (def) => def.fsPath !== targetPath,
+        (def) => def.fsPath !== targetPath
       );
 
       if (filteredDefinitions.length === 0) {
@@ -199,7 +179,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   }
 
   private processDocument(
-    document: vscode.TextDocument,
+    document: vscode.TextDocument
   ): vscode.DocumentLink[] {
     const currentFsPath = document.uri.fsPath;
 
@@ -220,7 +200,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   private clearDocumentDefinitions(fsPath: string): void {
     for (const [handleName, definitions] of this.definitions) {
       const filteredDefinitions = definitions.filter(
-        (def) => def.fsPath !== fsPath,
+        (def) => def.fsPath !== fsPath
       );
 
       if (filteredDefinitions.length === 0) {
@@ -232,7 +212,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   }
 
   private extractHandlesFromDocument(
-    document: vscode.TextDocument,
+    document: vscode.TextDocument
   ): vscode.DocumentLink[] {
     const documentLinks: vscode.DocumentLink[] = [];
     const currentFsPath = document.uri.fsPath;
@@ -245,7 +225,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
         _stateAfterLine,
         lineNumber,
         indent,
-        content,
+        content
       ) => {
         // extract handle definitions
         if (lineType === LineType.Attribute) {
@@ -253,7 +233,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
             content,
             lineNumber,
             indent,
-            currentFsPath,
+            currentFsPath
           );
         }
 
@@ -263,11 +243,11 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
             content,
             lineNumber,
             indent,
-            currentFsPath,
+            currentFsPath
           );
           documentLinks.push(...usageLinks);
         }
-      },
+      }
     );
 
     return documentLinks;
@@ -285,20 +265,19 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     content: string,
     lineNumber: number,
     indent: number,
-    fsPath: string,
+    fsPath: string
   ): void {
     const handleMatch = content.match(DEF_REGEX);
     if (!handleMatch) return;
 
-    const fullHandleName = handleMatch[1];
-    const handleName = this.extractHandleName(fullHandleName);
+    const handleName = handleMatch[1];
     const handleStart = content.indexOf(handleMatch[0]);
 
     const range = new vscode.Range(
       lineNumber,
       indent + handleStart,
       lineNumber,
-      indent + handleStart + handleMatch[0].length,
+      indent + handleStart + handleMatch[0].length
     );
 
     const definition: HandleDefinition = { fsPath, range };
@@ -313,12 +292,11 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     content: string,
     lineNumber: number,
     indent: number,
-    fsPath: string,
+    fsPath: string
   ): vscode.DocumentLink[] {
     const links: vscode.DocumentLink[] = [];
     let usageMatch;
 
-    // reset regex state
     USAGE_REGEX.lastIndex = 0;
 
     while ((usageMatch = USAGE_REGEX.exec(content)) !== null) {
@@ -329,7 +307,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
         lineNumber,
         indent + matchStart,
         lineNumber,
-        indent + matchStart + usageMatch[0].length,
+        indent + matchStart + usageMatch[0].length
       );
 
       const link = new vscode.DocumentLink(range);
@@ -342,7 +320,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
   private validateHandleUsage(
     document: vscode.TextDocument,
-    documentLinks: vscode.DocumentLink[],
+    documentLinks: vscode.DocumentLink[]
   ): void {
     const diagnostics: vscode.Diagnostic[] = [];
 
@@ -354,12 +332,12 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
       const validDefinitions = this.findValidDefinitions(
         handleName,
-        currentFsPath,
+        currentFsPath
       );
       const diagnostic = this.createDiagnosticForUsage(
         link,
         handleName,
-        validDefinitions.length,
+        validDefinitions.length
       );
 
       if (diagnostic) {
@@ -373,7 +351,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   private createDiagnosticForUsage(
     link: vscode.DocumentLink,
     handleName: string,
-    definitionCount: number,
+    definitionCount: number
   ): vscode.Diagnostic | null {
     if (definitionCount === 1) {
       return null; // No error
@@ -387,13 +365,13 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     return new vscode.Diagnostic(
       link.range,
       message,
-      vscode.DiagnosticSeverity.Error,
+      vscode.DiagnosticSeverity.Error
     );
   }
 
   private findValidDefinitions(
     handleName: string,
-    currentFsPath: string,
+    currentFsPath: string
   ): HandleDefinition[] {
     const definitions = this.definitions.get(handleName);
     if (!definitions || definitions.length === 0) {
@@ -401,21 +379,21 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     }
 
     return definitions.filter((def) =>
-      this.isInSameDocumentTree(currentFsPath, def.fsPath),
+      this.isInSameDocumentTree(currentFsPath, def.fsPath)
     );
   }
 
   // VS Code interface implementations
   public provideDocumentLinks(
     document: vscode.TextDocument,
-    _token: vscode.CancellationToken,
+    _token: vscode.CancellationToken
   ): vscode.ProviderResult<vscode.DocumentLink[]> {
     return this.processDocument(document);
   }
 
   public resolveDocumentLink(
     link: vscode.DocumentLink,
-    _token: vscode.CancellationToken,
+    _token: vscode.CancellationToken
   ): vscode.ProviderResult<vscode.DocumentLink> {
     const handleName = link.data?.handleName;
     const currentFsPath = link.data?.fsPath;
@@ -426,7 +404,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
     const validDefinitions = this.findValidDefinitions(
       handleName,
-      currentFsPath,
+      currentFsPath
     );
 
     if (validDefinitions.length !== 1) {
@@ -450,7 +428,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
   private isInSameDocumentTree(
     currentFsPath: string,
-    definitionFsPath: string,
+    definitionFsPath: string
   ): boolean {
     if (currentFsPath === definitionFsPath) {
       return true;
@@ -459,11 +437,11 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     return this.parents.some((parentPath) => {
       const currentUnderParent = this.isPathUnderParent(
         currentFsPath,
-        parentPath,
+        parentPath
       );
       const definitionUnderParent = this.isPathUnderParent(
         definitionFsPath,
-        parentPath,
+        parentPath
       );
       return currentUnderParent && definitionUnderParent;
     });
