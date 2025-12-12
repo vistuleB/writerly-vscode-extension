@@ -183,10 +183,8 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   ): vscode.DocumentLink[] {
     const currentFsPath = document.uri.fsPath;
 
-    // clear existing definitions for this document
     this.clearDocumentDefinitions(currentFsPath);
 
-    // extract definitions and usage
     const documentLinks = this.extractHandlesFromDocument(document);
 
     // only validate if initialization is complete
