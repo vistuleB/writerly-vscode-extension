@@ -78,12 +78,12 @@ Valid tag examples:
 This should work fine.
 
 |> invalid-start
-    handle=2
+    handle=l2
     error=Should show validation error
 
     Hello world.
 
-The tag above should trigger validation error for starting with number.
+The tag above should trigger validation error for starting with number. >>l2
 
 Expected behavior with wly extension:
 1. Language ID recognized as "wly"
