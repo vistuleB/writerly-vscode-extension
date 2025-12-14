@@ -64,6 +64,11 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
         { scheme: "file", language: "writerly" },
         this,
       ),
+      vscode.languages.registerCodeActionsProvider(
+        { scheme: "file", language: "writerly" },
+        this,
+        { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] },
+      ),
     ];
 
     subscriptions.forEach((sub) => context.subscriptions.push(sub));
@@ -393,7 +398,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
         const diagnostic = this.createDiagnosticForUsage(
           link,
           handleName,
-          validDefinitions.length,
+          validDefinitions,
         );
 
         if (diagnostic) {
@@ -408,22 +413,46 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   private createDiagnosticForUsage(
     link: vscode.DocumentLink,
     handleName: string,
-    definitionCount: number,
+    validDefinitions: HandleDefinition[],
   ): vscode.Diagnostic | null {
+    const definitionCount = validDefinitions.length;
+
     if (definitionCount === 1) {
       return null; // No error
     }
 
-    const message =
-      definitionCount === 0
-        ? `Handle '${handleName}' not found`
-        : `Handle '${handleName}' has multiple definitions (${definitionCount} found)`;
+    let message: string;
+    if (definitionCount === 0) {
+      message = `Handle '${handleName}' not found`;
+    } else {
+      const locationInfo = validDefinitions
+        .map((def) => {
+          const relativePath = this.getRelativeWorkspacePath(def.fsPath);
+          const lineNumber = def.range.start.line + 1;
+          return `${relativePath}:${lineNumber}`;
+        })
+        .join("\n ");
+      message = `Handle '${handleName}' has multiple definitions (${definitionCount} found): \n ${locationInfo}`;
+    }
 
     return new vscode.Diagnostic(
       link.range,
       message,
       vscode.DiagnosticSeverity.Error,
     );
+  }
+
+  private getRelativeWorkspacePath(fullPath: string): string {
+    if (!vscode.workspace.workspaceFolders) {
+      return fullPath.split(/[/\\]/).pop() || fullPath;
+    }
+
+    const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+    if (fullPath.startsWith(workspaceRoot)) {
+      return fullPath.slice(workspaceRoot.length).replace(/^[/\\]/, "/");
+    }
+
+    return fullPath.split(/[/\\]/).pop() || fullPath;
   }
 
   private findValidDefinitions(
@@ -474,6 +503,62 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
     link.target = targetUri;
     return link;
+  }
+
+  public provideCodeActions(
+    document: vscode.TextDocument,
+    range: vscode.Range | vscode.Selection,
+    context: vscode.CodeActionContext,
+    token: vscode.CancellationToken,
+  ): vscode.CodeAction[] {
+    const actions: vscode.CodeAction[] = [];
+
+    // find diagnostics about multiple definitions
+    const multipleDefDiagnostics = context.diagnostics.filter((diagnostic) =>
+      diagnostic.message.includes("has multiple definitions"),
+    );
+
+    for (const diagnostic of multipleDefDiagnostics) {
+      // extract handle name from diagnostic message
+      const handleMatch = diagnostic.message.match(
+        /Handle '([^']+)' has multiple definitions/,
+      );
+      if (!handleMatch) continue;
+
+      const handleName = handleMatch[1];
+      const validDefinitions = this.findValidDefinitions(
+        handleName,
+        document.uri.fsPath,
+      );
+
+      // create a code action for each definition
+      validDefinitions.forEach((def, index) => {
+        const relativePath = this.getRelativeWorkspacePath(def.fsPath);
+        const lineNumber = def.range.start.line + 1;
+
+        const action = new vscode.CodeAction(
+          `Go to definition in ${relativePath}:${lineNumber}`,
+          vscode.CodeActionKind.QuickFix,
+        );
+
+        action.command = {
+          title: `Go to ${relativePath}:${lineNumber}`,
+          command: "vscode.open",
+          arguments: [
+            vscode.Uri.file(def.fsPath),
+            {
+              selection: def.range,
+              preserveFocus: false,
+            },
+          ],
+        };
+
+        action.diagnostics = [diagnostic];
+        actions.push(action);
+      });
+    }
+
+    return actions;
   }
 
   private attachRangeToUri(uri: vscode.Uri, range: vscode.Range): vscode.Uri {
