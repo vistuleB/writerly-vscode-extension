@@ -110,26 +110,21 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
   private onDidRename(event: vscode.FileRenameEvent): void {
     for (const file of event.files) {
-      // handle __parent.wly files for parent directory management
-      if (this.isParentFile(file.oldUri.fsPath)) {
-        this.handleParentFileRename(file.oldUri, file.newUri);
-      }
-
-      // handle regular .wly files
-      if (this.isWriterlyFile(file.oldUri.fsPath)) {
+      if (
+        this.isWriterlyFile(file.oldUri.fsPath) &&
+        this.isWriterlyFile(file.newUri.fsPath)
+      ) {
         this.renameUri(file.oldUri, file.newUri);
+      } else if (this.isWriterlyFile(file.oldUri.fsPath)) {
+        this.deleteUri(file.oldUri);
+      } else if (this.isWriterlyFile(file.newUri.fsPath)) {
+        this.createUri(file.newUri);
       }
     }
   }
 
   private onDidDelete(event: vscode.FileDeleteEvent): void {
     for (const uri of event.files) {
-      // handle __parent.wly files for parent directory management
-      if (this.isParentFile(uri.fsPath)) {
-        this.handleParentFileDelete(uri);
-      }
-
-      // handle regular .wly files
       if (this.isWriterlyFile(uri.fsPath)) {
         this.deleteUri(uri);
       }
@@ -138,14 +133,8 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
 
   private async onDidCreate(event: vscode.FileCreateEvent): Promise<void> {
     for (const uri of event.files) {
-      // handle __parent.wly files for parent directory management
-      if (this.isParentFile(uri.fsPath)) {
-        this.handleParentFileCreate(uri);
-      }
-
-      // handle regular .wly files
       if (this.isWriterlyFile(uri.fsPath)) {
-        await this.processUri(uri);
+        await this.createUri(uri);
       }
     }
   }
@@ -155,7 +144,7 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     return fsPath.endsWith(FILE_EXTENSION);
   }
 
-  private isParentFile(fsPath: string): boolean {
+  private isWriterlyParent(fsPath: string): boolean {
     return fsPath.endsWith(PARENT_FILE_NAME);
   }
 
@@ -193,9 +182,11 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     const oldPath = oldUri.fsPath;
     const newPath = newUri.fsPath;
 
+    if (this.isWriterlyParent(oldPath)) this.handleParentFileDelete(oldUri);
+    if (this.isWriterlyParent(newPath)) this.handleParentFileCreate(newUri);
+
     for (const [handleName, definitions] of this.definitions) {
       const hasChanges = definitions.some((def) => def.fsPath === oldPath);
-
       if (hasChanges) {
         const updatedDefinitions = definitions.map((def) =>
           def.fsPath === oldPath ? { ...def, fsPath: newPath } : def,
@@ -208,6 +199,8 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
   private deleteUri(uri: vscode.Uri): void {
     const targetPath = uri.fsPath;
 
+    if (this.isWriterlyParent(uri.fsPath)) this.handleParentFileDelete(uri);
+
     for (const [handleName, definitions] of this.definitions) {
       const filteredDefinitions = definitions.filter(
         (def) => def.fsPath !== targetPath,
@@ -219,6 +212,11 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
         this.definitions.set(handleName, filteredDefinitions);
       }
     }
+  }
+
+  private async createUri(uri: vscode.Uri): Promise<void> {
+    if (this.isWriterlyParent(uri.fsPath)) this.handleParentFileCreate(uri);
+    this.processUri(uri);
   }
 
   private async processUri(uri: vscode.Uri): Promise<void> {
