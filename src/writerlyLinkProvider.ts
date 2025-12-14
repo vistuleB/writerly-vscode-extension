@@ -33,7 +33,12 @@ const HANDLE_REGEX_STRING: string = `([${HANDLE_START_CHARS}][${HANDLE_BODY_CHAR
 const DEF_REGEX = new RegExp(`^handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`);
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "g");
 
-export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
+export class WriterlyLinkProvider
+  implements
+    vscode.DocumentLinkProvider,
+    vscode.CodeActionProvider,
+    vscode.DefinitionProvider
+{
   private definitions: Map<HandleName, HandleDefinition[]> = new Map();
   private parents: FSPath[] = [];
   private diagnosticCollection!: vscode.DiagnosticCollection;
@@ -68,6 +73,10 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
         { scheme: "file", language: "writerly" },
         this,
         { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] },
+      ),
+      vscode.languages.registerDefinitionProvider(
+        { scheme: "file", language: "writerly" },
+        this,
       ),
     ];
 
@@ -559,6 +568,57 @@ export class WriterlyLinkProvider implements vscode.DocumentLinkProvider {
     }
 
     return actions;
+  }
+
+  public provideDefinition(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken,
+  ): vscode.ProviderResult<vscode.Definition> {
+    if (!this.isInitialized) {
+      return undefined;
+    }
+
+    // check if cursor is on a handle usage (>>handleName)
+    const line = document.lineAt(position);
+    const text = line.text;
+
+    // reset regex and find all usage matches on this line
+    USAGE_REGEX.lastIndex = 0;
+    let usageMatch;
+
+    while ((usageMatch = USAGE_REGEX.exec(text)) !== null) {
+      const matchStart = usageMatch.index;
+      const matchEnd = matchStart + usageMatch[0].length;
+
+      // check if cursor position is within this match
+      if (position.character >= matchStart && position.character <= matchEnd) {
+        const handleName = usageMatch[1];
+        return this.getDefinitionForHandle(handleName, document.uri.fsPath);
+      }
+    }
+
+    return undefined;
+  }
+
+  private getDefinitionForHandle(
+    handleName: string,
+    currentFsPath: string,
+  ): vscode.Definition | undefined {
+    const validDefinitions = this.findValidDefinitions(
+      handleName,
+      currentFsPath,
+    );
+
+    // only provide definition for single, unambiguous handles
+    if (validDefinitions.length !== 1) {
+      return undefined;
+    }
+
+    const definition = validDefinitions[0];
+    const uri = vscode.Uri.file(definition.fsPath);
+
+    return new vscode.Location(uri, definition.range);
   }
 
   private attachRangeToUri(uri: vscode.Uri, range: vscode.Range): vscode.Uri {
