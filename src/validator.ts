@@ -77,11 +77,17 @@ const d9 = (lineNumber: number, indent: number, content: string) => {
   return errorDiagnostic(range, "Spaces in code block info annotation");
 };
 
+const d10 = (lineNumber: number, indent: number, numTabs: number) => {
+  const range = lineRange(lineNumber, indent, indent + numTabs);
+  return errorDiagnostic(range, "Tabs in initial whitespace");
+};
+
 export default class WriterlyDocumentValidator {
   constructor(private diagnosticCollection: vscode.DiagnosticCollection) {}
   diagnostics: vscode.Diagnostic[] = [];
   validTagPattern = /^[a-zA-Z_\:][-a-zA-Z0-9\._\:]*$/;
   tagIsolatingPattern = /^\|\>(\s*)(.*)$/;
+  tabIsolatingPattern = /^[\t]*/;
 
   public validateDocument(document: vscode.TextDocument): void {
     if (document.languageId !== "writerly") return;
@@ -136,9 +142,6 @@ export default class WriterlyDocumentValidator {
     ) {
       this.diagnostics.push(d1(lineNumber, indent));
     } else if (indent < stateBeforeLine.minIndent) {
-      console.log(
-        `indent: ${indent}, stateBeforeLine.minIndent: ${stateBeforeLine.minIndent}`
-      );
       this.diagnostics.push(d3(lineNumber, stateBeforeLine.minIndent));
     } else if (indent > stateBeforeLine.maxIndent) {
       this.diagnostics.push(d1(lineNumber, indent));
@@ -169,7 +172,24 @@ export default class WriterlyDocumentValidator {
           content
         );
         break;
+      case LineType.Text:
+        this.validateText(lineNumber, indent, content);
+        break;
     }
+  }
+
+  private validateText(
+    lineNumber: number,
+    indent: number,
+    content: string,
+  ): void {
+    if (!content.startsWith("\t")) return;
+    const isolatingMatch = content.match(this.tabIsolatingPattern);
+    if (!isolatingMatch) {
+      console.error("bug error: tabIsolatingPattern should match string");
+      return;
+    }
+    this.diagnostics.push(d10(lineNumber, indent, isolatingMatch[0].length));
   }
 
   private validateTag(

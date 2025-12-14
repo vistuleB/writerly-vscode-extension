@@ -35,7 +35,7 @@ export class WriterlyDocumentWalker {
       stateAfterLine: State,
       lineNumber: number,
       indent: number,
-      content: string
+      content: string,
     ) => void
   ): State {
     let state: State = {
@@ -50,7 +50,7 @@ export class WriterlyDocumentWalker {
       const line = document.lineAt(lineNumber).text.trimEnd();
       const spaces = line.match(/^( *)/)?.[1] || "";
       const indent = spaces.length;
-      const content = line.trimStart();
+      const content = line.slice(indent);
 
       // copy the previous state over:
       let prevState: State = {
