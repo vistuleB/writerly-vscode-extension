@@ -179,16 +179,6 @@ export class WriterlyLinkProvider
     this.parents = this.parents.filter((dir) => dir !== parentDir);
   }
 
-  private handleParentFileRename(oldUri: vscode.Uri, newUri: vscode.Uri): void {
-    const oldParentDir = this.getParentDirFromFilePath(oldUri.fsPath);
-    const newParentDir = this.getParentDirFromFilePath(newUri.fsPath);
-
-    const index = this.parents.indexOf(oldParentDir);
-    if (index !== -1) {
-      this.parents[index] = newParentDir;
-    }
-  }
-
   private async renameUri(
     oldUri: vscode.Uri,
     newUri: vscode.Uri,
@@ -550,13 +540,15 @@ export class WriterlyLinkProvider
           vscode.CodeActionKind.QuickFix,
         );
 
+        let z = def.range.start.translate(0, 7);
+
         action.command = {
           title: `Go to ${relativePath}:${lineNumber}`,
           command: "vscode.open",
           arguments: [
             vscode.Uri.file(def.fsPath),
             {
-              selection: def.range,
+              selection: new vscode.Range(z, z),
               preserveFocus: false,
             },
           ],
