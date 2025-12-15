@@ -1,9 +1,8 @@
 import * as vscode from "vscode";
-import * as path from "path";
 import * as fs from "fs";
-import { FileOpener, OpeningMethod } from "./fileOpener";
+import { FileOpener, OpeningMethod } from "./FileOpener";
 
-export class WriterlyHoverProvider implements vscode.HoverProvider {
+export class HoverProvider implements vscode.HoverProvider {
   public async provideHover(
     document: vscode.TextDocument,
     position: vscode.Position,

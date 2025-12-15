@@ -1,14 +1,15 @@
 "use strict";
 import * as vscode from "vscode";
-import WriterlyDocumentValidator from "./validator";
-import { FileOpener, OpeningMethod } from "./fileOpener";
-import { WriterlyHoverProvider } from "./hoverProvider";
-import { WriterlyLinkProvider } from "./writerlyLinkProvider";
+import DocumentValidator from "./DocumentValidator";
+import { WlyFileProvider } from "./WlyFileProvider";
+import { FileOpener, OpeningMethod } from "./FileOpener";
+import { HoverProvider } from "./HoverProvider";
+import { WriterlyLinkProvider } from "./LinkProvider";
 
 export function activate(context: vscode.ExtensionContext) {
   // Instantiate a validator
   const collection = vscode.languages.createDiagnosticCollection("writerly");
-  const validator = new WriterlyDocumentValidator(collection);
+  const validator = new DocumentValidator(collection);
 
   new WriterlyLinkProvider(context);
 
@@ -54,11 +55,14 @@ export function activate(context: vscode.ExtensionContext) {
     // Register hover provider for file paths
     vscode.languages.registerHoverProvider(
       { scheme: "file", language: "writerly" },
-      new WriterlyHoverProvider(),
+      new HoverProvider(),
     ),
   ];
 
   for (const disposable of disposables) {
     context.subscriptions.push(disposable);
   }
+
+  const wlyFileProvider = new WlyFileProvider();
+  vscode.window.registerTreeDataProvider('wlyFiles', wlyFileProvider);
 }

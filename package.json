@@ -3,7 +3,7 @@
   "icon": "logo.png",
   "displayName": "Writerly",
   "description": "Writerly support for VS Code with file navigation - open images, documents, and files under cursor",
-  "version": "0.0.50",
+  "version": "0.0.52",
   "publisher": "TabbyNotes",
   "author": {
     "name": "Chaker Atallah"
@@ -90,6 +90,23 @@
           "command": "writerly.openUnderCursorWithDefault",
           "when": "editorLangId == writerly",
           "group": "navigation@1"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "wly-explorer",
+          "title": "WLY Explorer",
+          "icon": "logo_outline.svg"
+        }
+      ]
+    },
+    "views": {
+      "wly-explorer": [
+        {
+          "id": "wlyFiles",
+          "name": "WLY Files in Workspace"
         }
       ]
     }

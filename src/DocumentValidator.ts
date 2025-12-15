@@ -82,7 +82,7 @@ const d10 = (lineNumber: number, indent: number, numTabs: number) => {
   return errorDiagnostic(range, "Tabs in initial whitespace");
 };
 
-export default class WriterlyDocumentValidator {
+export default class DocumentValidator {
   constructor(private diagnosticCollection: vscode.DiagnosticCollection) {}
   diagnostics: vscode.Diagnostic[] = [];
   validTagPattern = /^[a-zA-Z_\:][-a-zA-Z0-9\._\:]*$/;
