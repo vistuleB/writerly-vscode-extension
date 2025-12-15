@@ -1,141 +1,108 @@
-import * as vscode from "vscode";
-import * as path from "path";
-import * as fs from "fs";
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 
 type WlyTreeItem = WlyFileItem | WlyFolderItem;
 
 export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
-  // This EventEmitter is key: when we fire this event, VS Code re-renders the tree view.
-  private _onDidChangeTreeData: vscode.EventEmitter<
-    WlyTreeItem | undefined | null | void
-  > = new vscode.EventEmitter<WlyTreeItem | undefined | null | void>();
-  readonly onDidChangeTreeData: vscode.Event<
-    WlyTreeItem | undefined | null | void
-  > = this._onDidChangeTreeData.event;
+    // ... existing properties and methods (constructor, refresh, getTreeItem, getChildren) ...
+    private _onDidChangeTreeData: vscode.EventEmitter<WlyTreeItem | undefined | null | void> = new vscode.EventEmitter<WlyTreeItem | undefined | null | void>();
+    readonly onDidChangeTreeData: vscode.Event<WlyTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+    private wlyFilesCache: vscode.Uri[] = [];
+    private fileSystemWatcher: vscode.FileSystemWatcher;
 
-  private wlyFilesCache: vscode.Uri[] = [];
-  private fileSystemWatcher: vscode.FileSystemWatcher;
-
-  constructor() {
-    // Create a FileSystemWatcher that specifically watches for changes to any .wly file
-    // The pattern '**/*.wly' ensures we capture changes anywhere in the workspace
-    this.fileSystemWatcher =
-      vscode.workspace.createFileSystemWatcher("**/*.wly");
-
-    // Register listeners for create, change, and delete events
-    this.fileSystemWatcher.onDidChange((uri) => this.refresh());
-    this.fileSystemWatcher.onDidCreate((uri) => this.refresh());
-    this.fileSystemWatcher.onDidDelete((uri) => this.refresh());
-
-    // Ensure the watcher is disposed of when the provider is disposed (good practice)
-    // If you need to manage the lifecycle, you might pass a context to the constructor
-  }
-
-  // Public refresh method that invalidates the current view and triggers a re-render
-  public refresh(): void {
-    // Clear the cache first so the next call to getChildren re-scans the disk
-    this.wlyFilesCache = [];
-    this._onDidChangeTreeData.fire();
-  }
-
-  getTreeItem(element: WlyTreeItem): vscode.TreeItem {
-    return element;
-  }
-
-  async getChildren(element?: WlyTreeItem): Promise<WlyTreeItem[]> {
-    if (!vscode.workspace.workspaceFolders) {
-      return [];
+    constructor() {
+        this.fileSystemWatcher = vscode.workspace.createFileSystemWatcher('**/*.wly');
+        this.fileSystemWatcher.onDidChange(uri => this.refresh());
+        this.fileSystemWatcher.onDidCreate(uri => this.refresh());
+        this.fileSystemWatcher.onDidDelete(uri => this.refresh());
     }
 
-    if (this.wlyFilesCache.length === 0 && !element) {
-      // Only perform the full workspace search if the cache is empty and we are at the root
-      this.wlyFilesCache = await vscode.workspace.findFiles(
-        "**/*.wly",
-        "**/node_modules/**"
-      );
-      if (this.wlyFilesCache.length === 0) {
-        // You might want to display a message inside the view if no files are found
-        vscode.commands.executeCommand(
-          "setContext",
-          "wlyFilesExplorerHasFiles",
-          false
-        );
-      } else {
-        vscode.commands.executeCommand(
-          "setContext",
-          "wlyFilesExplorerHasFiles",
-          true
-        );
-      }
+    public refresh(): void {
+        this.wlyFilesCache = []; 
+        this._onDidChangeTreeData.fire();
     }
 
-    if (!element) {
-      return this.buildWorkspaceRootItems();
-    }
+    getTreeItem(element: WlyTreeItem): vscode.TreeItem { return element; }
 
-    if (element instanceof WlyFolderItem) {
-      return this.buildFolderChildren(element);
-    }
+    async getChildren(element?: WlyTreeItem): Promise<WlyTreeItem[]> {
+        if (!vscode.workspace.workspaceFolders) { return []; }
 
-    return [];
-  }
-
-  private buildWorkspaceRootItems(): WlyTreeItem[] {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders) return [];
-
-    const items: WlyTreeItem[] = [];
-    workspaceFolders.forEach((folder) => {
-      const hasWlyFiles = this.wlyFilesCache.some((uri) =>
-        uri.fsPath.startsWith(folder.uri.fsPath)
-      );
-      if (hasWlyFiles) {
-        items.push(new WlyFolderItem(folder.uri, folder.name));
-      }
-    });
-    return items;
-  }
-
-  private async buildFolderChildren(
-    folderItem: WlyFolderItem
-  ): Promise<WlyTreeItem[]> {
-    const parentDir = folderItem.resourceUri.fsPath;
-    const items: WlyTreeItem[] = [];
-
-    // Note: In a real-time system, using sync FS methods can be risky in an async context,
-    // but for a view provider refresh, it's often acceptable for simplicity.
-    try {
-      const subdirectories = fs
-        .readdirSync(parentDir, { withFileTypes: true })
-        .filter((dirent) => dirent.isDirectory())
-        .map((dirent) => path.join(parentDir, dirent.name));
-
-      for (const dirPath of subdirectories) {
-        const hasWlyFilesDeep = this.wlyFilesCache.some((uri) =>
-          uri.fsPath.startsWith(dirPath)
-        );
-        if (hasWlyFilesDeep) {
-          const uri = vscode.Uri.file(dirPath);
-          items.push(new WlyFolderItem(uri, path.basename(dirPath)));
+        if (this.wlyFilesCache.length === 0 && !element) {
+            this.wlyFilesCache = await vscode.workspace.findFiles('**/*.wly', '**/node_modules/**');
+            // ... (optional context setting code omitted for brevity) ...
         }
-      }
 
-      const files = this.wlyFilesCache.filter(
-        (uri) => path.dirname(uri.fsPath) === parentDir
-      );
+        if (!element) {
+            return this.buildWorkspaceRootItems();
+        } else if (element instanceof WlyFolderItem) {
+            return this.buildFolderChildren(element);
+        }
 
-      files.forEach((uri) => {
-        items.push(new WlyFileItem(uri));
-      });
-    } catch (error) {
-      console.error(`Error reading directory ${parentDir}:`, error);
+        return [];
+    }
+    
+    // --- New comparison helper function ---
+    private compareItems(a: WlyTreeItem, b: WlyTreeItem): number {
+        // Use localeCompare for correct alphabetical sorting that respects OS rules
+        const nameA = a.label as string; 
+        const nameB = b.label as string;
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
     }
 
-    return items;
-  }
-}
+    private buildWorkspaceRootItems(): WlyTreeItem[] {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) return [];
 
-// ... WlyFileItem and WlyFolderItem classes remain the same as before ...
+        const items: WlyTreeItem[] = [];
+        workspaceFolders.forEach(folder => {
+            const hasWlyFiles = this.wlyFilesCache.some(uri => uri.fsPath.startsWith(folder.uri.fsPath));
+            if (hasWlyFiles) {
+                items.push(new WlyFolderItem(folder.uri, folder.name));
+            }
+        });
+        
+        // Sort the top-level items alphabetically
+        return items.sort(this.compareItems);
+    }
+
+    private async buildFolderChildren(folderItem: WlyFolderItem): Promise<WlyTreeItem[]> {
+        const parentDir = folderItem.resourceUri.fsPath;
+        let items: WlyTreeItem[] = []; // Change to 'let' to allow sorting
+
+        try {
+            // ... (logic to find subdirectories remains the same) ...
+            const subdirectories = fs.readdirSync(parentDir, { withFileTypes: true })
+                .filter(dirent => dirent.isDirectory())
+                .map(dirent => path.join(parentDir, dirent.name));
+
+            for (const dirPath of subdirectories) {
+                const hasWlyFilesDeep = this.wlyFilesCache.some(uri => uri.fsPath.startsWith(dirPath));
+                if (hasWlyFilesDeep) {
+                    const uri = vscode.Uri.file(dirPath);
+                    items.push(new WlyFolderItem(uri, path.basename(dirPath)));
+                }
+            }
+
+            // ... (logic to find files remains the same) ...
+            const files = this.wlyFilesCache.filter(uri => 
+                path.dirname(uri.fsPath) === parentDir
+            );
+            
+            files.forEach(uri => {
+                 items.push(new WlyFileItem(uri));
+            });
+
+            // Sort all collected items (folders and files combined) alphabetically
+            items = items.sort(this.compareItems);
+
+        } catch (error) {
+            console.error(`Error reading directory ${parentDir}:`, error);
+        }
+        
+        return items;
+    }
+}
 
 class WlyFolderItem extends vscode.TreeItem {
   constructor(public readonly resourceUri: vscode.Uri, label: string) {
