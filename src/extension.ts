@@ -76,46 +76,4 @@ export function activate(context: vscode.ExtensionContext) {
       wlyFileProvider.refresh()
     )
   );
-
-  // This is for "wlyFiles.renameFile" command, that
-  // currently doesn't work; see two matching entries in package.json (and delete at will):
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "wlyFiles.renameFile",
-      async (item: any) => {
-        if (item && item.resourceUri) {
-          const oldUri = item.resourceUri as vscode.Uri;
-          const oldName = path.basename(oldUri.fsPath);
-
-          const newName = await vscode.window.showInputBox({
-            title: `Rename ${oldName}`,
-            value: oldName,
-            prompt:
-              "Enter the new name for the file, including the .wly extension",
-          });
-
-          if (newName && newName !== oldName) {
-            const parentDir = path.dirname(oldUri.fsPath);
-            const newUri = vscode.Uri.file(path.join(parentDir, newName));
-
-            try {
-              // Use the VS Code workspace edit API to perform the rename
-              const edit = new vscode.WorkspaceEdit();
-              edit.renameFile(oldUri, newUri, { overwrite: true });
-              await vscode.workspace.applyEdit(edit);
-
-              // The file watcher in WlyFileProvider will automatically call refresh()
-              // so no manual refresh is needed here if your watcher is set up correctly.
-            } catch (error) {
-              vscode.window.showErrorMessage(
-                `Failed to rename file: ${
-                  error instanceof Error ? error.message : String(error)
-                }`
-              );
-            }
-          }
-        }
-      }
-    )
-  );
 }

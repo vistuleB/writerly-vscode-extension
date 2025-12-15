@@ -71,10 +71,6 @@
         "command": "writerly.openResolvedPath",
         "title": "---",
         "category": "Writerly"
-      },
-      {
-        "command": "wlyFiles.renameFile",
-        "title": "Rename WLY File"
       }
     ],
     "keybindings": [
@@ -91,13 +87,6 @@
           "command": "writerly.openUnderCursorWithDefault",
           "when": "editorLangId == writerly",
           "group": "navigation@1"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "wlyFiles.renameFile",
-          "when": "view == wlyFiles && contextValue == wlyFile",
-          "group": "inline"
         }
       ]
     },
