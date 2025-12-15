@@ -106,7 +106,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
 
 class WlyFolderItem extends vscode.TreeItem {
   constructor(public readonly resourceUri: vscode.Uri, label: string) {
-    super(label, vscode.TreeItemCollapsibleState.Collapsed);
+    super(label, vscode.TreeItemCollapsibleState.Expanded);
     this.contextValue = "wlyFolder";
     this.iconPath = vscode.ThemeIcon.Folder;
   }
