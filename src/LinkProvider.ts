@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { WriterlyDocumentWalker, LineType } from "./walker";
+import StaticDocumentValidator from "./StaticValidator";
 
 enum ValidationState {
   UNKNOWN = "unknown",
@@ -43,13 +44,8 @@ export class WriterlyLinkProvider
   private diagnosticCollection!: vscode.DiagnosticCollection;
   private isInitialized = false;
   private documentLinks: Map<FSPath, vscode.DocumentLink[]> = new Map();
-  private our_walker: WriterlyDocumentWalker;
 
-  constructor(
-    context: vscode.ExtensionContext,
-    walker: WriterlyDocumentWalker,
-  ) {
-    this.our_walker = walker;
+  constructor(context: vscode.ExtensionContext) {
     this.diagnosticCollection = vscode.languages.createDiagnosticCollection("writerly-links");
     const disposables = [
       this.diagnosticCollection,
@@ -218,9 +214,9 @@ export class WriterlyLinkProvider
   ): vscode.DocumentLink[] {
     const currentFsPath = document.uri.fsPath;
     this.clearDocumentDefinitions(currentFsPath);
-    const documentLinks = this.extractHandlesFromDocument(document);
+    const [documentLinks, diagnostics] = this.extractHandlesFromDocument(document);
     if (this.isInitialized) {
-      this.validateHandleUsage(document, documentLinks);
+      this.validateHandleUsage(document, documentLinks, diagnostics);
     }
     this.documentLinks.set(currentFsPath, documentLinks);
     return documentLinks;
@@ -242,11 +238,12 @@ export class WriterlyLinkProvider
 
   private extractHandlesFromDocument(
     document: vscode.TextDocument,
-  ): vscode.DocumentLink[] {
+  ): [vscode.DocumentLink[], vscode.Diagnostic[]] {
     const documentLinks: vscode.DocumentLink[] = [];
     const currentFsPath = document.uri.fsPath;
+    const diagnostics: vscode.Diagnostic[] = [];
 
-    WriterlyDocumentWalker.walk(
+    let finalState = WriterlyDocumentWalker.walk(
       document,
       (
         _stateBeforeLine,
@@ -256,6 +253,16 @@ export class WriterlyLinkProvider
         indent,
         content,
       ) => {
+        StaticDocumentValidator.validateLine(
+          _stateBeforeLine,
+          lineType,
+          _stateAfterLine,
+          lineNumber,
+          indent,
+          content,
+          diagnostics, 
+        )
+
         // extract handle definitions
         if (lineType === LineType.Attribute) {
           this.extractHandleDefinition(
@@ -279,7 +286,9 @@ export class WriterlyLinkProvider
       },
     );
 
-    return documentLinks;
+    StaticDocumentValidator.validateFinalState(document, finalState, diagnostics);
+
+    return [documentLinks, diagnostics];
   }
 
   private shouldProcessUsageInLine(lineType: LineType): boolean {
@@ -350,8 +359,8 @@ export class WriterlyLinkProvider
   private validateHandleUsage(
     document: vscode.TextDocument,
     documentLinks: vscode.DocumentLink[],
+    diagnostics: vscode.Diagnostic[] = [],
   ): void {
-    const diagnostics: vscode.Diagnostic[] = [];
 
     for (const link of documentLinks) {
       const handleName = link.data?.handleName;

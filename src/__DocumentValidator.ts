@@ -167,7 +167,7 @@ export default class DocumentValidator {
     stateAfterLine: State,
     lineNumber: number,
     indent: number,
-    content: string
+    content: string,
   ): void {
     if (content === "") return;
     if (
