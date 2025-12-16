@@ -1,8 +1,6 @@
 |> article
     title=Main Article
     handle=diagram-1-2
-    handle=diagram-1-2
-    handle=diagram-1-2
 
     Hi >>diagram-1-2.
 
@@ -10,4 +8,4 @@
 
 
     |> SomePlace
-        handle= lode
+        handle=lode

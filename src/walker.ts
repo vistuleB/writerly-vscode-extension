@@ -26,7 +26,7 @@ export enum LineType {
   CodeBlockLine,
 }
 
-export class WriterlyDocumentWalker {
+export class WriterlyDocumentWalker {  
   public static walk(
     document: vscode.TextDocument,
     callback: (
@@ -36,7 +36,7 @@ export class WriterlyDocumentWalker {
       lineNumber: number,
       indent: number,
       content: string,
-    ) => void
+    ) => void,
   ): State {
     let state: State = {
       zone: Zone.Text,

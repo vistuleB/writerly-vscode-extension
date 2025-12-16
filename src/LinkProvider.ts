@@ -42,8 +42,14 @@ export class WriterlyLinkProvider
   private parents: FSPath[] = [];
   private diagnosticCollection!: vscode.DiagnosticCollection;
   private isInitialized = false;
+  private documentLinks: Map<FSPath, vscode.DocumentLink[]> = new Map();
+  private our_walker: WriterlyDocumentWalker;
 
-  constructor(context: vscode.ExtensionContext) {
+  constructor(
+    context: vscode.ExtensionContext,
+    walker: WriterlyDocumentWalker,
+  ) {
+    this.our_walker = walker;
     this.diagnosticCollection = vscode.languages.createDiagnosticCollection("writerly-links");
     const disposables = [
       this.diagnosticCollection,
@@ -92,7 +98,6 @@ export class WriterlyLinkProvider
     );
   }
 
-  // event handlers
   private onDidChange(document: vscode.TextDocument): void {
     if (!this.isWriterlyFile(document.uri.fsPath)) return;
     this.processDocument(document);
@@ -212,20 +217,13 @@ export class WriterlyLinkProvider
     document: vscode.TextDocument,
   ): vscode.DocumentLink[] {
     const currentFsPath = document.uri.fsPath;
-
     this.clearDocumentDefinitions(currentFsPath);
-
     const documentLinks = this.extractHandlesFromDocument(document);
-
-    // only validate if initialization is complete
     if (this.isInitialized) {
       this.validateHandleUsage(document, documentLinks);
     }
-
-    // filter out ERROR links to avoid visual conflict between underlines and squiggles
-    return documentLinks.filter(
-      (link) => link.data.validated !== ValidationState.ERROR,
-    );
+    this.documentLinks.set(currentFsPath, documentLinks);
+    return documentLinks;
   }
 
   private clearDocumentDefinitions(fsPath: string): void {
@@ -449,6 +447,12 @@ export class WriterlyLinkProvider
     document: vscode.TextDocument,
     _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.DocumentLink[]> {
+    let links = this.documentLinks.get(document.uri.fsPath);
+    if (links !== undefined) {
+      return links.filter(
+        (link) => link.data.validated !== ValidationState.ERROR,
+      );
+    }
     return this.processDocument(document);
   }
 
@@ -474,7 +478,8 @@ export class WriterlyLinkProvider
 
     const definition = validDefinitions[0];
     const uri = vscode.Uri.file(definition.fsPath);
-    const targetUri = this.attachRangeToUri(uri, definition.range);
+    const range = new vscode.Range(definition.range.start, definition.range.start);
+    const targetUri = this.attachRangeToUri(uri, range);
 
     link.target = targetUri;
     return link;

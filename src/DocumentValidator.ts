@@ -88,10 +88,14 @@ export default class DocumentValidator {
   tagIsolatingPattern = /^\|\>(\s*)(.*)$/;
   tabIsolatingPattern = /^[\t]*/;
   diagnosticCollection: vscode.DiagnosticCollection;
+  our_walker: WriterlyDocumentWalker;
 
   constructor(
     context: vscode.ExtensionContext,
+    walker: WriterlyDocumentWalker, 
   ) {
+    this.our_walker = walker;
+
     this.diagnosticCollection =
       vscode.languages.createDiagnosticCollection("writerly-validator");
 
