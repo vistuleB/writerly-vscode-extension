@@ -24,7 +24,6 @@ type HandleDefinition = {
 const FILE_EXTENSION: string = ".wly";
 const PARENT_FILE_NAME: string = "__parent.wly";
 const MAX_FILES: number = 1500;
-const DIAGNOSTIC_COLLECTION_NAME: string = "writerly-links";
 
 const HANDLE_START_CHARS: string = "a-zA-Z_";
 const HANDLE_BODY_CHARS: string = "-a-zA-Z0-9\\._\\^";
@@ -45,42 +44,19 @@ export class WriterlyLinkProvider
   private isInitialized = false;
 
   constructor(context: vscode.ExtensionContext) {
-    this.setupDiagnostics(context);
-    this.registerEventHandlers(context);
-    this.initializeAsync();
-  }
-
-  private setupDiagnostics(context: vscode.ExtensionContext): void {
-    this.diagnosticCollection = vscode.languages.createDiagnosticCollection(
-      DIAGNOSTIC_COLLECTION_NAME,
-    );
-    context.subscriptions.push(this.diagnosticCollection);
-  }
-
-  private registerEventHandlers(context: vscode.ExtensionContext): void {
-    const subscriptions = [
-      vscode.workspace.onDidChangeTextDocument((event) =>
-        this.onDidChange(event.document),
-      ),
+    this.diagnosticCollection = vscode.languages.createDiagnosticCollection("writerly-links");
+    const disposables = [
+      this.diagnosticCollection,
+      vscode.workspace.onDidChangeTextDocument((event) => this.onDidChange(event.document)),
       vscode.workspace.onDidRenameFiles((event) => this.onDidRename(event)),
       vscode.workspace.onDidDeleteFiles((event) => this.onDidDelete(event)),
       vscode.workspace.onDidCreateFiles((event) => this.onDidCreate(event)),
-      vscode.languages.registerDocumentLinkProvider(
-        { scheme: "file", language: "writerly" },
-        this,
-      ),
-      vscode.languages.registerCodeActionsProvider(
-        { scheme: "file", language: "writerly" },
-        this,
-        { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] },
-      ),
-      vscode.languages.registerDefinitionProvider(
-        { scheme: "file", language: "writerly" },
-        this,
-      ),
+      vscode.languages.registerDocumentLinkProvider({ scheme: "file", language: "writerly" }, this),
+      vscode.languages.registerCodeActionsProvider({ scheme: "file", language: "writerly" }, this, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
+      vscode.languages.registerDefinitionProvider({ scheme: "file", language: "writerly" }, this),
     ];
-
-    subscriptions.forEach((sub) => context.subscriptions.push(sub));
+    disposables.forEach((disp) => context.subscriptions.push(disp));
+    this.initializeAsync();
   }
 
   private async initializeAsync(): Promise<void> {

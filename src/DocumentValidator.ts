@@ -83,11 +83,38 @@ const d10 = (lineNumber: number, indent: number, numTabs: number) => {
 };
 
 export default class DocumentValidator {
-  constructor(private diagnosticCollection: vscode.DiagnosticCollection) {}
   diagnostics: vscode.Diagnostic[] = [];
   validTagPattern = /^[a-zA-Z_\:][-a-zA-Z0-9\._\:]*$/;
   tagIsolatingPattern = /^\|\>(\s*)(.*)$/;
   tabIsolatingPattern = /^[\t]*/;
+  diagnosticCollection: vscode.DiagnosticCollection;
+
+  constructor(
+    context: vscode.ExtensionContext,
+  ) {
+    this.diagnosticCollection =
+      vscode.languages.createDiagnosticCollection("writerly-validator");
+
+    let disposables: Array<vscode.Disposable> = [
+      this.diagnosticCollection,
+
+      vscode.workspace.onDidOpenTextDocument(
+        (document: vscode.TextDocument) => this.validateDocument(document)
+      ),
+
+      vscode.workspace.onDidChangeTextDocument(
+        (event: vscode.TextDocumentChangeEvent) => this.validateDocument(event.document)
+      ),
+    ];
+
+    for (const disposable of disposables) {
+      context.subscriptions.push(disposable);
+    }
+
+    vscode.workspace.textDocuments.forEach(
+      (document: vscode.TextDocument) => this.validateDocument(document)
+    );
+  }
 
   public validateDocument(document: vscode.TextDocument): void {
     if (document.languageId !== "writerly") return;
@@ -98,6 +125,9 @@ export default class DocumentValidator {
     if (state.zone === Zone.CodeBlock) {
       this.diagnostics.push(d5(state));
       this.diagnostics.push(d6(document));
+    }
+    if (this.diagnosticCollection === null || this.diagnosticCollection === undefined) {
+      console.log("yeah was undefined");
     }
     this.diagnosticCollection.set(document.uri, this.diagnostics);
   }

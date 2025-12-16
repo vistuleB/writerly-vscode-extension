@@ -3,6 +3,18 @@ import * as fs from "fs";
 import { FileOpener, OpeningMethod } from "./FileOpener";
 
 export class HoverProvider implements vscode.HoverProvider {
+  constructor(context: vscode.ExtensionContext) {
+    let disposables = [
+      vscode.languages.registerHoverProvider(
+        { scheme: "file", language: "writerly" },
+        this
+      ),
+    ];
+
+    for (const disposable of disposables)
+      context.subscriptions.push(disposable);
+  }
+
   public async provideHover(
     document: vscode.TextDocument,
     position: vscode.Position,

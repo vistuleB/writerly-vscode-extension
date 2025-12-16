@@ -12,6 +12,33 @@ export enum OpeningMethod {
 }
 
 export class FileOpener {
+  constructor(context: vscode.ExtensionContext) {
+    let disposables = [
+      vscode.commands.registerCommand(
+        "writerly.openUnderCursorWithDefault",
+        () => FileOpener.openUnderCursor(OpeningMethod.WITH_DEFAULT)
+      ),
+
+      vscode.commands.registerCommand(
+        "writerly.openUnderCursorWithVSCode",
+        () => FileOpener.openUnderCursor(OpeningMethod.WITH_VSCODE)
+      ),
+
+      vscode.commands.registerCommand(
+        "writerly.openUnderCursorAsImageWithVSCode",
+        () => FileOpener.openUnderCursor(OpeningMethod.AS_IMAGE_WITH_VSCODE)
+      ),
+
+      vscode.commands.registerCommand(
+        "writerly.openResolvedPath",
+        (path, method) => FileOpener.openResolvedPath(path, method)
+      ),
+    ];
+
+    for (const disposable of disposables)
+      context.subscriptions.push(disposable);
+  }
+
   private static getPossiblePathAtPosition(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -52,45 +79,6 @@ export class FileOpener {
     }
     return start + 1;
   }
-
-  // public static getPossiblePathAtPosition(
-  //   document: vscode.TextDocument,
-  //   position: vscode.Position,
-  // ): string {
-  //   const line = document.lineAt(position);
-  //   const text = line.text;
-  //   return (
-  //     this.grabCharsBackwardWhileNotForbidden(text, position.character) + 
-  //     this.grabCharsForwardWhileNotForbidden(text, position.character)
-  //   );
-  // }
-  
-  // private static grabCharsForwardWhileNotForbidden(
-  //   text: string,
-  //   from: number,
-  // ): string {
-  //   let length = text.length;
-  //   let end = from;
-  //   while (end < length) {
-  //     let c = text.charAt(end);
-  //     if (forbiddenChars.test(c)) break;
-  //     end++;
-  //   }
-  //   return text.substring(from, end);
-  // }
-
-  // private static grabCharsBackwardWhileNotForbidden(
-  //   text: string,
-  //   from: number,
-  // ): string {
-  //   let start = from - 1;
-  //   while (start >= 0) {
-  //     let c = text.charAt(start);
-  //     if (forbiddenChars.test(c)) break;
-  //     start--;
-  //   }
-  //   return text.substring(start + 1, from);
-  // }
 
   public static isImageFile(filePath: string): boolean {
     for (const ext of [

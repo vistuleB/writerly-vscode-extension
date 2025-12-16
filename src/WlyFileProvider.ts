@@ -5,22 +5,24 @@ import * as fs from "fs";
 type WlyTreeItem = WlyFileItem | WlyFolderItem;
 
 export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
-  // ... existing properties and methods (constructor, refresh, getTreeItem, getChildren) ...
-  private _onDidChangeTreeData: vscode.EventEmitter<
-    WlyTreeItem | undefined | null | void
-  > = new vscode.EventEmitter<WlyTreeItem | undefined | null | void>();
-  readonly onDidChangeTreeData: vscode.Event<
-    WlyTreeItem | undefined | null | void
-  > = this._onDidChangeTreeData.event;
-  private wlyFilesCache: vscode.Uri[] = [];
-  private fileSystemWatcher: vscode.FileSystemWatcher;
+  _onDidChangeTreeData: vscode.EventEmitter<WlyTreeItem | undefined | null | void> = new vscode.EventEmitter<WlyTreeItem | undefined | null | void>();
+  readonly onDidChangeTreeData: vscode.Event<WlyTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+  wlyFilesCache: vscode.Uri[] = [];
+  fileSystemWatcher: vscode.FileSystemWatcher;
 
-  constructor() {
+  constructor(context: vscode.ExtensionContext) {
     this.fileSystemWatcher =
       vscode.workspace.createFileSystemWatcher("**/*.wly");
-    this.fileSystemWatcher.onDidChange((uri) => this.refresh());
-    this.fileSystemWatcher.onDidCreate((uri) => this.refresh());
-    this.fileSystemWatcher.onDidDelete((uri) => this.refresh());
+    const disposables = [
+      this.fileSystemWatcher.onDidChange(_uri => this.refresh()),
+      this.fileSystemWatcher.onDidCreate(_uri => this.refresh()),
+      this.fileSystemWatcher.onDidDelete(_uri => this.refresh()),
+      // apparently this one kind of optional (?):
+      vscode.commands.registerCommand("wlyFiles.refreshEntry", () => this.refresh()),
+    ];
+    for (const disposable of disposables)
+      context.subscriptions.push(disposable);
+    vscode.window.registerTreeDataProvider("wlyFiles", this);
   }
 
   public refresh(): void {
