@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { Zone, LineType, State, WriterlyDocumentWalker } from "./walker";
+import { Zone, LineType, State, WriterlyDocumentWalker } from "./DocumentWalker";
 
 const lineRange = (
   lineNumber: number,
@@ -147,7 +147,7 @@ export default class StaticDocumentValidator {
       diagnostics.push(d3(lineNumber, stateBeforeLine.minIndent));
     } else if (indent > stateBeforeLine.maxIndent) {
       diagnostics.push(d1(lineNumber, indent));
-    } else if (indent % 4 !== 0) {
+    } else if (indent % 4 !== 0 && stateBeforeLine.zone != Zone.CodeBlock) {
       diagnostics.push(d2(lineNumber, indent));
     }
   }

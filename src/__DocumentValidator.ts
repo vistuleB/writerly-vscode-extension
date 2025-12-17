@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { Zone, LineType, State, WriterlyDocumentWalker } from "./walker";
+import { Zone, LineType, State, WriterlyDocumentWalker } from "./DocumentWalker";
 
 const lineRange = (
   lineNumber: number,

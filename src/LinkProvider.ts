@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { WriterlyDocumentWalker, LineType } from "./walker";
+import { WriterlyDocumentWalker, LineType } from "./DocumentWalker";
 import StaticDocumentValidator from "./StaticValidator";
 
 enum ValidationState {
@@ -214,10 +214,12 @@ export class WriterlyLinkProvider
   ): vscode.DocumentLink[] {
     const currentFsPath = document.uri.fsPath;
     this.clearDocumentDefinitions(currentFsPath);
-    const [documentLinks, diagnostics] = this.extractHandlesFromDocument(document);
+    const diagnostics: vscode.Diagnostic[] = [];
+    const documentLinks = this.extractHandlesFromDocument(document, diagnostics);
     if (this.isInitialized) {
-      this.validateHandleUsage(document, documentLinks, diagnostics);
+      this.validateHandleUsage(documentLinks, diagnostics);
     }
+    this.diagnosticCollection.set(document.uri, diagnostics);
     this.documentLinks.set(currentFsPath, documentLinks);
     return documentLinks;
   }
@@ -238,10 +240,10 @@ export class WriterlyLinkProvider
 
   private extractHandlesFromDocument(
     document: vscode.TextDocument,
-  ): [vscode.DocumentLink[], vscode.Diagnostic[]] {
+    diagnostics: vscode.Diagnostic[],
+  ): vscode.DocumentLink[] {
     const documentLinks: vscode.DocumentLink[] = [];
     const currentFsPath = document.uri.fsPath;
-    const diagnostics: vscode.Diagnostic[] = [];
 
     let finalState = WriterlyDocumentWalker.walk(
       document,
@@ -288,7 +290,7 @@ export class WriterlyLinkProvider
 
     StaticDocumentValidator.validateFinalState(document, finalState, diagnostics);
 
-    return [documentLinks, diagnostics];
+    return documentLinks;
   }
 
   private shouldProcessUsageInLine(lineType: LineType): boolean {
@@ -357,7 +359,6 @@ export class WriterlyLinkProvider
   }
 
   private validateHandleUsage(
-    document: vscode.TextDocument,
     documentLinks: vscode.DocumentLink[],
     diagnostics: vscode.Diagnostic[] = [],
   ): void {
@@ -388,8 +389,6 @@ export class WriterlyLinkProvider
         }
       }
     }
-
-    this.diagnosticCollection.set(document.uri, diagnostics);
   }
 
   private createDiagnosticForUsage(
