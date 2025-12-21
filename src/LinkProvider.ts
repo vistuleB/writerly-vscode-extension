@@ -33,7 +33,7 @@ const HANDLE_REGEX_STRING: string = `([${HANDLE_START_CHARS}][${HANDLE_BODY_CHAR
 const DEF_REGEX = new RegExp(`^handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`);
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "g");
 
-export class WriterlyLinkProvider
+export class WlyLinkProvider
   implements
     vscode.DocumentLinkProvider,
     vscode.CodeActionProvider,
@@ -46,16 +46,29 @@ export class WriterlyLinkProvider
   private documentLinks: Map<FSPath, vscode.DocumentLink[]> = new Map();
 
   constructor(context: vscode.ExtensionContext) {
-    this.diagnosticCollection = vscode.languages.createDiagnosticCollection("writerly-links");
+    this.diagnosticCollection =
+      vscode.languages.createDiagnosticCollection("writerly-links");
     const disposables = [
       this.diagnosticCollection,
-      vscode.workspace.onDidChangeTextDocument((event) => this.onDidChange(event.document)),
+      vscode.workspace.onDidChangeTextDocument((event) =>
+        this.onDidChange(event.document),
+      ),
       vscode.workspace.onDidRenameFiles((event) => this.onDidRename(event)),
       vscode.workspace.onDidDeleteFiles((event) => this.onDidDelete(event)),
       vscode.workspace.onDidCreateFiles((event) => this.onDidCreate(event)),
-      vscode.languages.registerDocumentLinkProvider({ scheme: "file", language: "writerly" }, this),
-      vscode.languages.registerCodeActionsProvider({ scheme: "file", language: "writerly" }, this, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
-      vscode.languages.registerDefinitionProvider({ scheme: "file", language: "writerly" }, this),
+      vscode.languages.registerDocumentLinkProvider(
+        { scheme: "file", language: "writerly" },
+        this,
+      ),
+      vscode.languages.registerCodeActionsProvider(
+        { scheme: "file", language: "writerly" },
+        this,
+        { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] },
+      ),
+      vscode.languages.registerDefinitionProvider(
+        { scheme: "file", language: "writerly" },
+        this,
+      ),
     ];
     disposables.forEach((disp) => context.subscriptions.push(disp));
     this.initializeAsync();
@@ -67,7 +80,7 @@ export class WriterlyLinkProvider
       await this.processAllDocuments();
       this.isInitialized = true;
     } catch (error) {
-      console.error("WriterlyLinkProvider initialization failed:", error);
+      console.error("WlyLinkProvider initialization failed:", error);
     }
   }
 
@@ -215,7 +228,10 @@ export class WriterlyLinkProvider
     const currentFsPath = document.uri.fsPath;
     this.clearDocumentDefinitions(currentFsPath);
     const diagnostics: vscode.Diagnostic[] = [];
-    const documentLinks = this.extractHandlesFromDocument(document, diagnostics);
+    const documentLinks = this.extractHandlesFromDocument(
+      document,
+      diagnostics,
+    );
     if (this.isInitialized) {
       this.validateHandleUsage(documentLinks, diagnostics);
     }
@@ -262,8 +278,8 @@ export class WriterlyLinkProvider
           lineNumber,
           indent,
           content,
-          diagnostics, 
-        )
+          diagnostics,
+        );
 
         // extract handle definitions
         if (lineType === LineType.Attribute) {
@@ -288,7 +304,11 @@ export class WriterlyLinkProvider
       },
     );
 
-    StaticDocumentValidator.validateFinalState(document, finalState, diagnostics);
+    StaticDocumentValidator.validateFinalState(
+      document,
+      finalState,
+      diagnostics,
+    );
 
     return documentLinks;
   }
@@ -362,7 +382,6 @@ export class WriterlyLinkProvider
     documentLinks: vscode.DocumentLink[],
     diagnostics: vscode.Diagnostic[] = [],
   ): void {
-
     for (const link of documentLinks) {
       const handleName = link.data?.handleName;
       const currentFsPath = link.data?.fsPath;
@@ -486,7 +505,10 @@ export class WriterlyLinkProvider
 
     const definition = validDefinitions[0];
     const uri = vscode.Uri.file(definition.fsPath);
-    const range = new vscode.Range(definition.range.start, definition.range.start);
+    const range = new vscode.Range(
+      definition.range.start,
+      definition.range.start,
+    );
     const targetUri = this.attachRangeToUri(uri, range);
 
     link.target = targetUri;
