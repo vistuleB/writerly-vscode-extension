@@ -18,21 +18,34 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
   })();
 
   constructor(context: vscode.ExtensionContext) {
-    this.init();
-    const subscription = vscode.languages.registerCompletionItemProvider(
-      { scheme: "file", language: "writerly" },
-      this,
-      "=", // Trigger on equals sign
+    this.loadFiles();
+    const completionItemProvider =
+      vscode.languages.registerCompletionItemProvider(
+        { scheme: "file", language: "writerly" },
+        this,
+        "=", // Trigger on equals sign
+      );
+
+    context.subscriptions.push(completionItemProvider);
+
+    // Watcher
+    const imgExtensionsPattern = this.imgExtensions.join(",");
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      `**/*.{${imgExtensionsPattern}}`,
     );
+    // Update the files list whenever files change
+    watcher.onDidCreate(() => this.loadFiles());
+    watcher.onDidDelete(() => this.loadFiles());
+    watcher.onDidChange(() => this.loadFiles());
 
-    context.subscriptions.push(subscription);
+    context.subscriptions.push(watcher);
   }
 
-  private async init(): Promise<void> {
-    this.files = await this.getAllRelativePaths();
+  private async loadFiles(): Promise<void> {
+    this.files = await this.getAllImageRelativePaths();
   }
 
-  private async getAllRelativePaths(): Promise<string[]> {
+  private async getAllImageRelativePaths(): Promise<string[]> {
     const excludePattern = "{**/node_modules/**,**/build/**,**/.*/**,**/.*}";
     const imgExtensionsPattern = this.imgExtensions.join(",");
     // Find all files in the workspace (excluding node_modules, build, and dot file and directories)
