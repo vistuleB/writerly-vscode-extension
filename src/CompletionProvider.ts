@@ -2,6 +2,20 @@ import * as vscode from "vscode";
 
 export class WlyCompletionProvider implements vscode.CompletionItemProvider {
   private files: string[] = [];
+  private imgExtensions: string[] = (() => {
+    const extensions = [
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "svg",
+      "webp",
+      "bmp",
+      "ipe",
+    ];
+    const capitalized = extensions.map((s) => s.toUpperCase());
+    return [...extensions, ...capitalized];
+  })();
 
   constructor(context: vscode.ExtensionContext) {
     this.init();
@@ -22,7 +36,10 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
     const excludePattern = "{**/node_modules/**,**/build/**,**/.*/**,**/.*}";
     // Find all files in the workspace (excluding node_modules, build, and dot file and directories)
     // findFiles(includePattern, excludePattern, maxResults?)
-    const files = await vscode.workspace.findFiles("**/*", excludePattern);
+    const files = await vscode.workspace.findFiles(
+      `**/*.{${this.imgExtensions.join(",")}}`,
+      excludePattern,
+    );
 
     // Map the resulting Uris to relative strings
     const relativePaths = files.map((file) => {
@@ -93,7 +110,16 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
   }
 
   private isImageFile(path: string): boolean {
-    const imageExtensions = ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp"];
+    const imageExtensions = [
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "svg",
+      "webp",
+      "bmp",
+      "ipe",
+    ];
     const extension = path.split(".").pop()?.toLowerCase();
     return !!extension && imageExtensions.includes(extension);
   }
