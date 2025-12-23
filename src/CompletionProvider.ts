@@ -34,10 +34,11 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
 
   private async getAllRelativePaths(): Promise<string[]> {
     const excludePattern = "{**/node_modules/**,**/build/**,**/.*/**,**/.*}";
+    const imgExtensionsPattern = this.imgExtensions.join(",");
     // Find all files in the workspace (excluding node_modules, build, and dot file and directories)
     // findFiles(includePattern, excludePattern, maxResults?)
     const files = await vscode.workspace.findFiles(
-      `**/*.{${this.imgExtensions.join(",")}}`,
+      `**/*.{${imgExtensionsPattern}}`,
       excludePattern,
     );
 
