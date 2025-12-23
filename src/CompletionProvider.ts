@@ -29,7 +29,7 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
   private loadFilesTimeout: NodeJS.Timeout | undefined;
 
   private readonly imgExtensions: string[] = (() => {
-    const base = ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ipe"];
+    const base = ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ipe", "psd", "tiff"];
     return [...base, ...base.map((ext) => ext.toUpperCase())];
   })();
 
@@ -51,7 +51,7 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
     const debouncedLoad = () => this.loadFiles();
     watcher.onDidCreate(debouncedLoad);
     watcher.onDidDelete(debouncedLoad);
-    watcher.onDidChange(debouncedLoad);
+    // watcher.onDidChange(debouncedLoad);
 
     context.subscriptions.push(completionItemProvider, watcher);
   }
@@ -127,6 +127,7 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
     const linePrefix = document
       .lineAt(position)
       .text.substring(0, position.character);
+
     const match = linePrefix.match(/\b(src|original)=(\S*)$/);
     if (!match) return undefined;
 
