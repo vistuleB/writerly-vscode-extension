@@ -97,11 +97,6 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
     const relativePath =
       typeof item.label === "string" ? item.label : item.label.label;
 
-    // Check if the file is an image BEFORE generating preview
-    if (!this.isImageFile(relativePath)) {
-      return item;
-    }
-
     // Find the absolute path
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (workspaceFolder) {
@@ -121,21 +116,6 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
     }
 
     return item;
-  }
-
-  private isImageFile(path: string): boolean {
-    const imageExtensions = [
-      "png",
-      "jpg",
-      "jpeg",
-      "gif",
-      "svg",
-      "webp",
-      "bmp",
-      "ipe",
-    ];
-    const extension = path.split(".").pop()?.toLowerCase();
-    return !!extension && imageExtensions.includes(extension);
   }
 
   private toCompletionItem(file: string): vscode.CompletionItem {
