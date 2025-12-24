@@ -141,7 +141,7 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
       .lineAt(position)
       .text.substring(0, position.character);
 
-    const match = linePrefix.match(/\b(src|original)\s*=\s*(\S*)$/);
+    const match = linePrefix.match(/\b(src|original)=\s*(\S*)$/);
 
     if (!match) return undefined;
 
