@@ -29,7 +29,18 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
   private loadFilesTimeout: NodeJS.Timeout | undefined;
 
   private readonly imgExtensions: string[] = (() => {
-    const base = ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ipe", "psd", "tiff"];
+    const base = [
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "svg",
+      "webp",
+      "bmp",
+      "ipe",
+      "psd",
+      "tiff",
+    ];
     return [...base, ...base.map((ext) => ext.toUpperCase())];
   })();
 
@@ -41,6 +52,8 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
         { scheme: "file", language: "writerly" },
         this,
         "=",
+        " ",
+        "/",
       );
 
     const watcher = vscode.workspace.createFileSystemWatcher(
@@ -128,7 +141,8 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
       .lineAt(position)
       .text.substring(0, position.character);
 
-    const match = linePrefix.match(/\b(src|original)=(\S*)$/);
+    const match = linePrefix.match(/\b(src|original)\s*=\s*(\S*)$/);
+
     if (!match) return undefined;
 
     const fullTypedPath = match[2];
