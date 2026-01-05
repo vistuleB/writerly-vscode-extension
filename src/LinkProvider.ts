@@ -456,7 +456,7 @@ export class WlyLinkProvider
         diagnostics.push(
           new vscode.Diagnostic(
             link.range,
-            `Invalid handle name: '${handleName}'. Handles must start with a letter/underscore and contain only alphanumeric chars, dots, underscores, hyphen, %, ^, or +.`,
+            `Invalid handle name: '${handleName}'. Handles must start with a letter/underscore and contain only alphanumeric chars, dots, underscores, hyphen, %, ^, +, and must end with an alphanumeric char.`,
             vscode.DiagnosticSeverity.Error,
           ),
         );

@@ -2,6 +2,8 @@
     title=Testing WLY Extension
     type=language-test
     version=1.0
+    handle=yoyo-23_
+    >>yoyo-23_
 
 This file tests the Writerly extension with the correct .wly file extension.
 The language ID should now be "wly" instead of "writerly".
