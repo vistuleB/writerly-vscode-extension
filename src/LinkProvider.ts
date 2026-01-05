@@ -48,6 +48,8 @@ export class WlyLinkProvider
   private diagnosticCollection!: vscode.DiagnosticCollection;
   private isInitialized = false;
   private documentLinks: Map<FSPath, vscode.DocumentLink[]> = new Map();
+  private usageCounts: Map<HandleName, number> = new Map();
+  private revalidateTimer: NodeJS.Timeout | undefined;
 
   constructor(context: vscode.ExtensionContext) {
     this.diagnosticCollection =
@@ -201,8 +203,18 @@ export class WlyLinkProvider
   private deleteUri(uri: vscode.Uri): void {
     const targetPath = uri.fsPath;
 
+    // 1. subtract usages from the global counter before we lose the data
+    const cachedLinks = this.documentLinks.get(targetPath);
+    if (cachedLinks) {
+      cachedLinks.forEach((link) =>
+        this.updateUsageCount(link.data.handleName, -1),
+      );
+    }
+
+    // 2. handle parent directory logic
     if (this.isWriterlyParent(uri.fsPath)) this.handleParentFileDelete(uri);
 
+    // 3. clear definitions from the map
     for (const [handleName, definitions] of this.definitions) {
       const filteredDefinitions = definitions.filter(
         (def) => def.fsPath !== targetPath,
@@ -213,6 +225,14 @@ export class WlyLinkProvider
       } else if (filteredDefinitions.length !== definitions.length) {
         this.definitions.set(handleName, filteredDefinitions);
       }
+    }
+
+    // 4. remove from links map
+    this.documentLinks.delete(targetPath);
+
+    // 5. trigger tree revalidation to clear warnings in other files
+    if (this.isInitialized) {
+      this.triggerTreeRevalidation(targetPath);
     }
   }
 
@@ -234,15 +254,32 @@ export class WlyLinkProvider
     document: vscode.TextDocument,
   ): vscode.DocumentLink[] {
     const currentFsPath = document.uri.fsPath;
+
+    // 1. subtract old usages from this specific file before clearing
+    const oldLinks = this.documentLinks.get(currentFsPath) || [];
+    oldLinks.forEach((link) => this.updateUsageCount(link.data.handleName, -1));
+
+    // 2. standard cleanup and extraction
     this.clearDocumentDefinitions(currentFsPath);
     const diagnostics: vscode.Diagnostic[] = [];
     const documentLinks = this.extractHandlesFromDocument(
       document,
       diagnostics,
     );
+
+    // 3. add new usages to the global counter
+    documentLinks.forEach((link) =>
+      this.updateUsageCount(link.data.handleName, 1),
+    );
+
     if (this.isInitialized) {
       this.validateHandleUsage(documentLinks, diagnostics);
+      this.validateHandleDefinitions(document, diagnostics);
+
+      // 4. trigger the debounced revalidation
+      this.triggerTreeRevalidation(currentFsPath);
     }
+
     this.diagnosticCollection.set(document.uri, diagnostics);
     this.documentLinks.set(currentFsPath, documentLinks);
     return documentLinks;
@@ -789,5 +826,100 @@ export class WlyLinkProvider
       filePath.startsWith(parentPath + "/") ||
       filePath.startsWith(parentPath + "\\")
     );
+  }
+
+  private validateHandleDefinitions(
+    document: vscode.TextDocument,
+    diagnostics: vscode.Diagnostic[],
+  ): void {
+    const currentFsPath = document.uri.fsPath;
+
+    this.definitions.forEach((defs, handleName) => {
+      const localDef = defs.find((d) => d.fsPath === currentFsPath);
+      if (!localDef) return;
+
+      const globalUsageCount = this.usageCounts.get(handleName) || 0;
+
+      if (globalUsageCount === 0) {
+        diagnostics.push(
+          new vscode.Diagnostic(
+            localDef.range,
+            `Unused handle: '${handleName}' is defined but never used.`,
+            vscode.DiagnosticSeverity.Warning,
+          ),
+        );
+      }
+    });
+  }
+
+  private revalidateTree(originFsPath: string): void {
+    for (const [fsPath, links] of this.documentLinks) {
+      if (!this.isInSameDocumentTree(originFsPath, fsPath)) continue;
+
+      const uri = vscode.Uri.file(fsPath);
+
+      // check if the document is already managed by VS Code
+      // before forcing a heavy 'openTextDocument' call.
+      const openDoc = vscode.workspace.textDocuments.find(
+        (d) => d.uri.fsPath === fsPath,
+      );
+
+      if (openDoc) {
+        this.updateDiagnosticsForDoc(openDoc, links);
+      } else {
+        // for closed files, we can't easily re-run 'validateHandleDefinitions'
+        // without the doc object, but we can update 'validateHandleUsage'
+        // using the cached links.
+        const diagnostics: vscode.Diagnostic[] = [];
+        this.validateHandleUsage(links, diagnostics);
+      }
+    }
+  }
+
+  private updateDiagnosticsForDoc(
+    doc: vscode.TextDocument,
+    links: vscode.DocumentLink[],
+  ) {
+    const diagnostics: vscode.Diagnostic[] = [];
+    this.validateHandleUsage(links, diagnostics);
+    this.validateHandleDefinitions(doc, diagnostics);
+    this.diagnosticCollection.set(doc.uri, diagnostics);
+  }
+
+  private triggerTreeRevalidation(originFsPath: string) {
+    if (this.revalidateTimer) {
+      clearTimeout(this.revalidateTimer);
+    }
+
+    this.revalidateTimer = setTimeout(() => {
+      // only re-validate files in the same tree
+      for (const [fsPath, links] of this.documentLinks) {
+        if (this.isInSameDocumentTree(originFsPath, fsPath)) {
+          const uri = vscode.Uri.file(fsPath);
+
+          // only update documents that are actually open to save memory/IO
+          const openDoc = vscode.workspace.textDocuments.find(
+            (d) => d.uri.fsPath === fsPath,
+          );
+          if (openDoc) {
+            const diagnostics: vscode.Diagnostic[] = [];
+            this.validateHandleUsage(links, diagnostics);
+            this.validateHandleDefinitions(openDoc, diagnostics);
+            this.diagnosticCollection.set(uri, diagnostics);
+          }
+        }
+      }
+    }, 300); // wait for 300ms of "silence" before running
+  }
+
+  // helper to modify counts safely
+  private updateUsageCount(handleName: string, delta: number) {
+    const current = this.usageCounts.get(handleName) || 0;
+    const next = current + delta;
+    if (next <= 0) {
+      this.usageCounts.delete(handleName);
+    } else {
+      this.usageCounts.set(handleName, next);
+    }
   }
 }
