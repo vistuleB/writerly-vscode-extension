@@ -31,14 +31,18 @@ const HANDLE_START_CHARS: string = "a-zA-Z_";
 const HANDLE_BODY_CHARS: string = "-a-zA-Z0-9\\._%\\^\\+";
 const HANDLE_END_CHARS: string = "a-zA-Z0-9_\\^";
 const HANDLE_REGEX_STRING: string = `([${HANDLE_START_CHARS}][${HANDLE_BODY_CHARS}]*[${HANDLE_END_CHARS}])|[${HANDLE_START_CHARS}]`;
-const DEF_REGEX = new RegExp(`^handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`);
+// const DEF_REGEX = new RegExp(`^handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`);
+const DEF_REGEX = new RegExp(
+  `^\\s*handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`,
+);
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "g");
 
 export class WlyLinkProvider
   implements
     vscode.DocumentLinkProvider,
     vscode.CodeActionProvider,
-    vscode.DefinitionProvider
+    vscode.DefinitionProvider,
+    vscode.RenameProvider
 {
   private definitions: Map<HandleName, HandleDefinition[]> = new Map();
   private parents: FSPath[] = [];
@@ -67,6 +71,10 @@ export class WlyLinkProvider
         { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] },
       ),
       vscode.languages.registerDefinitionProvider(
+        { scheme: "file", language: "writerly" },
+        this,
+      ),
+      vscode.languages.registerRenameProvider(
         { scheme: "file", language: "writerly" },
         this,
       ),
@@ -612,6 +620,100 @@ export class WlyLinkProvider
     }
 
     return undefined;
+  }
+
+  public prepareRename(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken,
+  ): { range: vscode.Range; placeholder: string } | undefined {
+    const line = document.lineAt(position);
+    const match = line.text.match(DEF_REGEX);
+
+    if (match) {
+      const handleName = match[1];
+      const startIdx = line.text.indexOf(handleName);
+      const range = new vscode.Range(
+        position.line,
+        startIdx,
+        position.line,
+        startIdx + handleName.length,
+      );
+
+      if (range.contains(position)) {
+        return { range, placeholder: handleName };
+      }
+    }
+
+    throw new Error(
+      "Renaming is only allowed at the definition site (handle=name).",
+    );
+  }
+
+  public async provideRenameEdits(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    newName: string,
+    token: vscode.CancellationToken,
+  ): Promise<vscode.WorkspaceEdit | undefined> {
+    const line = document.lineAt(position).text;
+    const match = line.match(DEF_REGEX);
+
+    // safety check: ensure we are actually on a definition
+    if (!match) return undefined;
+    const oldName = match[1];
+
+    const workspaceEdit = new vscode.WorkspaceEdit();
+    const originFsPath = document.uri.fsPath;
+
+    // tterate through all cached files in the workspace
+    for (const [fsPath, links] of this.documentLinks) {
+      // logic to ensure we only rename within the relevant document tree
+      if (!this.isInSameDocumentTree(originFsPath, fsPath)) continue;
+
+      const uri = vscode.Uri.file(fsPath);
+
+      // 1. update all USAGES (>>oldName) in this file
+      links.forEach((link) => {
+        if (link.data?.handleName === oldName) {
+          // adjust range to skip the ">>" prefix
+          const nameRange = new vscode.Range(
+            link.range.start.line,
+            link.range.start.character + 2,
+            link.range.end.line,
+            link.range.end.character,
+          );
+          workspaceEdit.replace(uri, nameRange, newName);
+        }
+      });
+
+      // 2. update all DEFINITIONS (handle=oldName) in this file
+      // (handles cases where multiple files might define the same handle,
+      // or if your logic allows multiple definitions in one tree)
+      const defs = this.definitions.get(oldName);
+      if (defs) {
+        defs.forEach((def) => {
+          if (def.fsPath === fsPath) {
+            // find the exact start of the name after 'handle='
+            const lineText = document.lineAt(def.range.start.line).text;
+            const nameStart = lineText.indexOf(
+              oldName,
+              def.range.start.character,
+            );
+
+            const defNameRange = new vscode.Range(
+              def.range.start.line,
+              nameStart,
+              def.range.start.line,
+              nameStart + oldName.length,
+            );
+            workspaceEdit.replace(uri, defNameRange, newName);
+          }
+        });
+      }
+    }
+
+    return workspaceEdit;
   }
 
   private getDefinitionForHandle(
