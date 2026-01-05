@@ -625,24 +625,11 @@ export class WlyLinkProvider
   public prepareRename(
     document: vscode.TextDocument,
     position: vscode.Position,
-    token: vscode.CancellationToken,
   ): { range: vscode.Range; placeholder: string } | undefined {
-    const line = document.lineAt(position);
-    const match = line.text.match(DEF_REGEX);
+    const result = this.getDefinitionOnLine(document, position);
 
-    if (match) {
-      const handleName = match[1];
-      const startIdx = line.text.indexOf(handleName);
-      const range = new vscode.Range(
-        position.line,
-        startIdx,
-        position.line,
-        startIdx + handleName.length,
-      );
-
-      if (range.contains(position)) {
-        return { range, placeholder: handleName };
-      }
+    if (result && result.range.contains(position)) {
+      return { range: result.range, placeholder: result.handleName };
     }
 
     throw new Error(
@@ -656,57 +643,69 @@ export class WlyLinkProvider
     newName: string,
     token: vscode.CancellationToken,
   ): Promise<vscode.WorkspaceEdit | undefined> {
-    const line = document.lineAt(position).text;
-    const match = line.match(DEF_REGEX);
+    // 1. ientify what we are renaming
+    const defInfo = this.getDefinitionOnLine(document, position);
+    if (!defInfo) return undefined;
 
-    // safety check: ensure we are actually on a definition
-    if (!match) return undefined;
-    const oldName = match[1];
-
+    const oldName = defInfo.handleName;
     const workspaceEdit = new vscode.WorkspaceEdit();
     const originFsPath = document.uri.fsPath;
 
-    // tterate through all cached files in the workspace
+    // 2. iterate through all cached documents
     for (const [fsPath, links] of this.documentLinks) {
-      // logic to ensure we only rename within the relevant document tree
+      // only rename if within the same logical tree
       if (!this.isInSameDocumentTree(originFsPath, fsPath)) continue;
 
       const uri = vscode.Uri.file(fsPath);
 
-      // 1. update all USAGES (>>oldName) in this file
+      // try to find the document if it's currently open to get live text
+      const openDoc = vscode.workspace.textDocuments.find(
+        (d) => d.uri.fsPath === fsPath,
+      );
+
+      // --- PART A: rename call sites (>>oldName) ---
       links.forEach((link) => {
         if (link.data?.handleName === oldName) {
-          // adjust range to skip the ">>" prefix
+          // determine the line text (from open editor or cache-based logic)
+          // note: if doc isn't open, we trust the link.range from our last processDocument
           const nameRange = new vscode.Range(
             link.range.start.line,
-            link.range.start.character + 2,
+            link.range.start.character + 2, // Skip '>>'
             link.range.end.line,
             link.range.end.character,
           );
-          workspaceEdit.replace(uri, nameRange, newName);
+
+          // verification check: only apply if the target text matches expectations
+          if (openDoc) {
+            const actualText = openDoc.getText(link.range);
+            if (actualText === `>>${oldName}`) {
+              workspaceEdit.replace(uri, nameRange, newName);
+            }
+          } else {
+            // if not open, we apply the edit based on our link cache
+            workspaceEdit.replace(uri, nameRange, newName);
+          }
         }
       });
 
-      // 2. update all DEFINITIONS (handle=oldName) in this file
-      // (handles cases where multiple files might define the same handle,
-      // or if your logic allows multiple definitions in one tree)
+      // --- PART B: rename definition sites (handle=oldName) ---
       const defs = this.definitions.get(oldName);
       if (defs) {
         defs.forEach((def) => {
           if (def.fsPath === fsPath) {
-            // find the exact start of the name after 'handle='
-            const lineText = document.lineAt(def.range.start.line).text;
-            const nameStart = lineText.indexOf(
-              oldName,
-              def.range.start.character,
+            // we anchor the search to the start of the 'handle=' attribute
+            // to avoid hitting accidental matches in comments on the same line.
+            const lineIndex = def.range.start.line;
+
+            // we skip 'handle=' (7 chars) to get to the name
+            const nameStartChar = def.range.start.character + 7;
+            const defNameRange = new vscode.Range(
+              lineIndex,
+              nameStartChar,
+              lineIndex,
+              nameStartChar + oldName.length,
             );
 
-            const defNameRange = new vscode.Range(
-              def.range.start.line,
-              nameStart,
-              def.range.start.line,
-              nameStart + oldName.length,
-            );
             workspaceEdit.replace(uri, defNameRange, newName);
           }
         });
@@ -714,6 +713,36 @@ export class WlyLinkProvider
     }
 
     return workspaceEdit;
+  }
+
+  private getDefinitionOnLine(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ) {
+    const line = document.lineAt(position);
+    const match = line.text.match(DEF_REGEX);
+
+    if (!match) return undefined;
+
+    const fullMatchText = match[0]; // e.g., "  handle=my_name"
+    const handleName = match[1]; // e.g., "my_name"
+
+    // 1. get the start of the whole "handle=name" block
+    const matchStart = match.index || 0;
+
+    // 2. find the name within THAT specific match block, not the whole line
+    const nameOffsetInMatch = fullMatchText.indexOf(handleName);
+
+    const absoluteNameStart = matchStart + nameOffsetInMatch;
+
+    const range = new vscode.Range(
+      position.line,
+      absoluteNameStart,
+      position.line,
+      absoluteNameStart + handleName.length,
+    );
+
+    return { handleName, range };
   }
 
   private getDefinitionForHandle(
