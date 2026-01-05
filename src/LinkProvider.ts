@@ -23,7 +23,8 @@ type HandleDefinition = {
 };
 
 const FILE_EXTENSION: string = ".wly";
-const PARENT_FILE_NAME: string = "__parent.wly";
+const PARENT_SUFFIX: string = "__parent.wly";
+const PARENT_SUFFIX_LENGTH: number = 12;
 const MAX_FILES: number = 1500;
 
 const HANDLE_START_CHARS: string = "a-zA-Z_";
@@ -95,15 +96,24 @@ export class WlyLinkProvider
     await Promise.all(uris.map((uri) => this.processUri(uri)));
   }
 
+  private parentPath(path: FSPath): string {
+    if (path.endsWith(PARENT_SUFFIX)) {
+      return path.slice(0, -PARENT_SUFFIX_LENGTH);
+    } else {
+      console.error("non-parent given to parentPath");
+      return path;
+    }
+  }
+
   private async discoverParentDirectories(): Promise<void> {
     const parentFiles = await vscode.workspace.findFiles(
-      `**/${PARENT_FILE_NAME}`,
+      `**/*${PARENT_SUFFIX}`,
       null,
       MAX_FILES,
     );
 
     this.parents = parentFiles.map((uri) =>
-      uri.fsPath.replace(new RegExp(`[/\\\\]${PARENT_FILE_NAME}$`), ""),
+      this.parentPath(uri.fsPath)
     );
   }
 
@@ -149,11 +159,11 @@ export class WlyLinkProvider
   }
 
   private isWriterlyParent(fsPath: string): boolean {
-    return fsPath.endsWith(PARENT_FILE_NAME);
+    return fsPath.endsWith(PARENT_SUFFIX);
   }
 
   private getParentDirFromFilePath(filePath: string): string {
-    return filePath.replace(new RegExp(`[/\\\\]${PARENT_FILE_NAME}$`), "");
+    return filePath.replace(new RegExp(`${PARENT_SUFFIX}$`), "");
   }
 
   // parent directory management methods
@@ -653,10 +663,6 @@ export class WlyLinkProvider
   }
 
   private isPathUnderParent(filePath: string, parentPath: string): boolean {
-    return (
-      filePath === parentPath ||
-      filePath.startsWith(parentPath + "/") ||
-      filePath.startsWith(parentPath + "\\")
-    );
+    return filePath.startsWith(parentPath);
   }
 }
