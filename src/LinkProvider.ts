@@ -31,11 +31,12 @@ const HANDLE_START_CHARS: string = "a-zA-Z_";
 const HANDLE_BODY_CHARS: string = "-a-zA-Z0-9\\._%\\^\\+";
 const HANDLE_END_CHARS: string = "a-zA-Z0-9_\\^";
 const HANDLE_REGEX_STRING: string = `([${HANDLE_START_CHARS}][${HANDLE_BODY_CHARS}]*[${HANDLE_END_CHARS}])|[${HANDLE_START_CHARS}]`;
-// const DEF_REGEX = new RegExp(`^handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`);
 const DEF_REGEX = new RegExp(
   `^\\s*handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`,
 );
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "g");
+const LOOSE_DEF_REGEX = /^\s*handle=\s*([^\s:|]+)/;
+const LOOSE_USAGE_REGEX = />>([^\s|}:]+)/g;
 
 export class WlyLinkProvider
   implements
@@ -237,6 +238,9 @@ export class WlyLinkProvider
       }
     }
 
+    // clear the diagnostics for the deleted file
+    this.diagnosticCollection.delete(uri);
+
     // 4. remove from links map
     this.documentLinks.delete(targetPath);
 
@@ -382,21 +386,25 @@ export class WlyLinkProvider
     indent: number,
     fsPath: string,
   ): void {
-    const handleMatch = content.match(DEF_REGEX);
-    if (!handleMatch) return;
+    const looseMatch = content.match(LOOSE_DEF_REGEX);
+    if (!looseMatch) return;
 
-    const handleName = handleMatch[1];
-    const handleStart = content.indexOf(handleMatch[0]);
+    const handleName = looseMatch[1];
+    const fullMatchText = looseMatch[0];
+    const handleStart = content.indexOf(fullMatchText);
 
     const range = new vscode.Range(
       lineNumber,
-      indent + handleStart,
+      indent + handleStart + fullMatchText.indexOf(handleName),
       lineNumber,
-      indent + handleStart + handleMatch[0].length,
+      indent +
+        handleStart +
+        fullMatchText.indexOf(handleName) +
+        handleName.length,
     );
 
+    // ALWAYS add to definitions, even if invalid
     const definition: HandleDefinition = { fsPath, range };
-
     if (!this.definitions.has(handleName)) {
       this.definitions.set(handleName, []);
     }
@@ -411,13 +419,11 @@ export class WlyLinkProvider
   ): vscode.DocumentLink[] {
     const links: vscode.DocumentLink[] = [];
     let usageMatch;
+    LOOSE_USAGE_REGEX.lastIndex = 0;
 
-    USAGE_REGEX.lastIndex = 0;
-
-    while ((usageMatch = USAGE_REGEX.exec(content)) !== null) {
+    while ((usageMatch = LOOSE_USAGE_REGEX.exec(content)) !== null) {
       const handleName = usageMatch[1];
       const matchStart = usageMatch.index;
-
       const range = new vscode.Range(
         lineNumber,
         indent + matchStart,
@@ -429,7 +435,6 @@ export class WlyLinkProvider
       link.data = { handleName, fsPath, validated: ValidationState.UNKNOWN };
       links.push(link);
     }
-
     return links;
   }
 
@@ -437,11 +442,26 @@ export class WlyLinkProvider
     documentLinks: vscode.DocumentLink[],
     diagnostics: vscode.Diagnostic[] = [],
   ): void {
+    const strictRegex = new RegExp(`^${HANDLE_REGEX_STRING}$`);
+
     for (const link of documentLinks) {
       const handleName = link.data?.handleName;
       const currentFsPath = link.data?.fsPath;
 
       if (!handleName || !currentFsPath) continue;
+
+      // if it doesn't match the strict regex, underline it in red immediately.
+      if (!strictRegex.test(handleName)) {
+        link.data.validated = ValidationState.ERROR;
+        diagnostics.push(
+          new vscode.Diagnostic(
+            link.range,
+            `Invalid handle name: '${handleName}'. Handles must start with a letter/underscore and contain only alphanumeric chars, dots, underscores, hyphen, %, ^, or +.`,
+            vscode.DiagnosticSeverity.Error,
+          ),
+        );
+        continue; // Skip tree lookup for invalid names
+      }
 
       const validDefinitions = this.findValidDefinitions(
         handleName,
@@ -449,8 +469,10 @@ export class WlyLinkProvider
       );
 
       if (validDefinitions.length === 1) {
+        // exactly one definition found in this logical tree
         link.data.validated = ValidationState.OK;
       } else {
+        // zero or multiple definitions found
         link.data.validated = ValidationState.ERROR;
         const diagnostic = this.createDiagnosticForUsage(
           link,
@@ -680,7 +702,6 @@ export class WlyLinkProvider
     newName: string,
     token: vscode.CancellationToken,
   ): Promise<vscode.WorkspaceEdit | undefined> {
-    // 1. ientify what we are renaming
     const defInfo = this.getDefinitionOnLine(document, position);
     if (!defInfo) return undefined;
 
@@ -688,64 +709,44 @@ export class WlyLinkProvider
     const workspaceEdit = new vscode.WorkspaceEdit();
     const originFsPath = document.uri.fsPath;
 
-    // 2. iterate through all cached documents
+    // cache anchored regex for the old name to ensure exact matching only
+    const exactMatchRegex = new RegExp(`^${oldName}$`);
+
     for (const [fsPath, links] of this.documentLinks) {
-      // only rename if within the same logical tree
       if (!this.isInSameDocumentTree(originFsPath, fsPath)) continue;
 
       const uri = vscode.Uri.file(fsPath);
-
-      // try to find the document if it's currently open to get live text
       const openDoc = vscode.workspace.textDocuments.find(
         (d) => d.uri.fsPath === fsPath,
       );
 
       // --- PART A: rename call sites (>>oldName) ---
-      links.forEach((link) => {
-        if (link.data?.handleName === oldName) {
-          // determine the line text (from open editor or cache-based logic)
-          // note: if doc isn't open, we trust the link.range from our last processDocument
+      for (const link of links) {
+        if (
+          link.data?.handleName &&
+          exactMatchRegex.test(link.data.handleName)
+        ) {
+          // offset by 2 to skip '>>'
           const nameRange = new vscode.Range(
             link.range.start.line,
-            link.range.start.character + 2, // Skip '>>'
+            link.range.start.character + 2,
             link.range.end.line,
             link.range.end.character,
           );
-
-          // verification check: only apply if the target text matches expectations
-          if (openDoc) {
-            const actualText = openDoc.getText(link.range);
-            if (actualText === `>>${oldName}`) {
-              workspaceEdit.replace(uri, nameRange, newName);
-            }
-          } else {
-            // if not open, we apply the edit based on our link cache
-            workspaceEdit.replace(uri, nameRange, newName);
-          }
+          workspaceEdit.replace(uri, nameRange, newName);
         }
-      });
+      }
 
       // --- PART B: rename definition sites (handle=oldName) ---
       const defs = this.definitions.get(oldName);
       if (defs) {
-        defs.forEach((def) => {
+        for (const def of defs) {
           if (def.fsPath === fsPath) {
-            // we anchor the search to the start of the 'handle=' attribute
-            // to avoid hitting accidental matches in comments on the same line.
-            const lineIndex = def.range.start.line;
-
-            // we skip 'handle=' (7 chars) to get to the name
-            const nameStartChar = def.range.start.character + 7;
-            const defNameRange = new vscode.Range(
-              lineIndex,
-              nameStartChar,
-              lineIndex,
-              nameStartChar + oldName.length,
-            );
-
-            workspaceEdit.replace(uri, defNameRange, newName);
+            // since extractHandleDefinition already calculated def.range
+            // to point exactly at the name part, we use it directly.
+            workspaceEdit.replace(uri, def.range, newName);
           }
-        });
+        }
       }
     }
 
@@ -839,13 +840,39 @@ export class WlyLinkProvider
     diagnostics: vscode.Diagnostic[],
   ): void {
     const currentFsPath = document.uri.fsPath;
+    const strictRegex = new RegExp(`^(${HANDLE_REGEX_STRING})$`);
 
     this.definitions.forEach((defs, handleName) => {
       const localDef = defs.find((d) => d.fsPath === currentFsPath);
       if (!localDef) return;
 
-      const globalUsageCount = this.usageCounts.get(handleName) || 0;
+      // 1. PRIORITY 1: SYNTAX ERROR
+      if (!strictRegex.test(handleName)) {
+        diagnostics.push(
+          new vscode.Diagnostic(
+            localDef.range,
+            `Invalid handle name: '${handleName}'. Handles must start with a letter/underscore and contain only alphanumeric chars, dots, underscores, hyphen, %, ^, or +.`,
+            vscode.DiagnosticSeverity.Error,
+          ),
+        );
+        return; // STOP: Do not check for duplicates or usage
+      }
 
+      // 2. PRIORITY 2: LOGIC ERROR (Duplicates)
+      const treeDefs = this.findValidDefinitions(handleName, currentFsPath);
+      if (treeDefs.length > 1) {
+        diagnostics.push(
+          new vscode.Diagnostic(
+            localDef.range,
+            `Handle '${handleName}' is defined multiple times in this document tree.`,
+            vscode.DiagnosticSeverity.Error,
+          ),
+        );
+        return; // STOP: Do not check for usage
+      }
+
+      // 3. PRIORITY 3: LINT WARNING (Unused)
+      const globalUsageCount = this.usageCounts.get(handleName) || 0;
       if (globalUsageCount === 0) {
         diagnostics.push(
           new vscode.Diagnostic(
@@ -858,64 +885,35 @@ export class WlyLinkProvider
     });
   }
 
-  private revalidateTree(originFsPath: string): void {
-    for (const [fsPath, links] of this.documentLinks) {
-      if (!this.isInSameDocumentTree(originFsPath, fsPath)) continue;
-
-      const uri = vscode.Uri.file(fsPath);
-
-      // check if the document is already managed by VS Code
-      // before forcing a heavy 'openTextDocument' call.
-      const openDoc = vscode.workspace.textDocuments.find(
-        (d) => d.uri.fsPath === fsPath,
-      );
-
-      if (openDoc) {
-        this.updateDiagnosticsForDoc(openDoc, links);
-      } else {
-        // for closed files, we can't easily re-run 'validateHandleDefinitions'
-        // without the doc object, but we can update 'validateHandleUsage'
-        // using the cached links.
-        const diagnostics: vscode.Diagnostic[] = [];
-        this.validateHandleUsage(links, diagnostics);
-      }
-    }
-  }
-
-  private updateDiagnosticsForDoc(
-    doc: vscode.TextDocument,
-    links: vscode.DocumentLink[],
-  ) {
-    const diagnostics: vscode.Diagnostic[] = [];
-    this.validateHandleUsage(links, diagnostics);
-    this.validateHandleDefinitions(doc, diagnostics);
-    this.diagnosticCollection.set(doc.uri, diagnostics);
-  }
-
   private triggerTreeRevalidation(originFsPath: string) {
     if (this.revalidateTimer) {
       clearTimeout(this.revalidateTimer);
     }
 
     this.revalidateTimer = setTimeout(() => {
-      // only re-validate files in the same tree
-      for (const [fsPath, links] of this.documentLinks) {
-        if (this.isInSameDocumentTree(originFsPath, fsPath)) {
-          const uri = vscode.Uri.file(fsPath);
+      // 1. create a quick-lookup map of currently open documents
+      const openDocsMap = new Map<string, vscode.TextDocument>();
+      for (const doc of vscode.workspace.textDocuments) {
+        openDocsMap.set(doc.uri.fsPath, doc);
+      }
 
-          // only update documents that are actually open to save memory/IO
-          const openDoc = vscode.workspace.textDocuments.find(
-            (d) => d.uri.fsPath === fsPath,
-          );
+      // 2. iterate only once through documentLinks
+      for (const [fsPath, links] of this.documentLinks) {
+        // 3. only process if it belongs to the same tree
+        if (this.isInSameDocumentTree(originFsPath, fsPath)) {
+          const openDoc = openDocsMap.get(fsPath);
+
+          // we only update diagnostics for open documents to save UI thread resources.
+          // closed documents will be validated when the user opens them.
           if (openDoc) {
             const diagnostics: vscode.Diagnostic[] = [];
             this.validateHandleUsage(links, diagnostics);
             this.validateHandleDefinitions(openDoc, diagnostics);
-            this.diagnosticCollection.set(uri, diagnostics);
+            this.diagnosticCollection.set(openDoc.uri, diagnostics);
           }
         }
       }
-    }, 300); // wait for 300ms of "silence" before running
+    }, 300);
   }
 
   // helper to modify counts safely
