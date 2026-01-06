@@ -18,23 +18,27 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
   constructor(context: vscode.ExtensionContext) {
     this.fileSystemWatcher =
       vscode.workspace.createFileSystemWatcher("**/*.wly");
-    this.treeView = vscode.window.createTreeView("wlyFiles", {
+
+      this.treeView = vscode.window.createTreeView("wlyFiles", {
       treeDataProvider: this,
     });
+
     const disposables = [
       this.fileSystemWatcher.onDidChange((_uri) => this.refresh()),
       this.fileSystemWatcher.onDidCreate((_uri) => this.refresh()),
       this.fileSystemWatcher.onDidDelete((_uri) => this.refresh()),
       // apparently this one kind of optional (?):
       vscode.commands.registerCommand("wlyFiles.refreshEntry", () =>
-        this.refresh(),
+        this.refresh()
       ),
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        this.revealEditorItem(editor);
+      }),
     ];
-    vscode.window.onDidChangeActiveTextEditor((editor) => {
-      this.revealEditorItem(editor);
-    });
+
     for (const disposable of disposables)
       context.subscriptions.push(disposable);
+
     this.revealEditorItem(vscode.window.activeTextEditor);
   }
 
@@ -67,7 +71,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
     if (this.wlyFilesCache.length === 0 && !element) {
       this.wlyFilesCache = await vscode.workspace.findFiles(
         "**/*.wly",
-        "**/node_modules/**",
+        "**/node_modules/**"
       );
       // ... (optional context setting code omitted for brevity) ...
     }
@@ -99,7 +103,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
     const items: WlyTreeItem[] = [];
     workspaceFolders.forEach((folder) => {
       const hasWlyFiles = this.wlyFilesCache.some((uri) =>
-        uri.fsPath.startsWith(folder.uri.fsPath),
+        uri.fsPath.startsWith(folder.uri.fsPath)
       );
       if (hasWlyFiles) {
         items.push(new WlyFolderItem(folder.uri, folder.name));
@@ -111,7 +115,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
   }
 
   private async buildFolderChildren(
-    folderItem: WlyFolderItem,
+    folderItem: WlyFolderItem
   ): Promise<WlyTreeItem[]> {
     const parentDir = folderItem.resourceUri.fsPath;
     let items: WlyTreeItem[] = []; // Change to 'let' to allow sorting
@@ -125,7 +129,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
 
       for (const dirPath of subdirectories) {
         const hasWlyFilesDeep = this.wlyFilesCache.some((uri) =>
-          uri.fsPath.startsWith(dirPath),
+          uri.fsPath.startsWith(dirPath)
         );
         if (hasWlyFilesDeep) {
           const uri = vscode.Uri.file(dirPath);
@@ -135,7 +139,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
 
       // ... (logic to find files remains the same) ...
       const files = this.wlyFilesCache.filter(
-        (uri) => path.dirname(uri.fsPath) === parentDir,
+        (uri) => path.dirname(uri.fsPath) === parentDir
       );
 
       files.forEach((uri) => {
@@ -165,16 +169,13 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
     // Return a folder item that represents the directory containing the current item
     return new WlyFolderItem(
       vscode.Uri.file(parentPath),
-      path.basename(parentPath),
+      path.basename(parentPath)
     );
   }
 }
 
 class WlyFolderItem extends vscode.TreeItem {
-  constructor(
-    public readonly resourceUri: vscode.Uri,
-    label: string,
-  ) {
+  constructor(public readonly resourceUri: vscode.Uri, label: string) {
     super(label, vscode.TreeItemCollapsibleState.Expanded);
     this.id = resourceUri.fsPath;
     this.contextValue = "wlyFolder";
