@@ -1,9 +1,9 @@
 |> article
     title=Main Article
-    handle=_%_
+    handle=_44_
     src=inner_dir/logo.svg
 
-    Hi >>_%_
+    Hi >>_44_
 
     Going to >>lode
 
