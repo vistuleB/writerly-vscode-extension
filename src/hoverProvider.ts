@@ -48,11 +48,6 @@ export class HoverProvider implements vscode.HoverProvider {
         )})${separator}`,
       );
       const fileUri = vscode.Uri.file(resolvedPath);
-      hoverContent.appendMarkdown(
-        `[🔍 Show in Explorer](${revealCommand}?${encodeURI(
-          JSON.stringify([fileUri]),
-        )})${separator}`,
-      );
       if (FileOpener.isImageFile(resolvedPath)) {
         hoverContent.appendMarkdown(
           `[📄 Open as text file](${openCommand}?${encodeURI(
@@ -62,15 +57,20 @@ export class HoverProvider implements vscode.HoverProvider {
         hoverContent.appendMarkdown(
           `[️️️️️️🖼️ Open as image](${openCommand}?${encodeURI(
             JSON.stringify([resolvedPath, OpeningMethod.AS_IMAGE_WITH_VSCODE]),
-          )})\n\n`,
+          )})${separator}`,
         );
       } else {
         hoverContent.appendMarkdown(
           `[📄 Open with VSCode](${openCommand}?${encodeURI(
             JSON.stringify([resolvedPath, OpeningMethod.WITH_VSCODE]),
-          )})\n\n`,
+          )})${separator}`,
         );
       }
+      hoverContent.appendMarkdown(
+        `[🔍 Show in Explorer](${revealCommand}?${encodeURI(
+          JSON.stringify([fileUri]),
+        )})\n\n`,
+      );
     };
 
     const appendLinkedImage = () => {
