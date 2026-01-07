@@ -43,7 +43,8 @@ export class WlyLinkProvider
     vscode.DocumentLinkProvider,
     vscode.CodeActionProvider,
     vscode.DefinitionProvider,
-    vscode.RenameProvider
+    vscode.RenameProvider,
+    vscode.CompletionItemProvider
 {
   private definitions: Map<HandleName, HandleDefinition[]> = new Map();
   private parents: FSPath[] = [];
@@ -80,6 +81,11 @@ export class WlyLinkProvider
       vscode.languages.registerRenameProvider(
         { scheme: "file", language: "writerly" },
         this,
+      ),
+      vscode.languages.registerCompletionItemProvider(
+        { scheme: "file", language: "writerly" },
+        this,
+        ">", // Triggered when the user types the second '>'
       ),
     ];
     disposables.forEach((disp) => context.subscriptions.push(disp));
@@ -123,9 +129,7 @@ export class WlyLinkProvider
       MAX_FILES,
     );
 
-    this.parents = parentFiles.map((uri) =>
-      this.parentPath(uri.fsPath)
-    );
+    this.parents = parentFiles.map((uri) => this.parentPath(uri.fsPath));
   }
 
   private onDidChange(document: vscode.TextDocument): void {
@@ -751,6 +755,53 @@ export class WlyLinkProvider
     }
 
     return workspaceEdit;
+  }
+
+  public provideCompletionItems(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    _token: vscode.CancellationToken,
+    _context: vscode.CompletionContext,
+  ): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
+    // 1. Check if we are actually after a '>>'
+    const linePrefix = document
+      .lineAt(position)
+      .text.substring(0, position.character);
+    if (!linePrefix.endsWith(">>")) {
+      return undefined;
+    }
+
+    const completionItems: vscode.CompletionItem[] = [];
+    const currentFsPath = document.uri.fsPath;
+
+    // 2. Iterate through all known definitions
+    for (const [handleName, defs] of this.definitions) {
+      // 3. Only suggest handles that are valid for THIS document tree
+      const isVisible = defs.some((def) =>
+        this.isInSameDocumentTree(currentFsPath, def.fsPath),
+      );
+
+      if (isVisible) {
+        const item = new vscode.CompletionItem(
+          handleName,
+          vscode.CompletionItemKind.Reference,
+        );
+
+        // Documentation shows where the handle is defined
+        const def = defs[0];
+        const relPath = this.getRelativeWorkspacePath(def.fsPath);
+        item.detail = `Defined in ${relPath}`;
+
+        // Ensure the '+' and other special chars don't break the insertion
+        // We provide a Range that only covers the text AFTER '>>' if necessary,
+        // but usually, VSCode handles the replacement based on the word boundary.
+        item.insertText = handleName;
+
+        completionItems.push(item);
+      }
+    }
+
+    return completionItems;
   }
 
   private getDefinitionOnLine(
