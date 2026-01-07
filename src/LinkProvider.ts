@@ -87,6 +87,17 @@ export class WlyLinkProvider
         this,
         ">", // Triggered when the user types the second '>'
       ),
+
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration("writerly.enableUnusedHandleWarnings")) {
+          // Re-validate all open documents to add/remove the warnings immediately
+          for (const doc of vscode.workspace.textDocuments) {
+            if (this.isWriterlyFile(doc.uri.fsPath)) {
+              this.processDocument(doc);
+            }
+          }
+        }
+      }),
     ];
     disposables.forEach((disp) => context.subscriptions.push(disp));
     this.initializeAsync();
@@ -923,15 +934,17 @@ export class WlyLinkProvider
       }
 
       // 3. PRIORITY 3: LINT WARNING (Unused)
-      const globalUsageCount = this.usageCounts.get(handleName) || 0;
-      if (globalUsageCount === 0) {
-        diagnostics.push(
-          new vscode.Diagnostic(
-            localDef.range,
-            `Unused handle: '${handleName}' is defined but never used.`,
-            vscode.DiagnosticSeverity.Warning,
-          ),
-        );
+      if (this.isUnusedWarningEnabled()) {
+        const globalUsageCount = this.usageCounts.get(handleName) || 0;
+        if (globalUsageCount === 0) {
+          diagnostics.push(
+            new vscode.Diagnostic(
+              localDef.range,
+              `Unused handle: '${handleName}' is defined but never used.`,
+              vscode.DiagnosticSeverity.Warning,
+            ),
+          );
+        }
       }
     });
   }
@@ -976,5 +989,10 @@ export class WlyLinkProvider
     } else {
       this.usageCounts.set(handleName, next);
     }
+  }
+  private isUnusedWarningEnabled(): boolean {
+    return vscode.workspace
+      .getConfiguration("writerly")
+      .get<boolean>("enableUnusedHandleWarnings", true);
   }
 }

@@ -44,6 +44,16 @@
         "configuration": "./writerly.configuration.json"
       }
     ],
+    "configuration": {
+      "title": "Writerly",
+      "properties": {
+        "writerly.enableUnusedHandleWarnings": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable warnings for unused handle definitions."
+        }
+      }
+    },
     "grammars": [
       {
         "language": "writerly",
