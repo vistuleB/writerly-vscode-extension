@@ -57,6 +57,12 @@ export class WlyLinkProvider
   constructor(context: vscode.ExtensionContext) {
     this.diagnosticCollection =
       vscode.languages.createDiagnosticCollection("writerly-links");
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      `**/*${FILE_EXTENSION}`,
+    );
+    watcher.onDidChange((uri) => this.processUri(uri));
+    watcher.onDidCreate((uri) => this.createUri(uri));
+    watcher.onDidDelete((uri) => this.deleteUri(uri));
     const disposables = [
       this.diagnosticCollection,
       vscode.workspace.onDidChangeTextDocument((event) =>
@@ -98,6 +104,7 @@ export class WlyLinkProvider
           }
         }
       }),
+      watcher,
     ];
     disposables.forEach((disp) => context.subscriptions.push(disp));
     this.initializeAsync();
