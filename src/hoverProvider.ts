@@ -7,7 +7,7 @@ export class HoverProvider implements vscode.HoverProvider {
     let disposables = [
       vscode.languages.registerHoverProvider(
         { scheme: "file", language: "writerly" },
-        this
+        this,
       ),
     ];
 
@@ -20,7 +20,8 @@ export class HoverProvider implements vscode.HoverProvider {
     position: vscode.Position,
     _token: vscode.CancellationToken,
   ): Promise<vscode.Hover | undefined> {
-    const [range, _filePath, resolvedPath] = await FileOpener.getResolvedFilePathAtPosition(document, position);
+    const [range, _filePath, resolvedPath] =
+      await FileOpener.getResolvedFilePathAtPosition(document, position);
 
     if (!resolvedPath) return undefined;
 
@@ -28,49 +29,56 @@ export class HoverProvider implements vscode.HoverProvider {
     hoverContent.supportHtml = true;
     hoverContent.isTrusted = true;
 
-    let separator = "&emsp;|&emsp;"
+    let separator = "&emsp;|&emsp;";
     const openCommand = `command:writerly.openResolvedPath`;
+    const revealCommand = `command:revealInExplorer`;
 
     const appendOpeningLinks = () => {
       hoverContent.appendMarkdown(
-        `[← Open with default](${openCommand}?${
-          encodeURI(JSON.stringify([resolvedPath, OpeningMethod.WITH_DEFAULT]))
-        })${separator}`,
+        `[← Open with default](${openCommand}?${encodeURI(
+          JSON.stringify([resolvedPath, OpeningMethod.WITH_DEFAULT]),
+        )})${separator}`,
+      );
+      const fileUri = vscode.Uri.file(resolvedPath);
+      hoverContent.appendMarkdown(
+        `[🔍 Show in Explorer](${revealCommand}?${encodeURI(
+          JSON.stringify([fileUri]),
+        )})${separator}`,
       );
       if (FileOpener.isImageFile(resolvedPath)) {
         hoverContent.appendMarkdown(
-          `[📄 Open as text file](${openCommand}?${
-            encodeURI(JSON.stringify([resolvedPath, OpeningMethod.WITH_VSCODE]))
-          })${separator}`,
+          `[📄 Open as text file](${openCommand}?${encodeURI(
+            JSON.stringify([resolvedPath, OpeningMethod.WITH_VSCODE]),
+          )})${separator}`,
         );
         hoverContent.appendMarkdown(
-          `[️️️️️️🖼️ Open as image](${openCommand}?${
-            encodeURI(JSON.stringify([resolvedPath, OpeningMethod.AS_IMAGE_WITH_VSCODE]))
-          })\n\n`,
+          `[️️️️️️🖼️ Open as image](${openCommand}?${encodeURI(
+            JSON.stringify([resolvedPath, OpeningMethod.AS_IMAGE_WITH_VSCODE]),
+          )})\n\n`,
         );
       } else {
         hoverContent.appendMarkdown(
-          `[📄 Open with VSCode](${openCommand}?${
-            encodeURI(JSON.stringify([resolvedPath, OpeningMethod.WITH_VSCODE]))
-          })\n\n`,
+          `[📄 Open with VSCode](${openCommand}?${encodeURI(
+            JSON.stringify([resolvedPath, OpeningMethod.WITH_VSCODE]),
+          )})\n\n`,
         );
       }
-    }
+    };
 
     const appendLinkedImage = () => {
       if (FileOpener.isImageFile(resolvedPath)) {
         const imageUri = vscode.Uri.file(resolvedPath);
         hoverContent.appendMarkdown(
-          `[<img src="${imageUri.toString()}">](${openCommand}?${
-            encodeURI(JSON.stringify([resolvedPath, OpeningMethod.WITH_DEFAULT]))
-          })\n\n`,
+          `[<img src="${imageUri.toString()}">](${openCommand}?${encodeURI(
+            JSON.stringify([resolvedPath, OpeningMethod.WITH_DEFAULT]),
+          )})\n\n`,
         );
       }
-    }
+    };
 
     const appendFilePath = () => {
       hoverContent.appendMarkdown(`📁 \`${resolvedPath}\`\n\n`);
-    }
+    };
 
     const appendFileSize = () => {
       try {
@@ -83,7 +91,7 @@ export class HoverProvider implements vscode.HoverProvider {
           hoverContent.appendMarkdown(`㎆ ${mbFileSize}\n\n`);
         }
       } catch (error) {}
-    }
+    };
 
     appendOpeningLinks();
     appendFilePath();
@@ -104,10 +112,10 @@ export class HoverProvider implements vscode.HoverProvider {
   // }
 
   private kb(bytes: number): number {
-    return Math.round(10 * bytes / 1024) / 10;
+    return Math.round((10 * bytes) / 1024) / 10;
   }
 
   private mb(bytes: number): number {
-    return Math.round(100 * bytes / (1024**2)) / 100;
+    return Math.round((100 * bytes) / 1024 ** 2) / 100;
   }
 }
