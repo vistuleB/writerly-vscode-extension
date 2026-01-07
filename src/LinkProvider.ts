@@ -146,8 +146,17 @@ export class WlyLinkProvider
   private async initializeAsync(): Promise<void> {
     try {
       await this.discoverParentDirectories();
+
       await this.processAllDocuments();
+
       this.isInitialized = true;
+
+      // Show warnings for the files that are in current workspace
+      for (const doc of vscode.workspace.textDocuments) {
+        if (this.isWriterlyFile(doc.uri.fsPath)) {
+          this.processDocument(doc);
+        }
+      }
     } catch (error) {
       console.error("WlyLinkProvider initialization failed:", error);
     }
