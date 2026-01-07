@@ -36,7 +36,7 @@ const DEF_REGEX = new RegExp(
 );
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "g");
 const LOOSE_DEF_REGEX = /^\s*handle=\s*([^\s:|]+)/;
-const LOOSE_USAGE_REGEX = />>([^\s|}:}\)]+)/g;
+const LOOSE_USAGE_REGEX = />>([^\s|}:},;\.\]\)]+)/g;
 
 export class WlyLinkProvider
   implements
