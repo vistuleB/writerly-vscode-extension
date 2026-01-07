@@ -81,6 +81,11 @@
         "command": "writerly.openResolvedPath",
         "title": "---",
         "category": "Writerly"
+      },
+      {
+        "command": "writerly.restart",
+        "title": "Reset and Re-scan Workspace",
+        "category": "Writerly"
       }
     ],
     "keybindings": [

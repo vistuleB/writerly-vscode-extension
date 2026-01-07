@@ -70,6 +70,27 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
   }
 
   /**
+   * Clears the image cache and rebuilds the file tree immediately.
+   * Called by the WriterlyController.
+   */
+  public async reset(): Promise<void> {
+    // 1. Cancel any pending debounced loads
+    if (this.loadFilesTimeout) {
+      clearTimeout(this.loadFilesTimeout);
+      this.loadFilesTimeout = undefined;
+    }
+
+    // 2. Clear current state
+    this.fileTree = [];
+    this.nameToNodesMap.clear();
+
+    // 3. Re-index immediately (without the 300ms delay)
+    const flatPaths = await this.getAllImageRelativePaths();
+    this.fileTree = this.buildFileTree(flatPaths);
+    this.rebuildLookupMap();
+  }
+
+  /**
    * Rebuilds the tree and the fast-lookup index.
    */
   private async loadFiles(): Promise<void> {

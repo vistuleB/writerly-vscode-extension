@@ -16,27 +16,35 @@ export class FileOpener {
     let disposables = [
       vscode.commands.registerCommand(
         "writerly.openUnderCursorWithDefault",
-        () => FileOpener.openUnderCursor(OpeningMethod.WITH_DEFAULT)
+        () => FileOpener.openUnderCursor(OpeningMethod.WITH_DEFAULT),
       ),
 
       vscode.commands.registerCommand(
         "writerly.openUnderCursorWithVSCode",
-        () => FileOpener.openUnderCursor(OpeningMethod.WITH_VSCODE)
+        () => FileOpener.openUnderCursor(OpeningMethod.WITH_VSCODE),
       ),
 
       vscode.commands.registerCommand(
         "writerly.openUnderCursorAsImageWithVSCode",
-        () => FileOpener.openUnderCursor(OpeningMethod.AS_IMAGE_WITH_VSCODE)
+        () => FileOpener.openUnderCursor(OpeningMethod.AS_IMAGE_WITH_VSCODE),
       ),
 
       vscode.commands.registerCommand(
         "writerly.openResolvedPath",
-        (path, method) => FileOpener.openResolvedPath(path, method)
+        (path, method) => FileOpener.openResolvedPath(path, method),
       ),
     ];
 
     for (const disposable of disposables)
       context.subscriptions.push(disposable);
+  }
+
+  /**
+   * FileOpener is stateless, so reset does nothing.
+   * Defined to satisfy the WriterlyController's reset loop.
+   */
+  public reset(): void {
+    // No internal state to clear.
   }
 
   private static getPossiblePathAtPosition(
@@ -45,14 +53,20 @@ export class FileOpener {
   ): [vscode.Range, string] {
     const line = document.lineAt(position);
     const text = line.text;
-    const end = this.moveCursorForwardWhileNotForbidden(text, position.character);
-    const start = this.moveCursorBackwardWhileNotForbidden(text, position.character);
+    const end = this.moveCursorForwardWhileNotForbidden(
+      text,
+      position.character,
+    );
+    const start = this.moveCursorBackwardWhileNotForbidden(
+      text,
+      position.character,
+    );
     const path = text.substring(start, end);
     const positionStart = new vscode.Position(position.line, start);
     const positionEnd = new vscode.Position(position.line, end);
     return [new vscode.Range(positionStart, positionEnd), path];
   }
-  
+
   private static moveCursorForwardWhileNotForbidden(
     text: string,
     from: number,
@@ -81,29 +95,25 @@ export class FileOpener {
   }
 
   public static isImageFile(filePath: string): boolean {
-    for (const ext of [
-      ".svg",
-      ".png",
-      ".ico",
-      ".jpeg",
-      ".jpg",
-      ".gif",
-    ]) {
+    for (const ext of [".svg", ".png", ".ico", ".jpeg", ".jpg", ".gif"]) {
       if (filePath.endsWith(ext)) return true;
     }
     return false;
   }
 
-  public static async resolvePath(
-    filePath: string,
-  ): Promise<string> {
+  public static async resolvePath(filePath: string): Promise<string> {
     while (true) {
-      if (filePath.startsWith("/")) { filePath = filePath.slice(1); }
-      else if (filePath.startsWith("../")) { filePath = filePath.slice(3); }
-      else break;
+      if (filePath.startsWith("/")) {
+        filePath = filePath.slice(1);
+      } else if (filePath.startsWith("../")) {
+        filePath = filePath.slice(3);
+      } else break;
     }
-    let files = await vscode.workspace.findFiles(`**/${filePath}`, '{node_modules, .git}');
-    return (files.length > 0) ? files[0].fsPath : "";
+    let files = await vscode.workspace.findFiles(
+      `**/${filePath}`,
+      "{node_modules, .git}",
+    );
+    return files.length > 0 ? files[0].fsPath : "";
   }
 
   private static async openWithSystemCommand(filePath: string): Promise<void> {
@@ -116,7 +126,7 @@ export class FileOpener {
           command = "open";
           args = [filePath];
           break;
-        case "win32":  // Windows
+        case "win32": // Windows
           command = "powershell.exe";
           args = [
             "-NoProfile",
@@ -127,7 +137,7 @@ export class FileOpener {
             filePath,
           ];
           break;
-        default:        // Linux and others
+        default: // Linux and others
           command = "xdg-open";
           args = [filePath];
           break;
@@ -187,8 +197,8 @@ export class FileOpener {
     switch (method) {
       case OpeningMethod.WITH_DEFAULT: {
         try {
-          await vscode.env.openExternal(uri)
-        } catch(vscodeError) {
+          await vscode.env.openExternal(uri);
+        } catch (vscodeError) {
           console.log(
             `VSCode openExternal failed, falling back to system command: ${vscodeError}`,
           );
@@ -204,7 +214,7 @@ export class FileOpener {
         break;
       }
       case OpeningMethod.AS_IMAGE_WITH_VSCODE: {
-        await vscode.commands.executeCommand('vscode.open', uri);
+        await vscode.commands.executeCommand("vscode.open", uri);
         break;
       }
     }
@@ -257,7 +267,10 @@ export class FileOpener {
     document: vscode.TextDocument,
     position: vscode.Position,
   ): Promise<[vscode.Range, string, string]> {
-    const [range, filePath] = FileOpener.getPossiblePathAtPosition(document, position);
+    const [range, filePath] = FileOpener.getPossiblePathAtPosition(
+      document,
+      position,
+    );
     if (!filePath) return [range, filePath, ""];
     const resolvedPath = await FileOpener.resolvePath(filePath);
     return [range, filePath, resolvedPath];
@@ -268,7 +281,8 @@ export class FileOpener {
     position: vscode.Position,
     method: OpeningMethod,
   ): Promise<void> {
-    const [_, filePath, resolvedPath] = await FileOpener.getResolvedFilePathAtPosition(document, position);
+    const [_, filePath, resolvedPath] =
+      await FileOpener.getResolvedFilePathAtPosition(document, position);
     if (!filePath) {
       vscode.window.showWarningMessage("No file path found under cursor");
       return;
@@ -288,10 +302,6 @@ export class FileOpener {
       return;
     }
 
-    this.openAtPosition(
-      editor.document,
-      editor.selection.active,
-      method,
-    );
+    this.openAtPosition(editor.document, editor.selection.active, method);
   }
 }

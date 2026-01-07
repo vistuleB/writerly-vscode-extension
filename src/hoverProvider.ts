@@ -15,6 +15,14 @@ export class HoverProvider implements vscode.HoverProvider {
       context.subscriptions.push(disposable);
   }
 
+  /**
+   * HoverProvider is stateless, so reset does nothing.
+   * Defined to satisfy the WriterlyController's reset loop.
+   */
+  public reset(): void {
+    // No internal state to clear.
+  }
+
   public async provideHover(
     document: vscode.TextDocument,
     position: vscode.Position,

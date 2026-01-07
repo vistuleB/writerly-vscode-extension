@@ -44,6 +44,24 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
     this.revealEditorItem(vscode.window.activeTextEditor);
   }
 
+  /**
+   * Resets the TreeView state, clears the file cache, and re-scans the workspace.
+   * Called by the WriterlyController.
+   */
+  public async reset(): Promise<void> {
+    // 1. Clear the cached file URIs
+    this.wlyFilesCache = [];
+
+    // 2. Trigger a full UI refresh
+    // This forces getChildren() to run again, which calls findFiles()
+    this._onDidChangeTreeData.fire();
+
+    // 3. Re-sync the highlight to the currently open file
+    if (vscode.window.activeTextEditor) {
+      this.revealEditorItem(vscode.window.activeTextEditor);
+    }
+  }
+
   private revealEditorItem(editor: vscode.TextEditor | undefined) {
     if (editor && editor.document.uri.fsPath.endsWith(".wly")) {
       const item = new WlyFileItem(editor.document.uri);

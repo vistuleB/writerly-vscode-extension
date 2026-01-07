@@ -110,6 +110,39 @@ export class WlyLinkProvider
     this.initializeAsync();
   }
 
+  /**
+   * Performs a deep reset of the provider's state and re-indexes the workspace.
+   * Called by the WriterlyController.
+   */
+  public async reset(): Promise<void> {
+    // 1. Clear all internal data structures
+    this.definitions.clear();
+    this.documentLinks.clear();
+    this.usageCounts.clear();
+    this.parents = [];
+    this.isInitialized = false;
+
+    // 2. Clear all UI markers (red underlines/warnings)
+    this.diagnosticCollection.clear();
+
+    // 3. Clear any pending debounced revalidations
+    if (this.revalidateTimer) {
+      clearTimeout(this.revalidateTimer);
+      this.revalidateTimer = undefined;
+    }
+
+    // 4. Re-run the full discovery and processing sequence
+    // This will populate the definitions and usageCounts from scratch
+    await this.initializeAsync();
+
+    // 5. Force update for currently visible editors
+    for (const doc of vscode.workspace.textDocuments) {
+      if (this.isWriterlyFile(doc.uri.fsPath)) {
+        this.processDocument(doc);
+      }
+    }
+  }
+
   private async initializeAsync(): Promise<void> {
     try {
       await this.discoverParentDirectories();
