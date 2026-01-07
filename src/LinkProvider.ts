@@ -838,10 +838,13 @@ export class WlyLinkProvider
           vscode.CompletionItemKind.Reference,
         );
 
-        // Documentation shows where the handle is defined
-        const def = defs[0];
-        const relPath = this.getRelativeWorkspacePath(def.fsPath);
-        item.detail = `Defined in ${relPath}`;
+        /* John removed the item.detail below b/c he found it more    *
+         * annoying than helpful in unfolded state, & for the image   *
+         * path completion stuff it's nice to have unfolded state, so */
+        // // Documentation shows where the handle is defined
+        // const def = defs[0];
+        // const relPath = this.getRelativeWorkspacePath(def.fsPath);
+        // item.detail = `Defined in ${relPath}`;
 
         // Ensure the '+' and other special chars don't break the insertion
         // We provide a Range that only covers the text AFTER '>>' if necessary,
