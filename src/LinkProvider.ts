@@ -35,7 +35,7 @@ const DEF_REGEX = new RegExp(
   `^\\s*handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`
 );
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "g");
-const LOOSE_DEF_REGEX = /^\s*handle=\s*([^\s:|]+)/;
+const LOOSE_DEF_REGEX = /^handle=\s*([^\s:|]+)/;
 const LOOSE_USAGE_REGEX = new RegExp(`>>([${HANDLE_BODY_CHARS}]+)`, "g");
 
 export class WlyLinkProvider
@@ -340,7 +340,7 @@ export class WlyLinkProvider
     // 2. standard cleanup and extraction
     this.clearDocumentDefinitions(currentFsPath);
     const diagnostics: vscode.Diagnostic[] = [];
-    const documentLinks = this.extractHandlesFromDocument(
+    const documentLinks = this.walkDocument(
       document,
       diagnostics
     );
@@ -377,7 +377,7 @@ export class WlyLinkProvider
     }
   }
 
-  private extractHandlesFromDocument(
+  private walkDocument(
     document: vscode.TextDocument,
     diagnostics: vscode.Diagnostic[]
   ): vscode.DocumentLink[] {
