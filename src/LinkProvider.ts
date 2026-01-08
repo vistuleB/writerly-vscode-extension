@@ -746,14 +746,53 @@ export class WlyLinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): { range: vscode.Range; placeholder: string } | undefined {
-    const result = this.getDefinitionOnLine(document, position);
+    // 1. Check if we are at a definition site (handle=name)
+    const defInfo = this.getDefinitionOnLine(document, position);
+    if (defInfo && defInfo.range.contains(position)) {
+      return { range: defInfo.range, placeholder: defInfo.handleName };
+    }
 
-    if (result && result.range.contains(position)) {
-      return { range: result.range, placeholder: result.handleName };
+    // 2. Check if we are at a usage site (>>name)
+    const line = document.lineAt(position).text;
+    let usageMatch;
+    USAGE_REGEX.lastIndex = 0;
+
+    while ((usageMatch = USAGE_REGEX.exec(line)) !== null) {
+      const matchStart = usageMatch.index;
+      const matchEnd = matchStart + usageMatch[0].length;
+
+      if (position.character >= matchStart && position.character <= matchEnd) {
+        const handleName = usageMatch[1];
+
+        // Safety: Only allow rename if there is exactly one definition in the tree
+        const validDefs = this.findValidDefinitions(
+          handleName,
+          document.uri.fsPath,
+        );
+
+        if (validDefs.length === 0) {
+          throw new Error(`Cannot rename: Handle '${handleName}' not found.`);
+        }
+        if (validDefs.length > 1) {
+          throw new Error(
+            `Cannot rename: Handle '${handleName}' has multiple definitions.`,
+          );
+        }
+
+        // Return the range of the handle name ONLY (skipping '>>')
+        const nameRange = new vscode.Range(
+          position.line,
+          matchStart + 2, // Skip '>>'
+          position.line,
+          matchEnd,
+        );
+
+        return { range: nameRange, placeholder: handleName };
+      }
     }
 
     throw new Error(
-      "Renaming is only allowed at the definition site (handle=name).",
+      "Please place cursor on a handle definition or usage to rename.",
     );
   }
 
@@ -763,31 +802,58 @@ export class WlyLinkProvider
     newName: string,
     token: vscode.CancellationToken,
   ): Promise<vscode.WorkspaceEdit | undefined> {
-    const defInfo = this.getDefinitionOnLine(document, position);
-    if (!defInfo) return undefined;
+    // 1. Identify the 'oldName' from either a definition or a usage site
+    let oldName: string | undefined;
 
-    const oldName = defInfo.handleName;
+    // Check if it's a definition site
+    const defOnLine = this.getDefinitionOnLine(document, position);
+    if (defOnLine && defOnLine.range.contains(position)) {
+      oldName = defOnLine.handleName;
+    } else {
+      // Check if it's a usage site
+      const lineText = document.lineAt(position).text;
+      USAGE_REGEX.lastIndex = 0;
+      let match;
+      while ((match = USAGE_REGEX.exec(lineText)) !== null) {
+        const matchStart = match.index;
+        const matchEnd = matchStart + match[0].length;
+        if (
+          position.character >= matchStart &&
+          position.character <= matchEnd
+        ) {
+          oldName = match[1];
+          break;
+        }
+      }
+    }
+
+    if (!oldName) {
+      return undefined;
+    }
+
     const workspaceEdit = new vscode.WorkspaceEdit();
     const originFsPath = document.uri.fsPath;
 
-    // cache anchored regex for the old name to ensure exact matching only
-    const exactMatchRegex = new RegExp(`^${oldName}$`);
+    // Cache anchored regex. We escape the oldName in case it contains
+    // regex-sensitive characters like '+' or '^' which your handles support.
+    const escapedName = oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const exactMatchRegex = new RegExp(`^${escapedName}$`);
 
+    // 2. Iterate through all files in the document tree to apply changes
     for (const [fsPath, links] of this.documentLinks) {
-      if (!this.isInSameDocumentTree(originFsPath, fsPath)) continue;
+      if (!this.isInSameDocumentTree(originFsPath, fsPath)) {
+        continue;
+      }
 
       const uri = vscode.Uri.file(fsPath);
-      const openDoc = vscode.workspace.textDocuments.find(
-        (d) => d.uri.fsPath === fsPath,
-      );
 
-      // --- PART A: rename call sites (>>oldName) ---
+      // --- PART A: Rename usage sites (>>oldName) ---
       for (const link of links) {
         if (
           link.data?.handleName &&
           exactMatchRegex.test(link.data.handleName)
         ) {
-          // offset by 2 to skip '>>'
+          // Offset by 2 characters to skip the '>>' prefix
           const nameRange = new vscode.Range(
             link.range.start.line,
             link.range.start.character + 2,
@@ -798,13 +864,13 @@ export class WlyLinkProvider
         }
       }
 
-      // --- PART B: rename definition sites (handle=oldName) ---
+      // --- PART B: Rename definition sites (handle=oldName) ---
       const defs = this.definitions.get(oldName);
       if (defs) {
         for (const def of defs) {
           if (def.fsPath === fsPath) {
-            // since extractHandleDefinition already calculated def.range
-            // to point exactly at the name part, we use it directly.
+            // Your extractHandleDefinition already points exactly
+            // at the name part of 'handle=name'
             workspaceEdit.replace(uri, def.range, newName);
           }
         }
