@@ -32,7 +32,7 @@ const HANDLE_BODY_CHARS: string = "-a-zA-Z0-9_%\\^\\+";
 const HANDLE_END_CHARS: string = "a-zA-Z0-9_\\^";
 const HANDLE_REGEX_STRING: string = `([${HANDLE_START_CHARS}][${HANDLE_BODY_CHARS}]*[${HANDLE_END_CHARS}])|[${HANDLE_START_CHARS}]`;
 const DEF_REGEX = new RegExp(
-  `^\\s*handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`
+  `^\\s*handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`,
 );
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "g");
 const LOOSE_DEF_REGEX = /^handle=\s*([^\s:|]+)/;
@@ -58,7 +58,7 @@ export class WlyLinkProvider
     this.diagnosticCollection =
       vscode.languages.createDiagnosticCollection("writerly-links");
     const watcher = vscode.workspace.createFileSystemWatcher(
-      `**/*${FILE_EXTENSION}`
+      `**/*${FILE_EXTENSION}`,
     );
     watcher.onDidChange((uri) => this.processUri(uri));
     watcher.onDidCreate((uri) => this.createUri(uri));
@@ -66,32 +66,32 @@ export class WlyLinkProvider
     const disposables = [
       this.diagnosticCollection,
       vscode.workspace.onDidChangeTextDocument((event) =>
-        this.onDidChange(event.document)
+        this.onDidChange(event.document),
       ),
       vscode.workspace.onDidRenameFiles((event) => this.onDidRename(event)),
       vscode.workspace.onDidDeleteFiles((event) => this.onDidDelete(event)),
       vscode.workspace.onDidCreateFiles((event) => this.onDidCreate(event)),
       vscode.languages.registerDocumentLinkProvider(
         { scheme: "file", language: "writerly" },
-        this
+        this,
       ),
       vscode.languages.registerCodeActionsProvider(
         { scheme: "file", language: "writerly" },
         this,
-        { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
+        { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] },
       ),
       vscode.languages.registerDefinitionProvider(
         { scheme: "file", language: "writerly" },
-        this
+        this,
       ),
       vscode.languages.registerRenameProvider(
         { scheme: "file", language: "writerly" },
-        this
+        this,
       ),
       vscode.languages.registerCompletionItemProvider(
         { scheme: "file", language: "writerly" },
         this,
-        ">" // Triggered when the user types the second '>'
+        ">", // Triggered when the user types the second '>'
       ),
 
       vscode.workspace.onDidChangeConfiguration((e) => {
@@ -166,7 +166,7 @@ export class WlyLinkProvider
     const uris = await vscode.workspace.findFiles(
       `**/*${FILE_EXTENSION}`,
       null,
-      MAX_FILES
+      MAX_FILES,
     );
 
     // process all files and await completion
@@ -186,7 +186,7 @@ export class WlyLinkProvider
     const parentFiles = await vscode.workspace.findFiles(
       `**/*${PARENT_SUFFIX}`,
       null,
-      MAX_FILES
+      MAX_FILES,
     );
 
     this.parents = parentFiles.map((uri) => this.parentPath(uri.fsPath));
@@ -256,7 +256,7 @@ export class WlyLinkProvider
 
   private async renameUri(
     oldUri: vscode.Uri,
-    newUri: vscode.Uri
+    newUri: vscode.Uri,
   ): Promise<void> {
     const oldPath = oldUri.fsPath;
     const newPath = newUri.fsPath;
@@ -268,7 +268,7 @@ export class WlyLinkProvider
       const hasChanges = definitions.some((def) => def.fsPath === oldPath);
       if (hasChanges) {
         const updatedDefinitions = definitions.map((def) =>
-          def.fsPath === oldPath ? { ...def, fsPath: newPath } : def
+          def.fsPath === oldPath ? { ...def, fsPath: newPath } : def,
         );
         this.definitions.set(handleName, updatedDefinitions);
       }
@@ -282,7 +282,7 @@ export class WlyLinkProvider
     const cachedLinks = this.documentLinks.get(targetPath);
     if (cachedLinks) {
       cachedLinks.forEach((link) =>
-        this.updateUsageCount(link.data.handleName, -1)
+        this.updateUsageCount(link.data.handleName, -1),
       );
     }
 
@@ -292,7 +292,7 @@ export class WlyLinkProvider
     // 3. clear definitions from the map
     for (const [handleName, definitions] of this.definitions) {
       const filteredDefinitions = definitions.filter(
-        (def) => def.fsPath !== targetPath
+        (def) => def.fsPath !== targetPath,
       );
 
       if (filteredDefinitions.length === 0) {
@@ -329,7 +329,7 @@ export class WlyLinkProvider
   }
 
   private processDocument(
-    document: vscode.TextDocument
+    document: vscode.TextDocument,
   ): vscode.DocumentLink[] {
     const currentFsPath = document.uri.fsPath;
 
@@ -340,14 +340,11 @@ export class WlyLinkProvider
     // 2. standard cleanup and extraction
     this.clearDocumentDefinitions(currentFsPath);
     const diagnostics: vscode.Diagnostic[] = [];
-    const documentLinks = this.walkDocument(
-      document,
-      diagnostics
-    );
+    const documentLinks = this.walkDocument(document, diagnostics);
 
     // 3. add new usages to the global counter
     documentLinks.forEach((link) =>
-      this.updateUsageCount(link.data.handleName, 1)
+      this.updateUsageCount(link.data.handleName, 1),
     );
 
     if (this.isInitialized) {
@@ -366,7 +363,7 @@ export class WlyLinkProvider
   private clearDocumentDefinitions(fsPath: string): void {
     for (const [handleName, definitions] of this.definitions) {
       const filteredDefinitions = definitions.filter(
-        (def) => def.fsPath !== fsPath
+        (def) => def.fsPath !== fsPath,
       );
 
       if (filteredDefinitions.length === 0) {
@@ -379,7 +376,7 @@ export class WlyLinkProvider
 
   private walkDocument(
     document: vscode.TextDocument,
-    diagnostics: vscode.Diagnostic[]
+    diagnostics: vscode.Diagnostic[],
   ): vscode.DocumentLink[] {
     const documentLinks: vscode.DocumentLink[] = [];
     const currentFsPath = document.uri.fsPath;
@@ -392,7 +389,7 @@ export class WlyLinkProvider
         _stateAfterLine,
         lineNumber,
         indent,
-        content
+        content,
       ) => {
         StaticDocumentValidator.validateLine(
           _stateBeforeLine,
@@ -401,7 +398,7 @@ export class WlyLinkProvider
           lineNumber,
           indent,
           content,
-          diagnostics
+          diagnostics,
         );
 
         // extract handle definitions
@@ -410,7 +407,7 @@ export class WlyLinkProvider
             content,
             lineNumber,
             indent,
-            currentFsPath
+            currentFsPath,
           );
         }
 
@@ -420,17 +417,17 @@ export class WlyLinkProvider
             content,
             lineNumber,
             indent,
-            currentFsPath
+            currentFsPath,
           );
           documentLinks.push(...usageLinks);
         }
-      }
+      },
     );
 
     StaticDocumentValidator.validateFinalState(
       document,
       finalState,
-      diagnostics
+      diagnostics,
     );
 
     return documentLinks;
@@ -448,7 +445,7 @@ export class WlyLinkProvider
     content: string,
     lineNumber: number,
     indent: number,
-    fsPath: string
+    fsPath: string,
   ): void {
     const looseMatch = content.match(LOOSE_DEF_REGEX);
     if (!looseMatch) return;
@@ -464,7 +461,7 @@ export class WlyLinkProvider
       indent +
         handleStart +
         fullMatchText.indexOf(handleName) +
-        handleName.length
+        handleName.length,
     );
 
     // ALWAYS add to definitions, even if invalid
@@ -479,7 +476,7 @@ export class WlyLinkProvider
     content: string,
     lineNumber: number,
     indent: number,
-    fsPath: string
+    fsPath: string,
   ): vscode.DocumentLink[] {
     const links: vscode.DocumentLink[] = [];
     let usageMatch;
@@ -492,7 +489,7 @@ export class WlyLinkProvider
         lineNumber,
         indent + matchStart,
         lineNumber,
-        indent + matchStart + usageMatch[0].length
+        indent + matchStart + usageMatch[0].length,
       );
 
       const link = new vscode.DocumentLink(range);
@@ -504,7 +501,7 @@ export class WlyLinkProvider
 
   private validateHandleUsage(
     documentLinks: vscode.DocumentLink[],
-    diagnostics: vscode.Diagnostic[] = []
+    diagnostics: vscode.Diagnostic[] = [],
   ): void {
     const strictRegex = new RegExp(`^${HANDLE_REGEX_STRING}$`);
 
@@ -521,15 +518,15 @@ export class WlyLinkProvider
           new vscode.Diagnostic(
             link.range,
             `Invalid handle name: '${handleName}'. Handles must start with a letter/underscore and contain only alphanumeric chars, dots, underscores, hyphen, %, ^, +, and must end with an alphanumeric char.`,
-            vscode.DiagnosticSeverity.Error
-          )
+            vscode.DiagnosticSeverity.Error,
+          ),
         );
         continue; // Skip tree lookup for invalid names
       }
 
       const validDefinitions = this.findValidDefinitions(
         handleName,
-        currentFsPath
+        currentFsPath,
       );
 
       if (validDefinitions.length === 1) {
@@ -541,7 +538,7 @@ export class WlyLinkProvider
         const diagnostic = this.createDiagnosticForUsage(
           link,
           handleName,
-          validDefinitions
+          validDefinitions,
         );
 
         if (diagnostic) {
@@ -554,7 +551,7 @@ export class WlyLinkProvider
   private createDiagnosticForUsage(
     link: vscode.DocumentLink,
     handleName: string,
-    validDefinitions: HandleDefinition[]
+    validDefinitions: HandleDefinition[],
   ): vscode.Diagnostic | null {
     const definitionCount = validDefinitions.length;
 
@@ -579,7 +576,7 @@ export class WlyLinkProvider
     return new vscode.Diagnostic(
       link.range,
       message,
-      vscode.DiagnosticSeverity.Error
+      vscode.DiagnosticSeverity.Error,
     );
   }
 
@@ -598,7 +595,7 @@ export class WlyLinkProvider
 
   private findValidDefinitions(
     handleName: string,
-    currentFsPath: string
+    currentFsPath: string,
   ): HandleDefinition[] {
     const definitions = this.definitions.get(handleName);
     if (!definitions || definitions.length === 0) {
@@ -606,19 +603,19 @@ export class WlyLinkProvider
     }
 
     return definitions.filter((def) =>
-      this.isInSameDocumentTree(currentFsPath, def.fsPath)
+      this.isInSameDocumentTree(currentFsPath, def.fsPath),
     );
   }
 
   // VS Code interface implementations
   public provideDocumentLinks(
     document: vscode.TextDocument,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.DocumentLink[]> {
     let links = this.documentLinks.get(document.uri.fsPath);
     if (links !== undefined) {
       return links.filter(
-        (link) => link.data.validated !== ValidationState.ERROR
+        (link) => link.data.validated !== ValidationState.ERROR,
       );
     }
     return this.processDocument(document);
@@ -626,7 +623,7 @@ export class WlyLinkProvider
 
   public resolveDocumentLink(
     link: vscode.DocumentLink,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.DocumentLink> {
     const handleName = link.data?.handleName;
     const currentFsPath = link.data?.fsPath;
@@ -637,7 +634,7 @@ export class WlyLinkProvider
 
     const validDefinitions = this.findValidDefinitions(
       handleName,
-      currentFsPath
+      currentFsPath,
     );
 
     if (validDefinitions.length !== 1) {
@@ -648,7 +645,7 @@ export class WlyLinkProvider
     const uri = vscode.Uri.file(definition.fsPath);
     const range = new vscode.Range(
       definition.range.start,
-      definition.range.start
+      definition.range.start,
     );
     const targetUri = this.attachRangeToUri(uri, range);
 
@@ -660,26 +657,26 @@ export class WlyLinkProvider
     document: vscode.TextDocument,
     range: vscode.Range | vscode.Selection,
     context: vscode.CodeActionContext,
-    token: vscode.CancellationToken
+    token: vscode.CancellationToken,
   ): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
 
     // find diagnostics about multiple definitions
     const multipleDefDiagnostics = context.diagnostics.filter((diagnostic) =>
-      diagnostic.message.includes("has multiple definitions")
+      diagnostic.message.includes("has multiple definitions"),
     );
 
     for (const diagnostic of multipleDefDiagnostics) {
       // extract handle name from diagnostic message
       const handleMatch = diagnostic.message.match(
-        /Handle '([^']+)' has multiple definitions/
+        /Handle '([^']+)' has multiple definitions/,
       );
       if (!handleMatch) continue;
 
       const handleName = handleMatch[1];
       const validDefinitions = this.findValidDefinitions(
         handleName,
-        document.uri.fsPath
+        document.uri.fsPath,
       );
 
       // create a code action for each definition
@@ -689,7 +686,7 @@ export class WlyLinkProvider
 
         const action = new vscode.CodeAction(
           `Go to definition in ${relativePath}:${lineNumber}`,
-          vscode.CodeActionKind.QuickFix
+          vscode.CodeActionKind.QuickFix,
         );
 
         let z = def.range.start.translate(0, 7);
@@ -717,7 +714,7 @@ export class WlyLinkProvider
   public provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
-    token: vscode.CancellationToken
+    token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.Definition> {
     if (!this.isInitialized) {
       return undefined;
@@ -747,7 +744,7 @@ export class WlyLinkProvider
 
   public prepareRename(
     document: vscode.TextDocument,
-    position: vscode.Position
+    position: vscode.Position,
   ): { range: vscode.Range; placeholder: string } | undefined {
     const result = this.getDefinitionOnLine(document, position);
 
@@ -756,7 +753,7 @@ export class WlyLinkProvider
     }
 
     throw new Error(
-      "Renaming is only allowed at the definition site (handle=name)."
+      "Renaming is only allowed at the definition site (handle=name).",
     );
   }
 
@@ -764,7 +761,7 @@ export class WlyLinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
     newName: string,
-    token: vscode.CancellationToken
+    token: vscode.CancellationToken,
   ): Promise<vscode.WorkspaceEdit | undefined> {
     const defInfo = this.getDefinitionOnLine(document, position);
     if (!defInfo) return undefined;
@@ -781,7 +778,7 @@ export class WlyLinkProvider
 
       const uri = vscode.Uri.file(fsPath);
       const openDoc = vscode.workspace.textDocuments.find(
-        (d) => d.uri.fsPath === fsPath
+        (d) => d.uri.fsPath === fsPath,
       );
 
       // --- PART A: rename call sites (>>oldName) ---
@@ -795,7 +792,7 @@ export class WlyLinkProvider
             link.range.start.line,
             link.range.start.character + 2,
             link.range.end.line,
-            link.range.end.character
+            link.range.end.character,
           );
           workspaceEdit.replace(uri, nameRange, newName);
         }
@@ -821,7 +818,7 @@ export class WlyLinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
     _token: vscode.CancellationToken,
-    _context: vscode.CompletionContext
+    _context: vscode.CompletionContext,
   ): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
     // 1. Check if we are actually after a '>>'
     const linePrefix = document
@@ -838,13 +835,13 @@ export class WlyLinkProvider
     for (const [handleName, defs] of this.definitions) {
       // 3. Only suggest handles that are valid for THIS document tree
       const isVisible = defs.some((def) =>
-        this.isInSameDocumentTree(currentFsPath, def.fsPath)
+        this.isInSameDocumentTree(currentFsPath, def.fsPath),
       );
 
       if (isVisible) {
         const item = new vscode.CompletionItem(
           handleName,
-          vscode.CompletionItemKind.Reference
+          vscode.CompletionItemKind.Reference,
         );
 
         /* John removed the item.detail below b/c he found it more    *
@@ -869,7 +866,7 @@ export class WlyLinkProvider
 
   private getDefinitionOnLine(
     document: vscode.TextDocument,
-    position: vscode.Position
+    position: vscode.Position,
   ) {
     const line = document.lineAt(position);
     const match = line.text.match(DEF_REGEX);
@@ -891,7 +888,7 @@ export class WlyLinkProvider
       position.line,
       absoluteNameStart,
       position.line,
-      absoluteNameStart + handleName.length
+      absoluteNameStart + handleName.length,
     );
 
     return { handleName, range };
@@ -899,11 +896,11 @@ export class WlyLinkProvider
 
   private getDefinitionForHandle(
     handleName: string,
-    currentFsPath: string
+    currentFsPath: string,
   ): vscode.Definition | undefined {
     const validDefinitions = this.findValidDefinitions(
       handleName,
-      currentFsPath
+      currentFsPath,
     );
 
     // only provide definition for single, unambiguous handles
@@ -926,7 +923,7 @@ export class WlyLinkProvider
 
   private isInSameDocumentTree(
     currentFsPath: string,
-    definitionFsPath: string
+    definitionFsPath: string,
   ): boolean {
     if (currentFsPath === definitionFsPath) {
       return true;
@@ -935,11 +932,11 @@ export class WlyLinkProvider
     return this.parents.some((parentPath) => {
       const currentUnderParent = this.isPathUnderParent(
         currentFsPath,
-        parentPath
+        parentPath,
       );
       const definitionUnderParent = this.isPathUnderParent(
         definitionFsPath,
-        parentPath
+        parentPath,
       );
       return currentUnderParent && definitionUnderParent;
     });
@@ -951,51 +948,63 @@ export class WlyLinkProvider
 
   private validateHandleDefinitions(
     document: vscode.TextDocument,
-    diagnostics: vscode.Diagnostic[]
+    diagnostics: vscode.Diagnostic[],
   ): void {
     const currentFsPath = document.uri.fsPath;
     const strictRegex = new RegExp(`^(${HANDLE_REGEX_STRING})$`);
 
     this.definitions.forEach((defs, handleName) => {
-      const localDef = defs.find((d) => d.fsPath === currentFsPath);
-      if (!localDef) return;
+      // 1. Get ALL definitions of this handle in the current file
+      const localDefs = defs.filter((d) => d.fsPath === currentFsPath);
+      if (localDefs.length === 0) return;
 
-      // 1. PRIORITY 1: SYNTAX ERROR
+      // 2. PRIORITY 1: SYNTAX ERROR
+      // We apply this to every instance of the bad name in this file
       if (!strictRegex.test(handleName)) {
-        diagnostics.push(
-          new vscode.Diagnostic(
-            localDef.range,
-            `Invalid handle name: '${handleName}'. Handles must start with a letter/underscore and contain only alphanumeric chars, dots, underscores, hyphen, %, ^, or +.`,
-            vscode.DiagnosticSeverity.Error
-          )
-        );
-        return; // STOP: Do not check for duplicates or usage
-      }
-
-      // 2. PRIORITY 2: LOGIC ERROR (Duplicates)
-      const treeDefs = this.findValidDefinitions(handleName, currentFsPath);
-      if (treeDefs.length > 1) {
-        diagnostics.push(
-          new vscode.Diagnostic(
-            localDef.range,
-            `Handle '${handleName}' is defined multiple times in this document tree.`,
-            vscode.DiagnosticSeverity.Error
-          )
-        );
-        return; // STOP: Do not check for usage
-      }
-
-      // 3. PRIORITY 3: LINT WARNING (Unused)
-      if (this.isUnusedWarningEnabled()) {
-        const globalUsageCount = this.usageCounts.get(handleName) || 0;
-        if (globalUsageCount === 0) {
+        localDefs.forEach((localDef) => {
           diagnostics.push(
             new vscode.Diagnostic(
               localDef.range,
-              `Unused handle: '${handleName}' is defined but never used.`,
-              vscode.DiagnosticSeverity.Warning
-            )
+              `Invalid handle name: '${handleName}'.`,
+              vscode.DiagnosticSeverity.Error,
+            ),
           );
+        });
+        return;
+      }
+
+      // 3. PRIORITY 2: LOGIC ERROR (Duplicates)
+      // Check how many times this handle exists in the whole document tree
+      const treeDefs = this.findValidDefinitions(handleName, currentFsPath);
+
+      if (treeDefs.length > 1) {
+        // Highlight EVERY occurrence in the current file as a duplicate
+        localDefs.forEach((localDef) => {
+          diagnostics.push(
+            new vscode.Diagnostic(
+              localDef.range,
+              `Handle '${handleName}' is defined multiple times (${treeDefs.length}) in this document tree.`,
+              vscode.DiagnosticSeverity.Error,
+            ),
+          );
+        });
+        return;
+      }
+
+      // 4. PRIORITY 3: LINT WARNING (Unused)
+      if (this.isUnusedWarningEnabled()) {
+        const globalUsageCount = this.usageCounts.get(handleName) || 0;
+        if (globalUsageCount === 0) {
+          // If unused, highlight all definitions in this file (usually just one, but safe to loop)
+          localDefs.forEach((localDef) => {
+            diagnostics.push(
+              new vscode.Diagnostic(
+                localDef.range,
+                `Unused handle: '${handleName}' is defined but never used.`,
+                vscode.DiagnosticSeverity.Warning,
+              ),
+            );
+          });
         }
       }
     });
