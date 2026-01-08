@@ -33,6 +33,11 @@ export class FileOpener {
         "writerly.openResolvedPath",
         (path, method) => FileOpener.openResolvedPath(path, method),
       ),
+
+      vscode.commands.registerCommand(
+        "writerly.openActiveImageWithDefault",
+        () => FileOpener.openActiveImageWithDefault(),
+      ),
     ];
 
     for (const disposable of disposables)
@@ -45,6 +50,24 @@ export class FileOpener {
    */
   public reset(): void {
     // No internal state to clear.
+  }
+
+  public static async openActiveImageWithDefault(): Promise<void> {
+    const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    let targetPath: string | undefined;
+
+    // Get the URI from the active tab's input
+    if (activeTab?.input && "uri" in (activeTab.input as any)) {
+      const uri = (activeTab.input as any).uri as vscode.Uri;
+      targetPath = uri.fsPath;
+    }
+
+    // Verify it's actually an image before calling the system
+    if (targetPath && this.isImageFile(targetPath)) {
+      await this.openResolvedPath(targetPath, OpeningMethod.WITH_DEFAULT);
+    } else {
+      vscode.window.showWarningMessage("Active file is not a supported image.");
+    }
   }
 
   private static getPossiblePathAtPosition(
