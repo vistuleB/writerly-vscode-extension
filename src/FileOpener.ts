@@ -35,8 +35,8 @@ export class FileOpener {
       ),
 
       vscode.commands.registerCommand(
-        "writerly.openActiveImageWithDefault",
-        () => FileOpener.openActiveImageWithDefault(),
+        "writerly.openFileWithDefault",
+        () => FileOpener.openFileWithDefault(),
       ),
     ];
 
@@ -52,7 +52,7 @@ export class FileOpener {
     // No internal state to clear.
   }
 
-  public static async openActiveImageWithDefault(): Promise<void> {
+  public static async openFileWithDefault(): Promise<void> {
     const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
     let targetPath: string | undefined;
 
