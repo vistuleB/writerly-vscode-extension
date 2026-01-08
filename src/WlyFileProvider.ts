@@ -37,10 +37,15 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
       vscode.window.onDidChangeActiveTextEditor((editor) => {
         this.revealEditorItem(editor);
       }),
+      this.treeView?.onDidChangeVisibility((e) => {
+        if (e.visible) {
+          this.revealEditorItem(vscode.window.activeTextEditor);
+        }
+      }),
     ];
 
     for (const disposable of disposables)
-      context.subscriptions.push(disposable);
+      if (disposable) context.subscriptions.push(disposable);
 
     this.revealEditorItem(vscode.window.activeTextEditor);
   }
@@ -66,10 +71,14 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
   }
 
   private revealEditorItem(editor: vscode.TextEditor | undefined) {
-    if (editor && editor.document.uri.fsPath.endsWith(".wly")) {
+    if (
+      this.treeView?.visible &&
+      editor &&
+      editor.document.uri.fsPath.endsWith(".wly")
+    ) {
       const item = new WlyFileItem(editor.document.uri);
       // 'reveal' needs getParent to work!
-      this.treeView?.reveal(item, {
+      this.treeView.reveal(item, {
         select: true,
         focus: false,
         expand: true,
