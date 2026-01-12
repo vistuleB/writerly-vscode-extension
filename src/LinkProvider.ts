@@ -330,6 +330,7 @@ export class WlyLinkProvider
 
   private processDocument(
     document: vscode.TextDocument,
+    triggerRevalidation: boolean = true,
   ): vscode.DocumentLink[] {
     const currentFsPath = document.uri.fsPath;
 
@@ -352,7 +353,9 @@ export class WlyLinkProvider
       this.validateHandleDefinitions(document, diagnostics);
 
       // 4. trigger the debounced revalidation
-      this.triggerTreeRevalidation(currentFsPath);
+      if (triggerRevalidation) {
+        this.triggerTreeRevalidation(currentFsPath);
+      }
     }
 
     this.diagnosticCollection.set(document.uri, diagnostics);
@@ -1159,6 +1162,9 @@ export class WlyLinkProvider
 
       // 2. iterate only once through documentLinks
       for (const [fsPath, links] of this.documentLinks) {
+        // Skip the file that triggered this revalidation, as it was already processed
+        if (fsPath === originFsPath) continue;
+
         // 3. only process if it belongs to the same tree
         if (this.isInSameDocumentTree(originFsPath, fsPath)) {
           const openDoc = openDocsMap.get(fsPath);
@@ -1166,10 +1172,9 @@ export class WlyLinkProvider
           // we only update diagnostics for open documents to save UI thread resources.
           // closed documents will be validated when the user opens them.
           if (openDoc) {
-            const diagnostics: vscode.Diagnostic[] = [];
-            this.validateHandleUsage(links, diagnostics);
-            this.validateHandleDefinitions(openDoc, diagnostics);
-            this.diagnosticCollection.set(openDoc.uri, diagnostics);
+            // Re-process the document to gather all current diagnostics (including indentation)
+            // but set triggerRevalidation to false to prevent infinite loops
+            this.processDocument(openDoc, false);
           }
         }
       }
