@@ -1106,7 +1106,7 @@ export class WlyLinkProvider
           diagnostics.push(
             new vscode.Diagnostic(
               localDef.range,
-              `Handle '${handleName}' is defined multiple times (${treeDefs.length}) in this document tree.`,
+              `Handle '${handleName}' is defined in multiple places (${treeDefs.length}) in this document tree.`,
               vscode.DiagnosticSeverity.Error,
             ),
           );
