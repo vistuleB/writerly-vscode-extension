@@ -1100,13 +1100,25 @@ export class WlyLinkProvider
       // Check how many times this handle exists in the whole document tree
       const treeDefs = this.findValidDefinitions(handleName, currentFsPath);
 
-      if (treeDefs.length > 1) {
+      // De-duplicate definitions by path and range to handle stale cache or redundant indexing
+      const uniqueTreeDefs = treeDefs.filter(
+        (def, index, self) =>
+          index ===
+          self.findIndex(
+            (t) =>
+              t.fsPath === def.fsPath &&
+              t.range.start.line === def.range.start.line &&
+              t.range.start.character === def.range.start.character,
+          ),
+      );
+
+      if (uniqueTreeDefs.length > 1) {
         // Highlight EVERY occurrence in the current file as a duplicate
         localDefs.forEach((localDef) => {
           diagnostics.push(
             new vscode.Diagnostic(
               localDef.range,
-              `Handle '${handleName}' is defined in multiple places (${treeDefs.length}) in this document tree.`,
+              `Handle '${handleName}' is defined in multiple places (${uniqueTreeDefs.length}) in this document tree.`,
               vscode.DiagnosticSeverity.Error,
             ),
           );
