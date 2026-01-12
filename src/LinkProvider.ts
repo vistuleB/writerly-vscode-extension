@@ -437,7 +437,9 @@ export class WlyLinkProvider
     return (
       lineType !== LineType.CodeBlockLine &&
       lineType !== LineType.Tag &&
-      lineType !== LineType.CodeBlockClosing
+      lineType !== LineType.CodeBlockClosing &&
+      lineType !== LineType.AttributeZoneComment &&
+      lineType !== LineType.TextZoneComment
     );
   }
 
@@ -721,6 +723,17 @@ export class WlyLinkProvider
     }
 
     // check if cursor is on a handle usage (>>handleName)
+    const lineType = WriterlyDocumentWalker.getLineType(
+      document,
+      position.line,
+    );
+    if (
+      lineType === LineType.AttributeZoneComment ||
+      lineType === LineType.TextZoneComment
+    ) {
+      return undefined;
+    }
+
     const line = document.lineAt(position);
     const text = line.text;
 
@@ -746,6 +759,17 @@ export class WlyLinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): { range: vscode.Range; placeholder: string } | undefined {
+    const lineType = WriterlyDocumentWalker.getLineType(
+      document,
+      position.line,
+    );
+    if (
+      lineType === LineType.AttributeZoneComment ||
+      lineType === LineType.TextZoneComment
+    ) {
+      throw new Error("Cannot rename inside a comment.");
+    }
+
     // 1. Check if we are at a definition site (handle=name)
     const defInfo = this.getDefinitionOnLine(document, position);
     if (defInfo && defInfo.range.contains(position)) {
@@ -803,6 +827,17 @@ export class WlyLinkProvider
     token: vscode.CancellationToken,
   ): Promise<vscode.WorkspaceEdit | undefined> {
     // 1. Identify the 'oldName' from either a definition or a usage site
+    const lineType = WriterlyDocumentWalker.getLineType(
+      document,
+      position.line,
+    );
+    if (
+      lineType === LineType.AttributeZoneComment ||
+      lineType === LineType.TextZoneComment
+    ) {
+      return undefined;
+    }
+
     let oldName: string | undefined;
 
     // Check if it's a definition site
@@ -894,6 +929,17 @@ export class WlyLinkProvider
       return undefined;
     }
 
+    const lineType = WriterlyDocumentWalker.getLineType(
+      document,
+      position.line,
+    );
+    if (
+      lineType === LineType.AttributeZoneComment ||
+      lineType === LineType.TextZoneComment
+    ) {
+      return undefined;
+    }
+
     const completionItems: vscode.CompletionItem[] = [];
     const currentFsPath = document.uri.fsPath;
 
@@ -933,8 +979,19 @@ export class WlyLinkProvider
   private getDefinitionOnLine(
     document: vscode.TextDocument,
     position: vscode.Position,
-  ) {
-    const line = document.lineAt(position);
+  ): { handleName: string; range: vscode.Range } | undefined {
+    const lineType = WriterlyDocumentWalker.getLineType(
+      document,
+      position.line,
+    );
+    if (
+      lineType === LineType.AttributeZoneComment ||
+      lineType === LineType.TextZoneComment
+    ) {
+      return undefined;
+    }
+
+    const line = document.lineAt(position.line);
     const match = line.text.match(DEF_REGEX);
 
     if (!match) return undefined;

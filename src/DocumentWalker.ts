@@ -26,7 +26,33 @@ export enum LineType {
   CodeBlockLine,
 }
 
-export class WriterlyDocumentWalker {  
+export class WriterlyDocumentWalker {
+  public static getLineType(
+    document: vscode.TextDocument,
+    lineNumber: number,
+  ): LineType {
+    let state: State = {
+      zone: Zone.Text,
+      maxIndent: 0,
+      minIndent: 0,
+      codeBlockStartIndent: 0,
+      codeBlockStartLineNumber: 0,
+    };
+
+    let lineType: LineType = LineType.Text;
+
+    for (let i = 0; i <= lineNumber; i++) {
+      const line = document.lineAt(i).text.trimEnd();
+      const spaces = line.match(/^( *)/)?.[1] || "";
+      const indent = spaces.length;
+      const content = line.slice(indent);
+
+      lineType = this.updateState(state, i, indent, content);
+    }
+
+    return lineType;
+  }
+
   public static walk(
     document: vscode.TextDocument,
     callback: (
@@ -76,7 +102,7 @@ export class WriterlyDocumentWalker {
     state: State,
     lineNumber: number,
     indent: number,
-    content: string
+    content: string,
   ): LineType {
     switch (state.zone) {
       case Zone.Attribute:
@@ -84,7 +110,7 @@ export class WriterlyDocumentWalker {
           state,
           lineNumber,
           indent,
-          content
+          content,
         );
       case Zone.Text:
         return this.updateStateInTextZone(state, lineNumber, indent, content);
@@ -97,7 +123,7 @@ export class WriterlyDocumentWalker {
     state: State,
     lineNumber: number,
     indent: number,
-    content: string
+    content: string,
   ): LineType {
     if (indent === state.maxIndent && content.startsWith("!!"))
       return LineType.AttributeZoneComment;
@@ -116,7 +142,7 @@ export class WriterlyDocumentWalker {
     state: State,
     lineNumber: number,
     indent: number,
-    content: string
+    content: string,
   ): LineType {
     if (content.startsWith("|>")) {
       state.zone = Zone.Attribute;
@@ -144,7 +170,7 @@ export class WriterlyDocumentWalker {
   private static updateStateInCodeBlockZone(
     state: State,
     indent: number,
-    content: string
+    content: string,
   ): LineType {
     if (content === "```" && indent === state.codeBlockStartIndent) {
       state.zone = Zone.Text;

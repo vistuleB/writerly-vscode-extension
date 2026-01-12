@@ -1,15 +1,20 @@
 import * as vscode from "vscode";
-import { Zone, LineType, State, WriterlyDocumentWalker } from "./DocumentWalker";
+import {
+  Zone,
+  LineType,
+  State,
+  WriterlyDocumentWalker,
+} from "./DocumentWalker";
 
 const lineRange = (
   lineNumber: number,
   start: number,
-  end: number
+  end: number,
 ): vscode.Range => new vscode.Range(lineNumber, start, lineNumber, end);
 
 const errorDiagnostic = (
   range: vscode.Range,
-  message: string
+  message: string,
 ): vscode.Diagnostic =>
   new vscode.Diagnostic(range, message, vscode.DiagnosticSeverity.Error);
 
@@ -31,7 +36,7 @@ const d3 = (lineNumber: number, indent: number): vscode.Diagnostic => {
 const d4 = (
   lineNumber: number,
   indent: number,
-  content: string
+  content: string,
 ): vscode.Diagnostic => {
   const range = lineRange(lineNumber, indent, indent + content.length);
   return errorDiagnostic(range, "Code block opening inside of code block");
@@ -59,16 +64,16 @@ const d8 = (
   lineNumber: number,
   indent: number,
   content: string,
-  numSpaces: number
+  numSpaces: number,
 ) => {
   const range = lineRange(
     lineNumber,
     indent + 2 + numSpaces,
-    indent + content.length
+    indent + content.length,
   );
   return errorDiagnostic(
     range,
-    "Invalid tag. Tag names must start with a letter, underscore, or colon, followed by letters, numbers, hyphens, underscores, dots, or colons."
+    "Invalid tag. Tag names must start with a letter, underscore, or colon, followed by letters, numbers, hyphens, underscores, dots, or colons.",
   );
 };
 
@@ -109,6 +114,13 @@ export default class StaticDocumentValidator {
     content: string,
     diagnostics: vscode.Diagnostic[],
   ): void {
+    if (
+      lineType === LineType.AttributeZoneComment ||
+      lineType === LineType.TextZoneComment
+    ) {
+      return;
+    }
+
     StaticDocumentValidator.validateIndentation(
       stateBeforeLine,
       lineType,
@@ -162,10 +174,20 @@ export default class StaticDocumentValidator {
   ): void {
     switch (lineType) {
       case LineType.Tag:
-        StaticDocumentValidator.validateTag(lineNumber, indent, content, diagnostics);
+        StaticDocumentValidator.validateTag(
+          lineNumber,
+          indent,
+          content,
+          diagnostics,
+        );
         break;
       case LineType.CodeBlockOpening:
-        StaticDocumentValidator.validateCodeBlockInfoAnnotation(lineNumber, indent, content, diagnostics);
+        StaticDocumentValidator.validateCodeBlockInfoAnnotation(
+          lineNumber,
+          indent,
+          content,
+          diagnostics,
+        );
         break;
       case LineType.CodeBlockLine:
         StaticDocumentValidator.validateCodeBlockLine(
@@ -177,7 +199,12 @@ export default class StaticDocumentValidator {
         );
         break;
       case LineType.Text:
-        StaticDocumentValidator.validateText(lineNumber, indent, content, diagnostics);
+        StaticDocumentValidator.validateText(
+          lineNumber,
+          indent,
+          content,
+          diagnostics,
+        );
         break;
     }
   }

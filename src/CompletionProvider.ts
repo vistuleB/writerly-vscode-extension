@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { WriterlyDocumentWalker, LineType } from "./DocumentWalker";
 
 interface FileNode {
   name: string;
@@ -158,6 +159,17 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
     document: vscode.TextDocument,
     position: vscode.Position,
   ): vscode.ProviderResult<vscode.CompletionItem[]> {
+    const lineType = WriterlyDocumentWalker.getLineType(
+      document,
+      position.line,
+    );
+    if (
+      lineType === LineType.AttributeZoneComment ||
+      lineType === LineType.TextZoneComment
+    ) {
+      return undefined;
+    }
+
     const linePrefix = document
       .lineAt(position)
       .text.substring(0, position.character);

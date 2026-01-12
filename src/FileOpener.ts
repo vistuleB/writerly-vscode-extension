@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { spawn } from "cross-spawn";
+import { WriterlyDocumentWalker, LineType } from "./DocumentWalker";
 
 const forbiddenChars = /[\s'"=\[\]\{\}\(\);]/;
 
@@ -34,9 +35,8 @@ export class FileOpener {
         (path, method) => FileOpener.openResolvedPath(path, method),
       ),
 
-      vscode.commands.registerCommand(
-        "writerly.openFileWithDefault",
-        () => FileOpener.openFileWithDefault(),
+      vscode.commands.registerCommand("writerly.openFileWithDefault", () =>
+        FileOpener.openFileWithDefault(),
       ),
     ];
 
@@ -304,6 +304,17 @@ export class FileOpener {
     position: vscode.Position,
     method: OpeningMethod,
   ): Promise<void> {
+    const lineType = WriterlyDocumentWalker.getLineType(
+      document,
+      position.line,
+    );
+    if (
+      lineType === LineType.AttributeZoneComment ||
+      lineType === LineType.TextZoneComment
+    ) {
+      return;
+    }
+
     const [_, filePath, resolvedPath] =
       await FileOpener.getResolvedFilePathAtPosition(document, position);
     if (!filePath) {
