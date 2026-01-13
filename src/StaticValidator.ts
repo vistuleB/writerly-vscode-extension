@@ -114,13 +114,6 @@ export default class StaticDocumentValidator {
     content: string,
     diagnostics: vscode.Diagnostic[],
   ): void {
-    if (
-      lineType === LineType.AttributeZoneComment ||
-      lineType === LineType.TextZoneComment
-    ) {
-      return;
-    }
-
     StaticDocumentValidator.validateIndentation(
       stateBeforeLine,
       lineType,
@@ -130,6 +123,14 @@ export default class StaticDocumentValidator {
       content,
       diagnostics,
     );
+
+    if (
+      lineType === LineType.AttributeZoneComment ||
+      lineType === LineType.TextZoneComment
+    ) {
+      return;
+    }
+
     StaticDocumentValidator.validateContent(
       stateBeforeLine,
       lineType,
