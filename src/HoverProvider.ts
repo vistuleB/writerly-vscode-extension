@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import { FileOpener, OpeningMethod } from "./FileOpener";
-import { WriterlyDocumentWalker, LineType } from "./DocumentWalker";
 
 export class HoverProvider implements vscode.HoverProvider {
   constructor(context: vscode.ExtensionContext) {
@@ -29,17 +28,6 @@ export class HoverProvider implements vscode.HoverProvider {
     position: vscode.Position,
     _token: vscode.CancellationToken,
   ): Promise<vscode.Hover | undefined> {
-    const lineType = WriterlyDocumentWalker.getLineType(
-      document,
-      position.line,
-    );
-    if (
-      lineType === LineType.AttributeZoneComment ||
-      lineType === LineType.TextZoneComment
-    ) {
-      return undefined;
-    }
-
     const [range, _filePath, resolvedPath] =
       await FileOpener.getResolvedFilePathAtPosition(document, position);
 
