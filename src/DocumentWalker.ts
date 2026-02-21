@@ -27,30 +27,11 @@ export enum LineType {
 }
 
 export class WriterlyDocumentWalker {
-  public static getLineType(
+  public static isCommentLine(
     document: vscode.TextDocument,
-    lineNumber: number,
-  ): LineType {
-    let state: State = {
-      zone: Zone.Text,
-      maxIndent: 0,
-      minIndent: 0,
-      codeBlockStartIndent: 0,
-      codeBlockStartLineNumber: 0,
-    };
-
-    let lineType: LineType = LineType.Text;
-
-    for (let i = 0; i <= lineNumber; i++) {
-      const line = document.lineAt(i).text.trimEnd();
-      const spaces = line.match(/^( *)/)?.[1] || "";
-      const indent = spaces.length;
-      const content = line.slice(indent);
-
-      lineType = this.updateState(state, i, indent, content);
-    }
-
-    return lineType;
+    position: vscode.Position,
+  ): Boolean {
+    return document.lineAt(position.line).text.trimStart().startsWith('!!');
   }
 
   public static walk(

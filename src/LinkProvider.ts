@@ -726,14 +726,7 @@ export class WlyLinkProvider
     }
 
     // check if cursor is on a handle usage (>>handleName)
-    const lineType = WriterlyDocumentWalker.getLineType(
-      document,
-      position.line,
-    );
-    if (
-      lineType === LineType.AttributeZoneComment ||
-      lineType === LineType.TextZoneComment
-    ) {
+    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
       return undefined;
     }
 
@@ -762,14 +755,7 @@ export class WlyLinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): { range: vscode.Range; placeholder: string } | undefined {
-    const lineType = WriterlyDocumentWalker.getLineType(
-      document,
-      position.line,
-    );
-    if (
-      lineType === LineType.AttributeZoneComment ||
-      lineType === LineType.TextZoneComment
-    ) {
+    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
       throw new Error("Cannot rename inside a comment.");
     }
 
@@ -830,14 +816,7 @@ export class WlyLinkProvider
     token: vscode.CancellationToken,
   ): Promise<vscode.WorkspaceEdit | undefined> {
     // 1. Identify the 'oldName' from either a definition or a usage site
-    const lineType = WriterlyDocumentWalker.getLineType(
-      document,
-      position.line,
-    );
-    if (
-      lineType === LineType.AttributeZoneComment ||
-      lineType === LineType.TextZoneComment
-    ) {
+    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
       return undefined;
     }
 
@@ -932,14 +911,7 @@ export class WlyLinkProvider
       return undefined;
     }
 
-    const lineType = WriterlyDocumentWalker.getLineType(
-      document,
-      position.line,
-    );
-    if (
-      lineType === LineType.AttributeZoneComment ||
-      lineType === LineType.TextZoneComment
-    ) {
+    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
       return undefined;
     }
 
@@ -983,14 +955,7 @@ export class WlyLinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): { handleName: string; range: vscode.Range } | undefined {
-    const lineType = WriterlyDocumentWalker.getLineType(
-      document,
-      position.line,
-    );
-    if (
-      lineType === LineType.AttributeZoneComment ||
-      lineType === LineType.TextZoneComment
-    ) {
+    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
       return undefined;
     }
 

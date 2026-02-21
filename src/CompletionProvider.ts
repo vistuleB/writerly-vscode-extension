@@ -159,14 +159,7 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
     document: vscode.TextDocument,
     position: vscode.Position,
   ): vscode.ProviderResult<vscode.CompletionItem[]> {
-    const lineType = WriterlyDocumentWalker.getLineType(
-      document,
-      position.line,
-    );
-    if (
-      lineType === LineType.AttributeZoneComment ||
-      lineType === LineType.TextZoneComment
-    ) {
+    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
       return undefined;
     }
 
