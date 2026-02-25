@@ -38,7 +38,7 @@ const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "g");
 const LOOSE_DEF_REGEX = /^handle=\s*([^\s:|]+)/;
 const LOOSE_USAGE_REGEX = new RegExp(`>>([${HANDLE_BODY_CHARS}]+)`, "g");
 
-export class WlyLinkProvider
+export class LinkProvider
   implements
     vscode.DocumentLinkProvider,
     vscode.CodeActionProvider,
@@ -48,7 +48,7 @@ export class WlyLinkProvider
 {
   private definitions: Map<HandleName, HandleDefinition[]> = new Map();
   private parents: FSPath[] = [];
-  private diagnosticCollection!: vscode.DiagnosticCollection;
+  private diagnosticCollection: vscode.DiagnosticCollection;
   private isInitialized = false;
   private documentLinks: Map<FSPath, vscode.DocumentLink[]> = new Map();
   private usageCounts: Map<HandleName, number> = new Map();
@@ -146,12 +146,10 @@ export class WlyLinkProvider
   private async initializeAsync(): Promise<void> {
     try {
       await this.discoverParentDirectories();
-
       await this.processAllDocuments();
 
       this.isInitialized = true;
 
-      // Show warnings for the files that are in current workspace
       for (const doc of vscode.workspace.textDocuments) {
         if (this.isWriterlyFile(doc.uri.fsPath)) {
           this.processDocument(doc);
@@ -440,9 +438,7 @@ export class WlyLinkProvider
     return (
       lineType !== LineType.CodeBlockLine &&
       lineType !== LineType.Tag &&
-      lineType !== LineType.CodeBlockClosing &&
-      lineType !== LineType.AttributeZoneComment &&
-      lineType !== LineType.TextZoneComment
+      lineType !== LineType.CodeBlockClosing
     );
   }
 
@@ -725,11 +721,6 @@ export class WlyLinkProvider
       return undefined;
     }
 
-    // check if cursor is on a handle usage (>>handleName)
-    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
-      return undefined;
-    }
-
     const line = document.lineAt(position);
     const text = line.text;
 
@@ -755,10 +746,6 @@ export class WlyLinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): { range: vscode.Range; placeholder: string } | undefined {
-    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
-      throw new Error("Cannot rename inside a comment.");
-    }
-
     // 1. Check if we are at a definition site (handle=name)
     const defInfo = this.getDefinitionOnLine(document, position);
     if (defInfo && defInfo.range.contains(position)) {
@@ -816,10 +803,6 @@ export class WlyLinkProvider
     token: vscode.CancellationToken,
   ): Promise<vscode.WorkspaceEdit | undefined> {
     // 1. Identify the 'oldName' from either a definition or a usage site
-    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
-      return undefined;
-    }
-
     let oldName: string | undefined;
 
     // Check if it's a definition site
@@ -852,7 +835,7 @@ export class WlyLinkProvider
     const originFsPath = document.uri.fsPath;
 
     // Cache anchored regex. We escape the oldName in case it contains
-    // regex-sensitive characters like '+' or '^' which your handles support.
+    // regex-sensitive characters like '+' or '^' which our handles support.
     const escapedName = oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const exactMatchRegex = new RegExp(`^${escapedName}$`);
 
@@ -911,10 +894,6 @@ export class WlyLinkProvider
       return undefined;
     }
 
-    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
-      return undefined;
-    }
-
     const completionItems: vscode.CompletionItem[] = [];
     const currentFsPath = document.uri.fsPath;
 
@@ -955,10 +934,6 @@ export class WlyLinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): { handleName: string; range: vscode.Range } | undefined {
-    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
-      return undefined;
-    }
-
     const line = document.lineAt(position.line);
     const match = line.text.match(DEF_REGEX);
 

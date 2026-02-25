@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { WlyLinkProvider } from "./LinkProvider";
+import { LinkProvider } from "./LinkProvider";
 import { WlyFileProvider } from "./WlyFileProvider";
 import { FileOpener } from "./FileOpener";
 import { HoverProvider } from "./HoverProvider";
@@ -10,7 +10,7 @@ export class WriterlyController {
 
   constructor(context: vscode.ExtensionContext) {
     this.providers = [
-      new WlyLinkProvider(context),
+      new LinkProvider(context),
       new FileOpener(context),
       new HoverProvider(context),
       new WlyFileProvider(context),
