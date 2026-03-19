@@ -4,9 +4,9 @@ Writerly is a markup language extension for VS Code that makes creating structur
 
 ## Features 
 
-### Open Files & Images
-- Open any file under your cursor with `Ctrl+Shift+O` (or `Cmd+Shift+O` on Mac)
-- View images directly in documents (supports PNG, JPG, SVG, and more)
+### Open and Preview Files & Images
+- Open any file under your cursor with the default application by using `Ctrl+Shift+O` (or `Cmd+Shift+O` on Mac)
+- Hover over filenames to preview images directly inside of documents (supports PNG, JPG, SVG, and more)
 - Get file suggestions when typing `src=` or `original=` attributes
 
 ### Navigate Your Documents
