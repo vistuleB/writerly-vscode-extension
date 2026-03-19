@@ -1,15 +1,29 @@
 # Writerly VSCode Extension
 
-Syntax highlighting and VSCode language support for Writerly (.wly) files.
+Writerly is a markup language extension for VS Code that makes creating structured documents easier. This extension provides syntax highlighting, error reporting, and navigation tools for Writerly (`.wly`) files.
 
-### Features
+## Features 
 
-- Syntax highlighting and syntax validation
-- Image-preview-on-hover
-- Document reference resolution for `>>`-style references (via `handle=`)
+### Open and Preview Files & Images
+- Open any file under your cursor with the default application by using `Ctrl+Shift+O` (or `Cmd+Shift+O` on Mac)
+- Hover over filenames to preview images directly inside of documents (supports PNG, JPG, SVG, and more)
+- Get file suggestions when typing `src=` or `original=` attributes
 
-### Roadmap
+### Navigate Your Documents
+- Create links between sections using `>>MyRef` handles
+- Jump to any link with `F12`
+- Rename links everywhere with `F2`
+- See warnings about unused links
 
-- Document reference resolution for `#`-style HTML references (via `id=`)
-- Document-wide reference renaming
-- `.wly`-dedicated file explorer
+### Smart Writing Help
+- Get real-time feedback about your formatting
+- See warnings for undefined references
+- Auto-complete file paths when typing `src=` or `original=`
+
+## Available Commands
+- `writerly.openUnderCursorWithDefault` - Open file under cursor with system default
+- `writerly.openUnderCursorWithVSCode` - Open file under cursor with VS Code
+- `writerly.openUnderCursorAsImageWithVSCode` - Open image under cursor with VS Code
+- `writerly.openFileWithDefault` - Open current file with system default
+- `writerly.restart` - Restart the extension
+```

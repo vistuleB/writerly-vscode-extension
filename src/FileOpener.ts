@@ -28,11 +28,6 @@ export class FileOpener {
         () => FileOpener.openUnderCursor(OpeningMethod.AS_IMAGE_WITH_VSCODE),
       ),
 
-      vscode.commands.registerCommand(
-        "writerly.openResolvedPath",
-        (path, method) => FileOpener.openResolvedPath(path, method),
-      ),
-
       vscode.commands.registerCommand("writerly.openFileWithDefault", () =>
         FileOpener.openFileWithDefault(),
       ),
