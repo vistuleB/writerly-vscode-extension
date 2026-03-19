@@ -1,11 +1,11 @@
-# Writerly for VS Code
+# Writerly VSCode Extension
 
-Writerly is a markup language extension for VS Code that makes creating structured documents easier. It supports math formatting and helps you navigate between `.wly` files using simple references called "handles."
+Writerly is a markup language extension for VS Code that makes creating structured documents easier. This extension provides syntax highlighting, error reporting, and navigation tools for Writerly (`.wly`) files.
 
 ## Features 
 
 ### Open Files & Images
-- Quickly open any file under your cursor with `Ctrl+Shift+O` (or `Cmd+Shift+O` on Mac)
+- Open any file under your cursor with `Ctrl+Shift+O` (or `Cmd+Shift+O` on Mac)
 - View images directly in documents (supports PNG, JPG, SVG, and more)
 - Get file suggestions when typing `src=` or `original=` attributes
 
