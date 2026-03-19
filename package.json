@@ -83,11 +83,6 @@
         "category": "Writerly"
       },
       {
-        "command": "writerly.openResolvedPath",
-        "title": "---",
-        "category": "Writerly"
-      },
-      {
         "command": "writerly.restart",
         "title": "Restart Extension",
         "category": "Writerly"

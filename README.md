@@ -25,6 +25,5 @@ Writerly is a markup language extension for VS Code that makes creating structur
 - `writerly.openUnderCursorWithVSCode` - Open file under cursor with VS Code
 - `writerly.openUnderCursorAsImageWithVSCode` - Open image under cursor with VS Code
 - `writerly.openFileWithDefault` - Open current file with system default
-- `writerly.openResolvedPath` - TODO: What does this do?
 - `writerly.restart` - Restart the extension
 ```
