@@ -28,14 +28,14 @@ const PARENT_SUFFIX_LENGTH: number = 12;
 const MAX_FILES: number = 1500;
 
 const HANDLE_START_CHARS: string = "a-zA-Z_";
-const HANDLE_BODY_CHARS: string = "-a-zA-Z0-9_%\\^\\+";
+const HANDLE_BODY_CHARS: string = "-a-zA-Z0-9_%\\^\\+:";
 const HANDLE_END_CHARS: string = "a-zA-Z0-9_\\^";
 const HANDLE_REGEX_STRING: string = `([${HANDLE_START_CHARS}][${HANDLE_BODY_CHARS}]*[${HANDLE_END_CHARS}])|[${HANDLE_START_CHARS}]`;
 const DEF_REGEX = new RegExp(
-  `^\\s*handle=\\s*(${HANDLE_REGEX_STRING})(:|\\s|$)`,
+  `^\\s*handle=\\s*(${HANDLE_REGEX_STRING})(#|\\s|$)`,
 );
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "g");
-const LOOSE_DEF_REGEX = /^handle=\s*([^\s:|]+)/;
+const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/;
 const LOOSE_USAGE_REGEX = new RegExp(`>>([${HANDLE_BODY_CHARS}]+)`, "g");
 
 export class LinkProvider
