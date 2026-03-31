@@ -27,16 +27,16 @@ const PARENT_SUFFIX: string = "__parent.wly";
 const PARENT_SUFFIX_LENGTH: number = 12;
 const MAX_FILES: number = 1500;
 
-const HANDLE_START_CHARS: string = "a-zA-Z_";
-const HANDLE_BODY_CHARS: string = "-a-zA-Z0-9_%\\^\\+:";
-const HANDLE_END_CHARS: string = "a-zA-Z0-9_\\^";
-const HANDLE_REGEX_STRING: string = `([${HANDLE_START_CHARS}][${HANDLE_BODY_CHARS}]*[${HANDLE_END_CHARS}])|[${HANDLE_START_CHARS}]`;
+const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:-";
+const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_";
+const HANDLE_REGEX_STRING: string = `(?:[${HANDLE_CHARS}]*[${HANDLE_END_CHARS}])`;
 const DEF_REGEX = new RegExp(
   `^\\s*handle=\\s*(${HANDLE_REGEX_STRING})(#|\\s|$)`,
+  "u",
 );
-const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "g");
-const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/;
-const LOOSE_USAGE_REGEX = new RegExp(`>>([${HANDLE_BODY_CHARS}]+)`, "g");
+const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "gu");
+const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/u;
+const LOOSE_USAGE_REGEX = new RegExp(`>>([${HANDLE_CHARS}]+)`, "gu");
 
 export class LinkProvider
   implements
@@ -504,7 +504,7 @@ export class LinkProvider
     documentLinks: vscode.DocumentLink[],
     diagnostics: vscode.Diagnostic[] = [],
   ): void {
-    const strictRegex = new RegExp(`^${HANDLE_REGEX_STRING}$`);
+    const strictRegex = new RegExp(`^${HANDLE_REGEX_STRING}$`, "u");
 
     for (const link of documentLinks) {
       const handleName = link.data?.handleName;
@@ -837,7 +837,7 @@ export class LinkProvider
     // Cache anchored regex. We escape the oldName in case it contains
     // regex-sensitive characters like '+' or '^' which our handles support.
     const escapedName = oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const exactMatchRegex = new RegExp(`^${escapedName}$`);
+    const exactMatchRegex = new RegExp(`^${escapedName}$`, "u");
 
     // 2. Iterate through all files in the document tree to apply changes
     for (const [fsPath, links] of this.documentLinks) {
@@ -1017,7 +1017,7 @@ export class LinkProvider
     diagnostics: vscode.Diagnostic[],
   ): void {
     const currentFsPath = document.uri.fsPath;
-    const strictRegex = new RegExp(`^(${HANDLE_REGEX_STRING})$`);
+    const strictRegex = new RegExp(`^(${HANDLE_REGEX_STRING})$`, "u");
 
     this.definitions.forEach((defs, handleName) => {
       // 1. Get ALL definitions of this handle in the current file
