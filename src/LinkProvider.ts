@@ -27,7 +27,7 @@ const PARENT_SUFFIX: string = "__parent.wly";
 const PARENT_SUFFIX_LENGTH: number = 12;
 const MAX_FILES: number = 1500;
 
-const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:-";
+const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:\\-\\^";
 const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_";
 const HANDLE_REGEX_STRING: string = `(?:[${HANDLE_CHARS}]*[${HANDLE_END_CHARS}])`;
 const DEF_REGEX = new RegExp(
@@ -800,7 +800,7 @@ export class LinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
     newName: string,
-    token: vscode.CancellationToken,
+    _token: vscode.CancellationToken,
   ): Promise<vscode.WorkspaceEdit | undefined> {
     // 1. Identify the 'oldName' from either a definition or a usage site
     let oldName: string | undefined;
