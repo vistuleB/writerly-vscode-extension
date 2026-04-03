@@ -27,7 +27,7 @@ const PARENT_SUFFIX: string = "__parent.wly";
 const PARENT_SUFFIX_LENGTH: number = 12;
 const MAX_FILES: number = 1500;
 
-const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:\\-\\^";
+const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:\\-\\^+";
 const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_";
 const HANDLE_REGEX_STRING: string = `(?:[${HANDLE_CHARS}]*[${HANDLE_END_CHARS}])`;
 const DEF_REGEX = new RegExp(
@@ -36,7 +36,7 @@ const DEF_REGEX = new RegExp(
 );
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "gu");
 const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/u;
-const LOOSE_USAGE_REGEX = new RegExp(`>>([${HANDLE_CHARS}]+)`, "gu");
+const LOOSE_USAGE_REGEX = new RegExp(`>>([${HANDLE_CHARS}]+[${HANDLE_END_CHARS}])`, "gu");
 
 export class LinkProvider
   implements
@@ -773,6 +773,7 @@ export class LinkProvider
         if (validDefs.length === 0) {
           throw new Error(`Cannot rename: Handle '${handleName}' not found.`);
         }
+
         if (validDefs.length > 1) {
           throw new Error(
             `Cannot rename: Handle '${handleName}' has multiple definitions.`,

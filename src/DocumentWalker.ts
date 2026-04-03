@@ -58,8 +58,6 @@ export class WriterlyDocumentWalker {
       const spaces = line.match(/^( *)/)?.[1] || "";
       const indent = spaces.length;
       const content = line.slice(indent);
-
-      // copy the previous state over:
       let prevState: State = {
         zone: state.zone,
         maxIndent: state.maxIndent,
@@ -67,11 +65,7 @@ export class WriterlyDocumentWalker {
         codeBlockStartIndent: state.codeBlockStartIndent,
         codeBlockStartLineNumber: state.codeBlockStartLineNumber,
       };
-
-      // update state
       let lineType = this.updateState(state, lineNumber, indent, content);
-
-      // we're not here for fun:
       callback(prevState, lineType, state, lineNumber, indent, content);
     }
 
