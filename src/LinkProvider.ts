@@ -36,7 +36,10 @@ const DEF_REGEX = new RegExp(
 );
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "gu");
 const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/u;
-const LOOSE_USAGE_REGEX = new RegExp(`>>([${HANDLE_CHARS}]+[${HANDLE_END_CHARS}])`, "gu");
+const LOOSE_USAGE_REGEX = new RegExp(
+  `>>([${HANDLE_CHARS}]+[${HANDLE_END_CHARS}])`,
+  "gu",
+);
 
 export class LinkProvider
   implements

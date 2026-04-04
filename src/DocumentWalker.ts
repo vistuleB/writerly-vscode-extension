@@ -27,11 +27,106 @@ export enum LineType {
 }
 
 export class WriterlyDocumentWalker {
+  public static onTheFlyLineClassification(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): State {
+    const lines = this.getLinesAbove(document, position);
+    return this.walkLines(lines);
+  }
+
+  private static getLinesAbove(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): string[] {
+    let linesAbove: string[] = [];
+    let currentLineNum = position.line;
+    let currentLine = document.lineAt(currentLineNum).text;
+
+    linesAbove.push(currentLine);
+
+    // initial x determination
+    if (currentLine.trim() === "") {
+      // move up to find the first nonempty line
+      while (
+        currentLineNum > 0 &&
+        document.lineAt(currentLineNum).text.trim() === ""
+      ) {
+        currentLineNum--;
+      }
+
+      const foundLine = document.lineAt(currentLineNum).text;
+      if (foundLine.trim() !== "") {
+        currentLine = foundLine;
+        linesAbove.push(currentLine);
+      } else {
+        // "else linesAbove construction is over"
+        // we reached line 0 and it's still empty.
+        return linesAbove;
+      }
+    }
+
+    let x = currentLine.match(/^( *)/)?.[1].length || 0;
+
+    // climb the tree
+    let pointer = currentLineNum - 1;
+    while (pointer >= 0) {
+      const lineText = document.lineAt(pointer).text;
+      const indent = lineText.match(/^( *)/)?.[1].length || 0;
+      const isEmpty = lineText.trim() === "";
+
+      if (isEmpty || indent === x) {
+        linesAbove.push(lineText);
+      } else if (indent < x) {
+        x = indent;
+        linesAbove.push(lineText);
+        if (x === 0) break;
+      }
+      pointer--;
+    }
+
+    linesAbove.reverse();
+
+    const nonEmptyLines = linesAbove.filter((l) => l.trim() !== "");
+    if (nonEmptyLines.length > 0) {
+      const minIndent = Math.min(
+        ...nonEmptyLines.map((l) => l.match(/^( *)/)?.[1].length || 0),
+      );
+      if (minIndent > 0) {
+        linesAbove = linesAbove.map((l) => l.substring(minIndent));
+      }
+    }
+
+    return linesAbove;
+  }
+
+  private static walkLines(lines: string[]): State {
+    let state: State = {
+      zone: Zone.Text,
+      maxIndent: 0,
+      minIndent: 0,
+      codeBlockStartIndent: 0,
+      codeBlockStartLineNumber: 0,
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trimEnd();
+      const spaces = line.match(/^( *)/)?.[1] || "";
+      const indent = spaces.length;
+      const content = line.slice(indent);
+
+      // we reuse the existing updateState logic
+      this.updateState(state, i, indent, content);
+    }
+
+    return state;
+  }
+
   public static isCommentLine(
     document: vscode.TextDocument,
     position: vscode.Position,
   ): Boolean {
-    return document.lineAt(position.line).text.trimStart().startsWith('!!');
+    return document.lineAt(position.line).text.trimStart().startsWith("!!");
   }
 
   public static walk(
