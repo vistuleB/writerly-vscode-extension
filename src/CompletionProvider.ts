@@ -159,9 +159,11 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
     document: vscode.TextDocument,
     position: vscode.Position,
   ): vscode.ProviderResult<vscode.CompletionItem[]> {
-    if (WriterlyDocumentWalker.isCommentLine(document, position)) {
-      return undefined;
-    }
+    // if (WriterlyDocumentWalker.isCommentLine(document, position)) {
+    //   return undefined;
+    // }
+    // let q = WriterlyDocumentWalker.onTheFlyLineClassification(document, position);
+    // console.log("classification: ", q);
 
     const linePrefix = document
       .lineAt(position)

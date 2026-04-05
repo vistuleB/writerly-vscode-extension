@@ -30,8 +30,8 @@ const MAX_FILES: number = 1500;
 const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:\\-\\^+";
 const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_";
 const HANDLE_REGEX_STRING: string = `(?:[${HANDLE_CHARS}]*[${HANDLE_END_CHARS}])`;
-const DEF_REGEX = new RegExp(
-  `^\\s*handle=\\s*(${HANDLE_REGEX_STRING})(#|\\s|$)`,
+const HANDLE_DEF_RENAME_REGEX = new RegExp(
+  `^\\s*(?:!!\\s*)?handle=\\s*(${HANDLE_REGEX_STRING})(#|\\s|$)`,
   "u",
 );
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "gu");
@@ -939,9 +939,15 @@ export class LinkProvider
     position: vscode.Position,
   ): { handleName: string; range: vscode.Range } | undefined {
     const line = document.lineAt(position.line);
-    const match = line.text.match(DEF_REGEX);
+    const match = line.text.match(HANDLE_DEF_RENAME_REGEX);
 
     if (!match) return undefined;
+
+    let lineType = WriterlyDocumentWalker.onTheFlyLineClassification(document, position);
+    if (
+      lineType !== LineType.Attribute &&
+      lineType !== LineType.AttributeZoneComment
+    ) return undefined;
 
     const fullMatchText = match[0]; // e.g., "  handle=my_name"
     const handleName = match[1]; // e.g., "my_name"
