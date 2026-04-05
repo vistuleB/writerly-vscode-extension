@@ -715,7 +715,7 @@ export class LinkProvider
   public provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
-    token: vscode.CancellationToken,
+    _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.Definition> {
     if (!this.isInitialized) {
       return undefined;
@@ -763,22 +763,6 @@ export class LinkProvider
 
       if (position.character >= matchStart && position.character <= matchEnd) {
         const handleName = usageMatch[1];
-
-        // Safety: Only allow rename if there is exactly one definition in the tree
-        const validDefs = this.findValidDefinitions(
-          handleName,
-          document.uri.fsPath,
-        );
-
-        if (validDefs.length === 0) {
-          throw new Error(`Cannot rename: Handle '${handleName}' not found.`);
-        }
-
-        if (validDefs.length > 1) {
-          throw new Error(
-            `Cannot rename: Handle '${handleName}' has multiple definitions.`,
-          );
-        }
 
         // Return the range of the handle name ONLY (skipping '>>')
         const nameRange = new vscode.Range(
