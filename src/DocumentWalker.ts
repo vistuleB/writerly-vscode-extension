@@ -61,25 +61,6 @@ export class WriterlyDocumentWalker {
       linesAbove.push(currentLine);
     }
 
-    // if (currentLine.trim() === "") {
-    //   // move up to find the first nonempty line
-    //   while (
-    //     currentLineNum > 0 &&
-    //     document.lineAt(currentLineNum).text.trim() === ""
-    //   ) {
-    //     currentLineNum--;
-    //   }
-    //   const foundLine = document.lineAt(currentLineNum).text;
-    //   if (foundLine.trim() !== "") {
-    //     currentLine = foundLine;
-    //     linesAbove.push(currentLine);
-    //   } else {
-    //     // "else linesAbove construction is over"
-    //     // we reached line 0 and it's still empty.
-    //     return linesAbove;
-    //   }
-    // }
-
     let currentIndentation = currentLine.match(/^( *)/)?.[1].length || 0;
 
     while (currentIndentation > 0 && currentLineNum > 0) {
@@ -98,37 +79,7 @@ export class WriterlyDocumentWalker {
       }
     }
 
-    // // initial x determination
-    // let x = currentLine.match(/^( *)/)?.[1].length || 0;
-
-    // // climb the tree
-    // let pointer = currentLineNum - 1;
-    // while (pointer > 0) {
-    //   const lineText = document.lineAt(pointer).text;
-    //   const indent = lineText.match(/^( *)/)?.[1].length || 0;
-    //   const isEmpty = lineText.trim() === "";
-
-    //   if (isEmpty || indent === x) {
-    //     linesAbove.push(lineText);
-    //   } else if (indent < x) {
-    //     x = indent;
-    //     linesAbove.push(lineText);
-    //     if (x === 0) break;
-    //   }
-    //   pointer--;
-    // }
-
     linesAbove.reverse();
-
-    // const nonEmptyLines = linesAbove.filter((l) => l.trim() !== "");
-    // if (nonEmptyLines.length > 0) {
-    //   const minIndent = Math.min(
-    //     ...nonEmptyLines.map((l) => l.match(/^( *)/)?.[1].length || 0),
-    //   );
-    //   if (minIndent > 0) {
-    //     linesAbove = linesAbove.map((l) => l.substring(minIndent));
-    //   }
-    // }
 
     if (currentIndentation > 0) {
       linesAbove = linesAbove.map((l) => l.substring(currentIndentation));

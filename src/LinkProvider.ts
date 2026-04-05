@@ -36,10 +36,6 @@ const HANDLE_DEF_RENAME_REGEX = new RegExp(
 );
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "gu");
 const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/u;
-const LOOSE_USAGE_REGEX = new RegExp(
-  `>>([${HANDLE_CHARS}]+[${HANDLE_END_CHARS}])`,
-  "gu",
-);
 
 export class LinkProvider
   implements
@@ -484,9 +480,9 @@ export class LinkProvider
   ): vscode.DocumentLink[] {
     const links: vscode.DocumentLink[] = [];
     let usageMatch;
-    LOOSE_USAGE_REGEX.lastIndex = 0;
+    USAGE_REGEX.lastIndex = 0;
 
-    while ((usageMatch = LOOSE_USAGE_REGEX.exec(content)) !== null) {
+    while ((usageMatch = USAGE_REGEX.exec(content)) !== null) {
       const handleName = usageMatch[1];
       const matchStart = usageMatch.index;
       const range = new vscode.Range(
@@ -500,6 +496,7 @@ export class LinkProvider
       link.data = { handleName, fsPath, validated: ValidationState.UNKNOWN };
       links.push(link);
     }
+
     return links;
   }
 
