@@ -3,7 +3,7 @@ import { LinkProvider } from "./LinkProvider";
 import { WriterlyFileProvider } from "./WriterlyFileProvider";
 import { FileOpener } from "./FileOpener";
 import { HoverProvider } from "./HoverProvider";
-import { WriterlyCompletionProvider } from "./CompletionProvider";
+import { WriterlyCompletionProvider } from "./WriterlyCompletionProvider";
 
 export class WriterlyController {
   private providers: any[] = [];
