@@ -37,7 +37,7 @@ const HANDLE_DEF_RENAME_REGEX = new RegExp(
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "gu");
 const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/u;
 
-export class LinkProvider
+export class WriterlyLinkProvider
   implements
     vscode.DocumentLinkProvider,
     vscode.CodeActionProvider,
