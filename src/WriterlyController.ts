@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { LinkProvider } from "./LinkProvider";
 import { WriterlyFileProvider } from "./WriterlyFileProvider";
-import { FileOpener } from "./FileOpener";
+import { WriterlyFileOpener } from "./WriterlyFileOpener";
 import { WriterlyHoverProvider } from "./WriterlyHoverProvider";
 import { WriterlyCompletionProvider } from "./WriterlyCompletionProvider";
 
@@ -11,7 +11,7 @@ export class WriterlyController {
   constructor(context: vscode.ExtensionContext) {
     this.providers = [
       new LinkProvider(context),
-      new FileOpener(context),
+      new WriterlyFileOpener(context),
       new WriterlyHoverProvider(context),
       new WriterlyFileProvider(context),
       new WriterlyCompletionProvider(context),

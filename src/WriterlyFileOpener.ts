@@ -10,26 +10,26 @@ export enum OpeningMethod {
   AS_IMAGE_WITH_VSCODE,
 }
 
-export class FileOpener {
+export class WriterlyFileOpener {
   constructor(context: vscode.ExtensionContext) {
     let disposables = [
       vscode.commands.registerCommand(
         "writerly.openUnderCursorWithDefault",
-        () => FileOpener.openUnderCursor(OpeningMethod.WITH_DEFAULT),
+        () => WriterlyFileOpener.openUnderCursor(OpeningMethod.WITH_DEFAULT),
       ),
 
       vscode.commands.registerCommand(
         "writerly.openUnderCursorWithVSCode",
-        () => FileOpener.openUnderCursor(OpeningMethod.WITH_VSCODE),
+        () => WriterlyFileOpener.openUnderCursor(OpeningMethod.WITH_VSCODE),
       ),
 
       vscode.commands.registerCommand(
         "writerly.openUnderCursorAsImageWithVSCode",
-        () => FileOpener.openUnderCursor(OpeningMethod.AS_IMAGE_WITH_VSCODE),
+        () => WriterlyFileOpener.openUnderCursor(OpeningMethod.AS_IMAGE_WITH_VSCODE),
       ),
 
       vscode.commands.registerCommand("writerly.openFileWithDefault", () =>
-        FileOpener.openFileWithDefault(),
+        WriterlyFileOpener.openFileWithDefault(),
       ),
     ];
 
@@ -38,7 +38,7 @@ export class FileOpener {
   }
 
   /**
-   * FileOpener is stateless, so reset does nothing.
+   * WriterlyFileOpener is stateless, so reset does nothing.
    * Defined to satisfy the WriterlyController's reset loop.
    */
   public reset(): void {
@@ -218,7 +218,7 @@ export class FileOpener {
           console.log(
             `VSCode openExternal failed, falling back to system command: ${vscodeError}`,
           );
-          await FileOpener.openWithSystemCommand(resolvedPath);
+          await WriterlyFileOpener.openWithSystemCommand(resolvedPath);
         }
         vscode.window.showInformationMessage(
           `Opened: ${path.basename(resolvedPath)}`,
@@ -283,12 +283,12 @@ export class FileOpener {
     document: vscode.TextDocument,
     position: vscode.Position,
   ): Promise<[vscode.Range, string, string]> {
-    const [range, filePath] = FileOpener.getPossiblePathAtPosition(
+    const [range, filePath] = WriterlyFileOpener.getPossiblePathAtPosition(
       document,
       position,
     );
     if (!filePath) return [range, filePath, ""];
-    const resolvedPath = await FileOpener.resolvePath(filePath);
+    const resolvedPath = await WriterlyFileOpener.resolvePath(filePath);
     return [range, filePath, resolvedPath];
   }
 
@@ -298,7 +298,7 @@ export class FileOpener {
     method: OpeningMethod,
   ): Promise<void> {
     const [_, filePath, resolvedPath] =
-      await FileOpener.getResolvedFilePathAtPosition(document, position);
+      await WriterlyFileOpener.getResolvedFilePathAtPosition(document, position);
     if (!filePath) {
       vscode.window.showWarningMessage("No file path found under cursor");
       return;
@@ -307,7 +307,7 @@ export class FileOpener {
       vscode.window.showWarningMessage(`File not found: ${filePath}`);
       return;
     }
-    await FileOpener.openResolvedPath(resolvedPath, method);
+    await WriterlyFileOpener.openResolvedPath(resolvedPath, method);
   }
 
   public static async openUnderCursor(method: OpeningMethod): Promise<void> {

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
-import { FileOpener, OpeningMethod } from "./FileOpener";
+import { WriterlyFileOpener, OpeningMethod } from "./WriterlyFileOpener";
 
 export class WriterlyHoverProvider implements vscode.HoverProvider {
   constructor(context: vscode.ExtensionContext) {
@@ -29,7 +29,7 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
     _token: vscode.CancellationToken,
   ): Promise<vscode.Hover | undefined> {
     const [range, _filePath, resolvedPath] =
-      await FileOpener.getResolvedFilePathAtPosition(document, position);
+      await WriterlyFileOpener.getResolvedFilePathAtPosition(document, position);
 
     if (!resolvedPath) return undefined;
 
@@ -48,7 +48,7 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
         )})${separator}`,
       );
       const fileUri = vscode.Uri.file(resolvedPath);
-      if (FileOpener.isImageFile(resolvedPath)) {
+      if (WriterlyFileOpener.isImageFile(resolvedPath)) {
         hoverContent.appendMarkdown(
           `[📄 Open as text file](${openCommand}?${encodeURI(
             JSON.stringify([resolvedPath, OpeningMethod.WITH_VSCODE]),
@@ -74,7 +74,7 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
     };
 
     const appendLinkedImage = () => {
-      if (FileOpener.isImageFile(resolvedPath)) {
+      if (WriterlyFileOpener.isImageFile(resolvedPath)) {
         const imageUri = vscode.Uri.file(resolvedPath);
         hoverContent.appendMarkdown(
           `[<img src="${imageUri.toString()}">](${openCommand}?${encodeURI(
