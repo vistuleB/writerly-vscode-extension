@@ -118,17 +118,17 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "wly-explorer",
-          "title": "WLY Explorer",
+          "id": "writerly-explorer",
+          "title": "Writerly Explorer",
           "icon": "logo_outline.svg"
         }
       ]
     },
     "views": {
-      "wly-explorer": [
+      "writerly-explorer": [
         {
-          "id": "wlyFiles",
-          "name": "WLY Files in Workspace"
+          "id": "writerlyFiles",
+          "name": "Writerly Files in Workspace"
         }
       ]
     }

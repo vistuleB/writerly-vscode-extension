@@ -11,7 +11,7 @@ interface FileNode {
 /**
  * Custom CompletionItem that preserves the full path for the resolution phase.
  */
-class WlyFileCompletionItem extends vscode.CompletionItem {
+class WriterlyFileCompletionItem extends vscode.CompletionItem {
   constructor(
     public label: string,
     public kind: vscode.CompletionItemKind,
@@ -22,7 +22,7 @@ class WlyFileCompletionItem extends vscode.CompletionItem {
   }
 }
 
-export class WlyCompletionProvider implements vscode.CompletionItemProvider {
+export class WriterlyCompletionProvider implements vscode.CompletionItemProvider {
   private fileTree: FileNode[] = [];
 
   private nameToNodesMap: Map<string, FileNode[]> = new Map();
@@ -241,7 +241,7 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
     currentSearch: string,
   ): vscode.CompletionItem {
     const isDir = node.type === "directory";
-    const item = new WlyFileCompletionItem(
+    const item = new WriterlyFileCompletionItem(
       node.name,
       isDir ? vscode.CompletionItemKind.Folder : vscode.CompletionItemKind.File,
       node.fullPath,
@@ -273,7 +273,7 @@ export class WlyCompletionProvider implements vscode.CompletionItemProvider {
     item: vscode.CompletionItem,
     token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.CompletionItem> {
-    if (!(item instanceof WlyFileCompletionItem) || item.nodeType !== "file") {
+    if (!(item instanceof WriterlyFileCompletionItem) || item.nodeType !== "file") {
       return item;
     }
 

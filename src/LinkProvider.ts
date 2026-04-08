@@ -155,7 +155,7 @@ export class LinkProvider
         }
       }
     } catch (error) {
-      console.error("WlyLinkProvider initialization failed:", error);
+      console.error("WriterlyLinkProvider initialization failed:", error);
     }
   }
 
@@ -924,11 +924,15 @@ export class LinkProvider
 
     if (!match) return undefined;
 
-    let lineType = WriterlyDocumentWalker.onTheFlyLineClassification(document, position);
+    let lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
+      document,
+      position,
+    );
     if (
       lineType !== LineType.Attribute &&
       lineType !== LineType.AttributeZoneComment
-    ) return undefined;
+    )
+      return undefined;
 
     const fullMatchText = match[0]; // e.g., "  handle=my_name"
     const handleName = match[1]; // e.g., "my_name"
