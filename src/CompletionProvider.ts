@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { WriterlyDocumentWalker, LineType } from "./DocumentWalker";
 
 interface FileNode {
   name: string;
@@ -271,7 +270,7 @@ export class WriterlyCompletionProvider implements vscode.CompletionItemProvider
 
   public resolveCompletionItem(
     item: vscode.CompletionItem,
-    token: vscode.CancellationToken,
+    _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.CompletionItem> {
     if (!(item instanceof WriterlyFileCompletionItem) || item.nodeType !== "file") {
       return item;

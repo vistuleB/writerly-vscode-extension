@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { WriterlyDocumentWalker, LineType } from "./DocumentWalker";
+import { WriterlyDocumentWalker, LineType } from "./WriterlyDocumentWalker";
 import StaticDocumentValidator from "./StaticValidator";
 
 enum ValidationState {
@@ -656,9 +656,9 @@ export class LinkProvider
 
   public provideCodeActions(
     document: vscode.TextDocument,
-    range: vscode.Range | vscode.Selection,
+    _range: vscode.Range | vscode.Selection,
     context: vscode.CodeActionContext,
-    token: vscode.CancellationToken,
+    _token: vscode.CancellationToken,
   ): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
 
@@ -681,7 +681,7 @@ export class LinkProvider
       );
 
       // create a code action for each definition
-      validDefinitions.forEach((def, index) => {
+      validDefinitions.forEach((def, _index) => {
         const relativePath = this.getRelativeWorkspacePath(def.fsPath);
         const lineNumber = def.range.start.line + 1;
 
@@ -1096,7 +1096,7 @@ export class LinkProvider
       }
 
       // 2. iterate only once through documentLinks
-      for (const [fsPath, links] of this.documentLinks) {
+      for (const [fsPath] of this.documentLinks) {
         // Skip the file that triggered this revalidation, as it was already processed
         if (fsPath === originFsPath) continue;
 

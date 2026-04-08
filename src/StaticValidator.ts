@@ -4,7 +4,7 @@ import {
   LineType,
   State,
   WriterlyDocumentWalker,
-} from "./DocumentWalker";
+} from "./WriterlyDocumentWalker";
 
 const lineRange = (
   lineNumber: number,

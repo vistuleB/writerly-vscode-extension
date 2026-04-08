@@ -72,7 +72,7 @@ export class WriterlyDocumentWalker {
       if (isEmpty || indent === currentIndentation) {
         linesAbove.push(text);
       }
-      
+
       else if (indent < currentIndentation) {
         linesAbove.push(text);
         currentIndentation = indent;

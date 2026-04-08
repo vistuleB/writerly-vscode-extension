@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { Zone, LineType, State, WriterlyDocumentWalker } from "./DocumentWalker";
+import { Zone, LineType, State, WriterlyDocumentWalker } from "./WriterlyDocumentWalker";
 
 const lineRange = (
   lineNumber: number,
@@ -92,7 +92,7 @@ export default class DocumentValidator {
 
   constructor(
     context: vscode.ExtensionContext,
-    walker: WriterlyDocumentWalker, 
+    walker: WriterlyDocumentWalker,
   ) {
     this.our_walker = walker;
 
