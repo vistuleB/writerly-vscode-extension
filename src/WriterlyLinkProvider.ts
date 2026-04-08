@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { WriterlyDocumentWalker, LineType } from "./WriterlyDocumentWalker";
-import WriterlyStaticDocumentValidator from "./WriterlyStaticValidator";
+import WriterlyStaticValidator from "./WriterlyStaticValidator";
 
 enum ValidationState {
   UNKNOWN = "unknown",
@@ -391,7 +391,7 @@ export class WriterlyLinkProvider
         indent,
         content,
       ) => {
-        WriterlyStaticDocumentValidator.validateLine(
+        WriterlyStaticValidator.validateLine(
           _stateBeforeLine,
           lineType,
           _stateAfterLine,
@@ -424,7 +424,7 @@ export class WriterlyLinkProvider
       },
     );
 
-    WriterlyStaticDocumentValidator.validateFinalState(
+    WriterlyStaticValidator.validateFinalState(
       document,
       finalState,
       diagnostics,

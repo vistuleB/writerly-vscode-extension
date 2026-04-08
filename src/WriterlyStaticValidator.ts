@@ -87,12 +87,11 @@ const d10 = (lineNumber: number, indent: number, numTabs: number) => {
   return errorDiagnostic(range, "Tabs in initial whitespace");
 };
 
-export default class WriterlyStaticDocumentValidator {
+export default class WriterlyStaticValidator {
   static validTagPattern = /^[a-zA-Z_\:][-a-zA-Z0-9\._\:]*$/;
   static tagIsolatingPattern = /^\|\>(\s*)(.*)$/;
   static tabIsolatingPattern = /^[\t]*/;
   static diagnosticCollection: vscode.DiagnosticCollection;
-  static our_walker: WriterlyDocumentWalker;
 
   public static validateFinalState(
     document: vscode.TextDocument,
@@ -114,7 +113,7 @@ export default class WriterlyStaticDocumentValidator {
     content: string,
     diagnostics: vscode.Diagnostic[],
   ): void {
-    WriterlyStaticDocumentValidator.validateIndentation(
+    WriterlyStaticValidator.validateIndentation(
       stateBeforeLine,
       lineType,
       stateAfterLine,
@@ -131,7 +130,7 @@ export default class WriterlyStaticDocumentValidator {
       return;
     }
 
-    WriterlyStaticDocumentValidator.validateContent(
+    WriterlyStaticValidator.validateContent(
       stateBeforeLine,
       lineType,
       lineNumber,
@@ -175,7 +174,7 @@ export default class WriterlyStaticDocumentValidator {
   ): void {
     switch (lineType) {
       case LineType.Tag:
-        WriterlyStaticDocumentValidator.validateTag(
+        WriterlyStaticValidator.validateTag(
           lineNumber,
           indent,
           content,
@@ -183,7 +182,7 @@ export default class WriterlyStaticDocumentValidator {
         );
         break;
       case LineType.CodeBlockOpening:
-        WriterlyStaticDocumentValidator.validateCodeBlockInfoAnnotation(
+        WriterlyStaticValidator.validateCodeBlockInfoAnnotation(
           lineNumber,
           indent,
           content,
@@ -191,7 +190,7 @@ export default class WriterlyStaticDocumentValidator {
         );
         break;
       case LineType.CodeBlockLine:
-        WriterlyStaticDocumentValidator.validateCodeBlockLine(
+        WriterlyStaticValidator.validateCodeBlockLine(
           stateBeforeLine,
           lineNumber,
           indent,
@@ -200,7 +199,7 @@ export default class WriterlyStaticDocumentValidator {
         );
         break;
       case LineType.Text:
-        WriterlyStaticDocumentValidator.validateText(
+        WriterlyStaticValidator.validateText(
           lineNumber,
           indent,
           content,
