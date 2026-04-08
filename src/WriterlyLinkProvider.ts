@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { WriterlyDocumentWalker, LineType } from "./DocumentWalker";
-import StaticDocumentValidator from "./StaticValidator";
+import { WriterlyDocumentWalker, LineType } from "./WriterlyDocumentWalker";
+import WriterlyStaticValidator from "./WriterlyStaticValidator";
 
 enum ValidationState {
   UNKNOWN = "unknown",
@@ -37,7 +37,7 @@ const HANDLE_DEF_RENAME_REGEX = new RegExp(
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "gu");
 const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/u;
 
-export class LinkProvider
+export class WriterlyLinkProvider
   implements
     vscode.DocumentLinkProvider,
     vscode.CodeActionProvider,
@@ -155,7 +155,7 @@ export class LinkProvider
         }
       }
     } catch (error) {
-      console.error("WlyLinkProvider initialization failed:", error);
+      console.error("WriterlyLinkProvider initialization failed:", error);
     }
   }
 
@@ -391,7 +391,7 @@ export class LinkProvider
         indent,
         content,
       ) => {
-        StaticDocumentValidator.validateLine(
+        WriterlyStaticValidator.validateLine(
           _stateBeforeLine,
           lineType,
           _stateAfterLine,
@@ -424,7 +424,7 @@ export class LinkProvider
       },
     );
 
-    StaticDocumentValidator.validateFinalState(
+    WriterlyStaticValidator.validateFinalState(
       document,
       finalState,
       diagnostics,
@@ -656,9 +656,9 @@ export class LinkProvider
 
   public provideCodeActions(
     document: vscode.TextDocument,
-    range: vscode.Range | vscode.Selection,
+    _range: vscode.Range | vscode.Selection,
     context: vscode.CodeActionContext,
-    token: vscode.CancellationToken,
+    _token: vscode.CancellationToken,
   ): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
 
@@ -681,7 +681,7 @@ export class LinkProvider
       );
 
       // create a code action for each definition
-      validDefinitions.forEach((def, index) => {
+      validDefinitions.forEach((def, _index) => {
         const relativePath = this.getRelativeWorkspacePath(def.fsPath);
         const lineNumber = def.range.start.line + 1;
 
@@ -924,11 +924,15 @@ export class LinkProvider
 
     if (!match) return undefined;
 
-    let lineType = WriterlyDocumentWalker.onTheFlyLineClassification(document, position);
+    let lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
+      document,
+      position,
+    );
     if (
       lineType !== LineType.Attribute &&
       lineType !== LineType.AttributeZoneComment
-    ) return undefined;
+    )
+      return undefined;
 
     const fullMatchText = match[0]; // e.g., "  handle=my_name"
     const handleName = match[1]; // e.g., "my_name"
@@ -1092,7 +1096,7 @@ export class LinkProvider
       }
 
       // 2. iterate only once through documentLinks
-      for (const [fsPath, links] of this.documentLinks) {
+      for (const [fsPath] of this.documentLinks) {
         // Skip the file that triggered this revalidation, as it was already processed
         if (fsPath === originFsPath) continue;
 

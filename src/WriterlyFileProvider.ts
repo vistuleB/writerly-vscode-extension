@@ -2,25 +2,25 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 
-type WlyTreeItem = WlyFileItem | WlyFolderItem;
+type WriterlyTreeItem = WriterlyFileItem | WriterlyFolderItem;
 
-export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
+export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTreeItem> {
   _onDidChangeTreeData: vscode.EventEmitter<
-    WlyTreeItem | undefined | null | void
-  > = new vscode.EventEmitter<WlyTreeItem | undefined | null | void>();
+    WriterlyTreeItem | undefined | null | void
+  > = new vscode.EventEmitter<WriterlyTreeItem | undefined | null | void>();
   readonly onDidChangeTreeData: vscode.Event<
-    WlyTreeItem | undefined | null | void
+    WriterlyTreeItem | undefined | null | void
   > = this._onDidChangeTreeData.event;
-  wlyFilesCache: vscode.Uri[] = [];
+  writerlyFilesCache: vscode.Uri[] = [];
   fileSystemWatcher: vscode.FileSystemWatcher;
-  public treeView?: vscode.TreeView<WlyTreeItem>;
+  public treeView?: vscode.TreeView<WriterlyTreeItem>;
   private isScanning = false;
 
   constructor(context: vscode.ExtensionContext) {
     this.fileSystemWatcher =
       vscode.workspace.createFileSystemWatcher("**/*.wly");
 
-    this.treeView = vscode.window.createTreeView("wlyFiles", {
+    this.treeView = vscode.window.createTreeView("writerlyFiles", {
       treeDataProvider: this,
     });
 
@@ -31,7 +31,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
       this.fileSystemWatcher.onDidCreate((_uri) => this.refresh()),
       this.fileSystemWatcher.onDidDelete((_uri) => this.refresh()),
       // apparently this one kind of optional (?):
-      vscode.commands.registerCommand("wlyFiles.refreshEntry", () =>
+      vscode.commands.registerCommand("writerlyFiles.refreshEntry", () =>
         this.refresh(),
       ),
       vscode.window.onDidChangeActiveTextEditor((editor) => {
@@ -56,7 +56,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
    */
   public async reset(): Promise<void> {
     // 1. Clear the cached file URIs
-    this.wlyFilesCache = [];
+    this.writerlyFilesCache = [];
 
     // 2. Trigger a full UI refresh
     // This forces getChildren() to run again, which calls findFiles()
@@ -76,7 +76,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
       editor &&
       editor.document.uri.fsPath.endsWith(".wly")
     ) {
-      const item = new WlyFileItem(editor.document.uri);
+      const item = new WriterlyFileItem(editor.document.uri);
       // 'reveal' needs getParent to work!
       this.treeView.reveal(item, {
         select: true,
@@ -87,23 +87,23 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
   }
 
   public refresh(): void {
-    this.wlyFilesCache = [];
+    this.writerlyFilesCache = [];
     this._onDidChangeTreeData.fire();
   }
 
-  getTreeItem(element: WlyTreeItem): vscode.TreeItem {
+  getTreeItem(element: WriterlyTreeItem): vscode.TreeItem {
     return element;
   }
 
-  async getChildren(element?: WlyTreeItem): Promise<WlyTreeItem[]> {
+  async getChildren(element?: WriterlyTreeItem): Promise<WriterlyTreeItem[]> {
     if (!vscode.workspace.workspaceFolders) {
       return [];
     }
 
-    if (this.wlyFilesCache.length === 0 && !element && !this.isScanning) {
+    if (this.writerlyFilesCache.length === 0 && !element && !this.isScanning) {
       this.isScanning = true;
       try {
-        this.wlyFilesCache = await vscode.workspace.findFiles(
+        this.writerlyFilesCache = await vscode.workspace.findFiles(
           "**/*.wly",
           "**/node_modules/**",
         );
@@ -114,7 +114,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
 
     if (!element) {
       return this.buildWorkspaceRootItems();
-    } else if (element instanceof WlyFolderItem) {
+    } else if (element instanceof WriterlyFolderItem) {
       return this.buildFolderChildren(element);
     }
 
@@ -122,7 +122,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
   }
 
   // --- New comparison helper function ---
-  private compareItems(a: WlyTreeItem, b: WlyTreeItem): number {
+  private compareItems(a: WriterlyTreeItem, b: WriterlyTreeItem): number {
     // Use localeCompare for correct alphabetical sorting that respects OS rules
     const nameA = a.label as string;
     const nameB = b.label as string;
@@ -132,17 +132,17 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
     });
   }
 
-  private buildWorkspaceRootItems(): WlyTreeItem[] {
+  private buildWorkspaceRootItems(): WriterlyTreeItem[] {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders) return [];
 
-    const items: WlyTreeItem[] = [];
+    const items: WriterlyTreeItem[] = [];
     workspaceFolders.forEach((folder) => {
-      const hasWlyFiles = this.wlyFilesCache.some((uri) =>
+      const hasWriterlyFiles = this.writerlyFilesCache.some((uri) =>
         uri.fsPath.startsWith(folder.uri.fsPath),
       );
-      if (hasWlyFiles) {
-        items.push(new WlyFolderItem(folder.uri, folder.name));
+      if (hasWriterlyFiles) {
+        items.push(new WriterlyFolderItem(folder.uri, folder.name));
       }
     });
 
@@ -151,10 +151,10 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
   }
 
   private async buildFolderChildren(
-    folderItem: WlyFolderItem,
-  ): Promise<WlyTreeItem[]> {
+    folderItem: WriterlyFolderItem,
+  ): Promise<WriterlyTreeItem[]> {
     const parentDir = folderItem.resourceUri.fsPath;
-    const items: WlyTreeItem[] = [];
+    const items: WriterlyTreeItem[] = [];
     const seenPaths = new Set<string>(); // Track unique paths to prevent ID collisions
 
     try {
@@ -168,19 +168,19 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
         // Normalize path for consistent ID comparison
         const normalizedPath = vscode.Uri.file(dirPath).fsPath;
 
-        const hasWlyFilesDeep = this.wlyFilesCache.some((uri) =>
+        const hasWriterlyFilesDeep = this.writerlyFilesCache.some((uri) =>
           uri.fsPath.startsWith(normalizedPath),
         );
 
-        if (hasWlyFilesDeep && !seenPaths.has(normalizedPath)) {
+        if (hasWriterlyFilesDeep && !seenPaths.has(normalizedPath)) {
           seenPaths.add(normalizedPath);
           const uri = vscode.Uri.file(dirPath);
-          items.push(new WlyFolderItem(uri, path.basename(dirPath)));
+          items.push(new WriterlyFolderItem(uri, path.basename(dirPath)));
         }
       }
 
       // 2. Process Files in this folder
-      const files = this.wlyFilesCache.filter(
+      const files = this.writerlyFilesCache.filter(
         (uri) => path.dirname(uri.fsPath) === parentDir,
       );
 
@@ -188,7 +188,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
         const normalizedFilePath = uri.fsPath;
         if (!seenPaths.has(normalizedFilePath)) {
           seenPaths.add(normalizedFilePath);
-          items.push(new WlyFileItem(uri));
+          items.push(new WriterlyFileItem(uri));
         }
       });
 
@@ -200,7 +200,7 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
     }
   }
 
-  public getParent(element: WlyTreeItem): WlyTreeItem | undefined {
+  public getParent(element: WriterlyTreeItem): WriterlyTreeItem | undefined {
     const parentPath = path.dirname(element.resourceUri.fsPath);
 
     // Find if this path belongs to a workspace
@@ -212,32 +212,32 @@ export class WlyFileProvider implements vscode.TreeDataProvider<WlyTreeItem> {
     }
 
     // Return a folder item that represents the directory containing the current item
-    return new WlyFolderItem(
+    return new WriterlyFolderItem(
       vscode.Uri.file(parentPath),
       path.basename(parentPath),
     );
   }
 }
 
-class WlyFolderItem extends vscode.TreeItem {
+class WriterlyFolderItem extends vscode.TreeItem {
   constructor(
     public readonly resourceUri: vscode.Uri,
     label: string,
   ) {
     super(label, vscode.TreeItemCollapsibleState.Expanded);
     this.id = `folder:${resourceUri.fsPath}`;
-    this.contextValue = "wlyFolder";
+    this.contextValue = "writerlyFolder";
     this.iconPath = vscode.ThemeIcon.Folder;
   }
 }
 
-class WlyFileItem extends vscode.TreeItem {
+class WriterlyFileItem extends vscode.TreeItem {
   constructor(public readonly resourceUri: vscode.Uri) {
     super(resourceUri, vscode.TreeItemCollapsibleState.None);
     this.id = `file:${resourceUri.fsPath}`;
     this.label = path.basename(resourceUri.fsPath);
     this.tooltip = resourceUri.fsPath;
-    this.contextValue = "wlyFile";
+    this.contextValue = "writerlyFile";
     this.command = {
       command: "vscode.open",
       title: "Open File",

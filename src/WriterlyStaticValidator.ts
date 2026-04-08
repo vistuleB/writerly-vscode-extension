@@ -1,15 +1,20 @@
 import * as vscode from "vscode";
-import { Zone, LineType, State, WriterlyDocumentWalker } from "./DocumentWalker";
+import {
+  Zone,
+  LineType,
+  State,
+  WriterlyDocumentWalker,
+} from "./WriterlyDocumentWalker";
 
 const lineRange = (
   lineNumber: number,
   start: number,
-  end: number
+  end: number,
 ): vscode.Range => new vscode.Range(lineNumber, start, lineNumber, end);
 
 const errorDiagnostic = (
   range: vscode.Range,
-  message: string
+  message: string,
 ): vscode.Diagnostic =>
   new vscode.Diagnostic(range, message, vscode.DiagnosticSeverity.Error);
 
@@ -31,7 +36,7 @@ const d3 = (lineNumber: number, indent: number): vscode.Diagnostic => {
 const d4 = (
   lineNumber: number,
   indent: number,
-  content: string
+  content: string,
 ): vscode.Diagnostic => {
   const range = lineRange(lineNumber, indent, indent + content.length);
   return errorDiagnostic(range, "Code block opening inside of code block");
@@ -59,16 +64,16 @@ const d8 = (
   lineNumber: number,
   indent: number,
   content: string,
-  numSpaces: number
+  numSpaces: number,
 ) => {
   const range = lineRange(
     lineNumber,
     indent + 2 + numSpaces,
-    indent + content.length
+    indent + content.length,
   );
   return errorDiagnostic(
     range,
-    "Invalid tag. Tag names must start with a letter, underscore, or colon, followed by letters, numbers, hyphens, underscores, dots, or colons."
+    "Invalid tag. Tag names must start with a letter, underscore, or colon, followed by letters, numbers, hyphens, underscores, dots, or colons.",
   );
 };
 
@@ -82,140 +87,133 @@ const d10 = (lineNumber: number, indent: number, numTabs: number) => {
   return errorDiagnostic(range, "Tabs in initial whitespace");
 };
 
-export default class DocumentValidator {
-  diagnostics: vscode.Diagnostic[] = [];
-  validTagPattern = /^[a-zA-Z_\:][-a-zA-Z0-9\._\:]*$/;
-  tagIsolatingPattern = /^\|\>(\s*)(.*)$/;
-  tabIsolatingPattern = /^[\t]*/;
-  diagnosticCollection: vscode.DiagnosticCollection;
-  our_walker: WriterlyDocumentWalker;
+export default class WriterlyStaticValidator {
+  static validTagPattern = /^[a-zA-Z_\:][-a-zA-Z0-9\._\:]*$/;
+  static tagIsolatingPattern = /^\|\>(\s*)(.*)$/;
+  static tabIsolatingPattern = /^[\t]*/;
+  static diagnosticCollection: vscode.DiagnosticCollection;
 
-  constructor(
-    context: vscode.ExtensionContext,
-    walker: WriterlyDocumentWalker, 
-  ) {
-    this.our_walker = walker;
-
-    this.diagnosticCollection =
-      vscode.languages.createDiagnosticCollection("writerly-validator");
-
-    let disposables: Array<vscode.Disposable> = [
-      this.diagnosticCollection,
-
-      vscode.workspace.onDidOpenTextDocument(
-        (document: vscode.TextDocument) => this.validateDocument(document)
-      ),
-
-      vscode.workspace.onDidChangeTextDocument(
-        (event: vscode.TextDocumentChangeEvent) => this.validateDocument(event.document)
-      ),
-    ];
-
-    for (const disposable of disposables) {
-      context.subscriptions.push(disposable);
-    }
-
-    vscode.workspace.textDocuments.forEach(
-      (document: vscode.TextDocument) => this.validateDocument(document)
-    );
-  }
-
-  public validateDocument(document: vscode.TextDocument): void {
-    if (document.languageId !== "writerly") return;
-    this.diagnostics = [];
-    let state = WriterlyDocumentWalker.walk(document, (s1, l, s2, lN, i, c) =>
-      this.callback(s1, l, s2, lN, i, c)
-    );
-    if (state.zone === Zone.CodeBlock) {
-      this.diagnostics.push(d5(state));
-      this.diagnostics.push(d6(document));
-    }
-    if (this.diagnosticCollection === null || this.diagnosticCollection === undefined) {
-      console.log("yeah was undefined");
-    }
-    this.diagnosticCollection.set(document.uri, this.diagnostics);
-  }
-
-  private callback(
-    stateBeforeLine: State,
-    lineType: LineType,
-    stateAfterLine: State,
-    lineNumber: number,
-    indent: number,
-    content: string
+  public static validateFinalState(
+    document: vscode.TextDocument,
+    finalState: State,
+    diagnostics: vscode.Diagnostic[],
   ): void {
-    this.validateIndentation(
-      stateBeforeLine,
-      lineType,
-      stateAfterLine,
-      lineNumber,
-      indent,
-      content
-    );
-    this.validateContent(
-      stateBeforeLine,
-      lineType,
-      lineNumber,
-      indent,
-      content
-    );
+    if (finalState.zone === Zone.CodeBlock) {
+      diagnostics.push(d5(finalState));
+      diagnostics.push(d6(document));
+    }
   }
 
-  private validateIndentation(
+  public static validateLine(
     stateBeforeLine: State,
     lineType: LineType,
     stateAfterLine: State,
     lineNumber: number,
     indent: number,
     content: string,
+    diagnostics: vscode.Diagnostic[],
+  ): void {
+    WriterlyStaticValidator.validateIndentation(
+      stateBeforeLine,
+      lineType,
+      stateAfterLine,
+      lineNumber,
+      indent,
+      content,
+      diagnostics,
+    );
+
+    if (
+      lineType === LineType.AttributeZoneComment ||
+      lineType === LineType.TextZoneComment
+    ) {
+      return;
+    }
+
+    WriterlyStaticValidator.validateContent(
+      stateBeforeLine,
+      lineType,
+      lineNumber,
+      indent,
+      content,
+      diagnostics,
+    );
+  }
+
+  private static validateIndentation(
+    stateBeforeLine: State,
+    lineType: LineType,
+    stateAfterLine: State,
+    lineNumber: number,
+    indent: number,
+    content: string,
+    diagnostics: vscode.Diagnostic[],
   ): void {
     if (content === "") return;
     if (
       lineType === LineType.CodeBlockClosing &&
       indent > stateAfterLine.maxIndent // stateAfterLine.maxIndent === maxIndent at code block opening
     ) {
-      this.diagnostics.push(d1(lineNumber, indent));
+      diagnostics.push(d1(lineNumber, indent));
     } else if (indent < stateBeforeLine.minIndent) {
-      this.diagnostics.push(d3(lineNumber, stateBeforeLine.minIndent));
+      diagnostics.push(d3(lineNumber, stateBeforeLine.minIndent));
     } else if (indent > stateBeforeLine.maxIndent) {
-      this.diagnostics.push(d1(lineNumber, indent));
-    } else if (indent % 4 !== 0) {
-      this.diagnostics.push(d2(lineNumber, indent));
+      diagnostics.push(d1(lineNumber, indent));
+    } else if (indent % 4 !== 0 && stateBeforeLine.zone != Zone.CodeBlock) {
+      diagnostics.push(d2(lineNumber, indent));
     }
   }
 
-  private validateContent(
+  private static validateContent(
     stateBeforeLine: State,
     lineType: LineType,
     lineNumber: number,
     indent: number,
-    content: string
+    content: string,
+    diagnostics: vscode.Diagnostic[],
   ): void {
     switch (lineType) {
       case LineType.Tag:
-        this.validateTag(lineNumber, indent, content);
+        WriterlyStaticValidator.validateTag(
+          lineNumber,
+          indent,
+          content,
+          diagnostics,
+        );
         break;
       case LineType.CodeBlockOpening:
-        this.validateCodeBlockInfoAnnotation(lineNumber, indent, content);
+        WriterlyStaticValidator.validateCodeBlockInfoAnnotation(
+          lineNumber,
+          indent,
+          content,
+          diagnostics,
+        );
         break;
       case LineType.CodeBlockLine:
-        this.validateCodeBlockLine(
+        WriterlyStaticValidator.validateCodeBlockLine(
           stateBeforeLine,
           lineNumber,
           indent,
-          content
+          content,
+          diagnostics,
         );
         break;
       case LineType.Text:
-        this.validateText(lineNumber, indent, content);
+        WriterlyStaticValidator.validateText(
+          lineNumber,
+          indent,
+          content,
+          diagnostics,
+        );
         break;
     }
   }
 
-  private validateText(
+  private static validateText(
     lineNumber: number,
     indent: number,
     content: string,
+    diagnostics: vscode.Diagnostic[],
   ): void {
     if (!content.startsWith("\t")) return;
     const isolatingMatch = content.match(this.tabIsolatingPattern);
@@ -223,16 +221,17 @@ export default class DocumentValidator {
       console.error("bug error: tabIsolatingPattern should match string");
       return;
     }
-    this.diagnostics.push(d10(lineNumber, indent, isolatingMatch[0].length));
+    diagnostics.push(d10(lineNumber, indent, isolatingMatch[0].length));
   }
 
-  private validateTag(
+  private static validateTag(
     lineNumber: number,
     indent: number,
-    content: string
+    content: string,
+    diagnostics: vscode.Diagnostic[],
   ): void {
     if (content === "|>") {
-      this.diagnostics.push(d7(lineNumber, indent, content));
+      diagnostics.push(d7(lineNumber, indent, content));
       return;
     }
 
@@ -242,31 +241,33 @@ export default class DocumentValidator {
     const tagName = isolatingMatch[2];
 
     if (!this.validTagPattern.test(tagName)) {
-      this.diagnostics.push(d8(lineNumber, indent, content, numSpaces));
+      diagnostics.push(d8(lineNumber, indent, content, numSpaces));
     }
   }
 
-  private validateCodeBlockInfoAnnotation(
+  private static validateCodeBlockInfoAnnotation(
     lineNumber: number,
     indent: number,
-    content: string
+    content: string,
+    diagnostics: vscode.Diagnostic[],
   ): void {
     if (content.indexOf(" ") > 0) {
-      this.diagnostics.push(d9(lineNumber, indent, content));
+      diagnostics.push(d9(lineNumber, indent, content));
     }
   }
 
-  private validateCodeBlockLine(
+  private static validateCodeBlockLine(
     stateBeforeLine: State,
     lineNumber: number,
     indent: number,
-    content: string
+    content: string,
+    diagnostics: vscode.Diagnostic[],
   ): void {
     if (
       content.startsWith("```") &&
       indent === stateBeforeLine.codeBlockStartIndent
     ) {
-      this.diagnostics.push(d4(lineNumber, indent, content));
+      diagnostics.push(d4(lineNumber, indent, content));
     }
   }
 }

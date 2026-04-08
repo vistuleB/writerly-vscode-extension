@@ -1,20 +1,20 @@
 import * as vscode from "vscode";
-import { LinkProvider } from "./LinkProvider";
-import { WlyFileProvider } from "./WlyFileProvider";
-import { FileOpener } from "./FileOpener";
-import { HoverProvider } from "./HoverProvider";
-import { WlyCompletionProvider } from "./CompletionProvider";
+import { WriterlyLinkProvider } from "./WriterlyLinkProvider";
+import { WriterlyFileProvider } from "./WriterlyFileProvider";
+import { WriterlyFileOpener } from "./WriterlyFileOpener";
+import { WriterlyHoverProvider } from "./WriterlyHoverProvider";
+import { WriterlyCompletionProvider } from "./WriterlyCompletionProvider";
 
 export class WriterlyController {
   private providers: any[] = [];
 
   constructor(context: vscode.ExtensionContext) {
     this.providers = [
-      new LinkProvider(context),
-      new FileOpener(context),
-      new HoverProvider(context),
-      new WlyFileProvider(context),
-      new WlyCompletionProvider(context),
+      new WriterlyLinkProvider(context),
+      new WriterlyFileOpener(context),
+      new WriterlyHoverProvider(context),
+      new WriterlyFileProvider(context),
+      new WriterlyCompletionProvider(context),
     ];
 
     // Register the master restart command
