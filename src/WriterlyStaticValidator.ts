@@ -87,7 +87,7 @@ const d10 = (lineNumber: number, indent: number, numTabs: number) => {
   return errorDiagnostic(range, "Tabs in initial whitespace");
 };
 
-export default class StaticDocumentValidator {
+export default class WriterlyStaticDocumentValidator {
   static validTagPattern = /^[a-zA-Z_\:][-a-zA-Z0-9\._\:]*$/;
   static tagIsolatingPattern = /^\|\>(\s*)(.*)$/;
   static tabIsolatingPattern = /^[\t]*/;
@@ -114,7 +114,7 @@ export default class StaticDocumentValidator {
     content: string,
     diagnostics: vscode.Diagnostic[],
   ): void {
-    StaticDocumentValidator.validateIndentation(
+    WriterlyStaticDocumentValidator.validateIndentation(
       stateBeforeLine,
       lineType,
       stateAfterLine,
@@ -131,7 +131,7 @@ export default class StaticDocumentValidator {
       return;
     }
 
-    StaticDocumentValidator.validateContent(
+    WriterlyStaticDocumentValidator.validateContent(
       stateBeforeLine,
       lineType,
       lineNumber,
@@ -175,7 +175,7 @@ export default class StaticDocumentValidator {
   ): void {
     switch (lineType) {
       case LineType.Tag:
-        StaticDocumentValidator.validateTag(
+        WriterlyStaticDocumentValidator.validateTag(
           lineNumber,
           indent,
           content,
@@ -183,7 +183,7 @@ export default class StaticDocumentValidator {
         );
         break;
       case LineType.CodeBlockOpening:
-        StaticDocumentValidator.validateCodeBlockInfoAnnotation(
+        WriterlyStaticDocumentValidator.validateCodeBlockInfoAnnotation(
           lineNumber,
           indent,
           content,
@@ -191,7 +191,7 @@ export default class StaticDocumentValidator {
         );
         break;
       case LineType.CodeBlockLine:
-        StaticDocumentValidator.validateCodeBlockLine(
+        WriterlyStaticDocumentValidator.validateCodeBlockLine(
           stateBeforeLine,
           lineNumber,
           indent,
@@ -200,7 +200,7 @@ export default class StaticDocumentValidator {
         );
         break;
       case LineType.Text:
-        StaticDocumentValidator.validateText(
+        WriterlyStaticDocumentValidator.validateText(
           lineNumber,
           indent,
           content,
