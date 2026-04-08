@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { LinkProvider } from "./LinkProvider";
 import { WriterlyFileProvider } from "./WriterlyFileProvider";
 import { FileOpener } from "./FileOpener";
-import { HoverProvider } from "./HoverProvider";
+import { WriterlyHoverProvider } from "./WriterlyHoverProvider";
 import { WriterlyCompletionProvider } from "./WriterlyCompletionProvider";
 
 export class WriterlyController {
@@ -12,7 +12,7 @@ export class WriterlyController {
     this.providers = [
       new LinkProvider(context),
       new FileOpener(context),
-      new HoverProvider(context),
+      new WriterlyHoverProvider(context),
       new WriterlyFileProvider(context),
       new WriterlyCompletionProvider(context),
     ];

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import { FileOpener, OpeningMethod } from "./FileOpener";
 
-export class HoverProvider implements vscode.HoverProvider {
+export class WriterlyHoverProvider implements vscode.HoverProvider {
   constructor(context: vscode.ExtensionContext) {
     let disposables = [
       vscode.languages.registerHoverProvider(
@@ -16,7 +16,7 @@ export class HoverProvider implements vscode.HoverProvider {
   }
 
   /**
-   * HoverProvider is stateless, so reset does nothing.
+   * WriterlyHoverProvider is stateless, so reset does nothing.
    * Defined to satisfy the WriterlyController's reset loop.
    */
   public reset(): void {
