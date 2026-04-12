@@ -66,16 +66,15 @@ export class WriterlyDocumentWalker {
     while (currentIndentation > 0 && currentLineNum > 0) {
       currentLineNum -= 1;
       const text = document.lineAt(currentLineNum).text;
-      const indent = text.match(/^( *)/)?.[1].length || 0;
       const isEmpty = text.trim() === "";
+      const logicalIndentation = isEmpty ? currentIndentation : text.match(/^( *)/)?.[1].length || 0;
 
-      if (isEmpty || indent === currentIndentation) {
+      if (logicalIndentation <= currentIndentation) {
         linesAbove.push(text);
       }
 
-      else if (indent < currentIndentation) {
-        linesAbove.push(text);
-        currentIndentation = indent;
+      if (logicalIndentation < currentIndentation) {
+        currentIndentation = logicalIndentation;
       }
     }
 
@@ -105,9 +104,6 @@ export class WriterlyDocumentWalker {
       const indent = spaces.length;
       const content = line.slice(indent);
 
-      console.log("line number", i, ":", line)
-
-      // we reuse the existing updateState logic
       lineType = this.updateState(state, i, indent, content);
     }
 
@@ -145,7 +141,7 @@ export class WriterlyDocumentWalker {
       const spaces = line.match(/^( *)/)?.[1] || "";
       const indent = spaces.length;
       const content = line.slice(indent);
-      let prevState: State = {
+      let prevState : State = {
         zone: state.zone,
         maxIndent: state.maxIndent,
         minIndent: state.minIndent,
