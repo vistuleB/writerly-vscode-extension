@@ -31,6 +31,12 @@ export class WriterlyFileOpener {
       vscode.commands.registerCommand("writerly.openFileWithDefault", () =>
         WriterlyFileOpener.openFileWithDefault(),
       ),
+
+      vscode.commands.registerCommand(
+        "writerly.openResolvedPath",
+        (path, method) => WriterlyFileOpener.openResolvedPath(path, method),
+      ),
+
     ];
 
     for (const disposable of disposables)
