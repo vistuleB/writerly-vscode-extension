@@ -10,11 +10,11 @@ export class WriterlyController {
 
   constructor(context: vscode.ExtensionContext) {
     this.providers = [
-      new WriterlyLinkProvider(context),
       new WriterlyFileOpener(context),
       new WriterlyHoverProvider(context),
       new WriterlyFileProvider(context),
       new WriterlyCompletionProvider(context),
+      new WriterlyLinkProvider(context),
     ];
 
     // Register the master restart command
