@@ -21,11 +21,11 @@ class WriterlyFileCompletionItem extends vscode.CompletionItem {
   }
 }
 
-export class WriterlyCompletionProvider implements vscode.CompletionItemProvider {
+export class WriterlyCompletionProvider
+  implements vscode.CompletionItemProvider
+{
   private fileTree: FileNode[] = [];
-
   private nameToNodesMap: Map<string, FileNode[]> = new Map();
-
   private loadFilesTimeout: NodeJS.Timeout | undefined;
 
   private readonly imgExtensions: string[] = (() => {
@@ -158,12 +158,6 @@ export class WriterlyCompletionProvider implements vscode.CompletionItemProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): vscode.ProviderResult<vscode.CompletionItem[]> {
-    // if (WriterlyDocumentWalker.isCommentLine(document, position)) {
-    //   return undefined;
-    // }
-    // let q = WriterlyDocumentWalker.onTheFlyLineClassification(document, position);
-    // console.log("classification: ", q);
-
     const linePrefix = document
       .lineAt(position)
       .text.substring(0, position.character);
@@ -272,11 +266,15 @@ export class WriterlyCompletionProvider implements vscode.CompletionItemProvider
     item: vscode.CompletionItem,
     _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.CompletionItem> {
-    if (!(item instanceof WriterlyFileCompletionItem) || item.nodeType !== "file") {
+    if (
+      !(item instanceof WriterlyFileCompletionItem) ||
+      item.nodeType !== "file"
+    ) {
       return item;
     }
 
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+
     if (workspaceFolder) {
       const absolutePath = vscode.Uri.joinPath(
         workspaceFolder.uri,

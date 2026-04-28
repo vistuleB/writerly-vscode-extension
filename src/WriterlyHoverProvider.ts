@@ -29,7 +29,10 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
     _token: vscode.CancellationToken,
   ): Promise<vscode.Hover | undefined> {
     const [range, _filePath, resolvedPath] =
-      await WriterlyFileOpener.getResolvedFilePathAtPosition(document, position);
+      await WriterlyFileOpener.getResolvedFilePathAtPosition(
+        document,
+        position,
+      );
 
     if (!resolvedPath) return undefined;
 
@@ -108,16 +111,6 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
 
     return new vscode.Hover(hoverContent, range);
   }
-
-  /**
-   * Format file size in human readable format
-   */
-  // private formatFileSize(bytes: number): string {
-  //   const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
-  //   if (bytes === 0) return "0 Bytes";
-  //   const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  //   return Math.round(100 * (bytes / Math.pow(1024, i))) / 100 + " " + sizes[i];
-  // }
 
   private kb(bytes: number): number {
     return Math.round((10 * bytes) / 1024) / 10;
