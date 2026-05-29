@@ -4,6 +4,7 @@ import { WriterlyFileProvider } from "./WriterlyFileProvider";
 import { WriterlyFileOpener } from "./WriterlyFileOpener";
 import { WriterlyHoverProvider } from "./WriterlyHoverProvider";
 import { WriterlyCompletionProvider } from "./WriterlyCompletionProvider";
+import { WriterlyRenameWatcher } from "./WriterlyRenameWatcher";
 
 export class WriterlyController {
   private providers: any[] = [];
@@ -15,11 +16,12 @@ export class WriterlyController {
       new WriterlyFileProvider(context),
       new WriterlyCompletionProvider(context),
       new WriterlyLinkProvider(context),
+      new WriterlyRenameWatcher(context),
     ];
 
     // Register the master restart command
     context.subscriptions.push(
-      vscode.commands.registerCommand("writerly.restart", () => this.restart()),
+      vscode.commands.registerCommand("writerly.restart", () => this.restart())
     );
   }
 
@@ -38,7 +40,7 @@ export class WriterlyController {
             await Promise.resolve(provider.reset());
           }
         }
-      },
+      }
     );
   }
 }
