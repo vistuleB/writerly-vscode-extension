@@ -87,6 +87,11 @@
         "command": "writerly.restart",
         "title": "Restart Extension",
         "category": "Writerly"
+      },
+      {
+        "command": "writerly.renameFileUnderCursor",
+        "title": "Rename File Under Cursor",
+        "category": "Writerly"
       }
     ],
     "keybindings": [
