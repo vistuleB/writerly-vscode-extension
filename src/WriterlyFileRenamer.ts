@@ -12,7 +12,7 @@ export class WriterlyFileRenamer {
   constructor(context: vscode.ExtensionContext) {
     const disposables = [
       vscode.commands.registerCommand("writerly.renameFileUnderCursor", () =>
-        this.doUnderCursor(this.renameFileUnderCursor)
+        this.handleFileUnderCursor(this.renameFileUnderCursor)
       ),
     ];
 
@@ -20,8 +20,8 @@ export class WriterlyFileRenamer {
       context.subscriptions.push(disposable);
   }
 
-  async doUnderCursor(
-    todo: (params: ActionParams) => Promise<void>
+  async handleFileUnderCursor(
+    handler: (params: ActionParams) => Promise<void>
   ): Promise<void> {
     const editor = vscode.window.activeTextEditor;
 
@@ -44,7 +44,7 @@ export class WriterlyFileRenamer {
       return;
     }
 
-    await todo({
+    await handler({
       filePath,
       resolvedPath,
       document: editor.document,
@@ -128,7 +128,10 @@ async function replacePathInWlyFiles(
         return;
       }
       const text = content.getText();
-      const newText = text.replace(new RegExp(oldPath, "g"), newPath);
+      const newText = text.replace(
+        new RegExp(`${escapeRegExp(oldPath)}(?=\\s|[})\\]]|$)`, "g"),
+        newPath
+      );
       if (newText !== text) {
         const edit = new vscode.WorkspaceEdit();
         const fullRange = new vscode.Range(
@@ -145,6 +148,10 @@ async function replacePathInWlyFiles(
       }
     })
   );
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function tryCatch<T, Error>(
