@@ -18,6 +18,10 @@ export class WriterlyFileRenamer {
       vscode.commands.registerCommand("writerly.moveFileUnderCursor", () =>
         this.handleFileUnderCursor(this.moveFileUnderCursor)
       ),
+      vscode.commands.registerCommand(
+        "writerly.createFileUnderCursorFromTemplate",
+        () => this.handleFileUnderCursor(this.createFileUnderCursorFromTemplate)
+      ),
     ];
 
     for (const disposable of disposables)
@@ -43,10 +47,6 @@ export class WriterlyFileRenamer {
       vscode.window.showWarningMessage("No file path found under cursor");
       return;
     }
-    if (!resolvedPath) {
-      vscode.window.showWarningMessage(`File not found: ${filePath}`);
-      return;
-    }
 
     await handler({
       filePath,
@@ -58,6 +58,11 @@ export class WriterlyFileRenamer {
 
   async renameFileUnderCursor(params: ActionParams): Promise<void> {
     const { filePath, resolvedPath } = params;
+
+    if (!resolvedPath) {
+      vscode.window.showWarningMessage(`File not found: ${filePath}`);
+      return;
+    }
 
     const { result: newFileName, error } = await tryCatch(
       vscode.window.showInputBox({
@@ -109,14 +114,27 @@ export class WriterlyFileRenamer {
 
     const newFilePath = filePath.replace(/[^\/]+$/, newFileName);
     await replacePathInWlyFiles(filePath, newFilePath);
+
+    vscode.window.showInformationMessage(
+      `Renamed file to "${newFileName}" and updated references in .wly files accordingly.`
+    );
   }
 
   async moveFileUnderCursor(params: ActionParams): Promise<void> {
     const { filePath, resolvedPath } = params;
+
+    if (!resolvedPath) {
+      vscode.window.showWarningMessage(`File not found: ${filePath}`);
+      return;
+    }
+    const segments = filePath.split("/");
+    const fileName = segments.pop()!;
+    const dirPart = segments.join("/");
+
     const { result: newDirPath, error } = await tryCatch(
       vscode.window.showInputBox({
         prompt: "Enter new file path",
-        value: filePath.split("/").slice(0, -1).join("/"),
+        value: dirPart,
         validateInput(value) {
           if (value.trim() === "") {
             return {
@@ -170,9 +188,134 @@ export class WriterlyFileRenamer {
       console.error("Move error:", moveError);
     }
 
-    const newFilePath = path.join(newDirPath, filePath.split("/").pop()!);
+    const newFilePath = path.join(newDirPath, fileName);
     await replacePathInWlyFiles(filePath, newFilePath);
+
+    vscode.window.showInformationMessage(
+      `Moved file to "${newFilePath}" and updated references in .wly files accordingly.`
+    );
   }
+
+  async createFileUnderCursorFromTemplate(params: ActionParams): Promise<void> {
+    const { filePath } = params;
+
+    // --- identify a unique target directory that doesn't already contain the
+    //     file we're about to create ---
+    const segments = filePath.split("/");
+    const fileName = segments.pop()!;
+    const dirPart = segments.join("/");
+
+    const targetDirs = await fileUtils.resolvePossibleDirPaths(dirPart);
+    if (targetDirs.length === 0) {
+      vscode.window.showErrorMessage(
+        `No matching directory found in workspace for "${dirPart}"`
+      );
+      return;
+    }
+    if (targetDirs.length > 1) {
+      vscode.window.showErrorMessage(
+        `Multiple matching directories found in workspace for "${dirPart}". Cannot determine where to create the file.`
+      );
+      return;
+    }
+    const targetPath = path.join(targetDirs[0], fileName);
+    const { error: targetStatError } = await tryCatch(
+      vscode.workspace.fs.stat(vscode.Uri.file(targetPath))
+    );
+    if (!targetStatError) {
+      vscode.window.showErrorMessage(
+        `A file named "${fileName}" already exists in the target directory`
+      );
+      return;
+    }
+
+    // --- locate the workspace template files directory ---
+    const templateDirSetting = vscode.workspace
+      .getConfiguration("writerly")
+      .get<string>("templateFilesDirectory");
+    if (!templateDirSetting || templateDirSetting.trim() === "") {
+      vscode.window.showErrorMessage(
+        'No template files directory configured. Set "writerly.templateFilesDirectory" in your workspace settings.'
+      );
+      return;
+    }
+
+    const templateDirs = await fileUtils.resolvePossibleDirPaths(
+      templateDirSetting
+    );
+    if (templateDirs.length === 0) {
+      vscode.window.showErrorMessage(
+        `Template files directory "${templateDirSetting}" matches no directory in the workspace`
+      );
+      return;
+    }
+    if (templateDirs.length > 1) {
+      vscode.window.showErrorMessage(
+        `Template files directory "${templateDirSetting}" matches multiple directories in the workspace. Please make it more specific.`
+      );
+      return;
+    }
+    const templateDir = templateDirs[0];
+
+    // --- get the extension of the new file ---
+    const ext = path.extname(fileName);
+    if (!ext) {
+      vscode.window.showErrorMessage(`New file "${fileName}" has no extension`);
+      return;
+    }
+
+    // --- collect template files (recursively) sharing the same extension ---
+    const templateFiles = (
+      await fileUtils.listFilesRecursively(templateDir)
+    ).filter((f) => f.endsWith(ext));
+    if (templateFiles.length === 0) {
+      vscode.window.showErrorMessage(
+        `No template files with extension "${ext}" found in "${templateDirSetting}"`
+      );
+      return;
+    }
+
+    // --- pick the template whose name shares the longest suffix ---
+    let selectedTemplate = templateFiles[0];
+    let bestSuffixLength = -1;
+    for (const f of templateFiles) {
+      const len = longestCommonSuffixLength(path.basename(f), fileName);
+      if (len > bestSuffixLength) {
+        bestSuffixLength = len;
+        selectedTemplate = f;
+      }
+    }
+
+    // --- copy the template to its new location ---
+    const { error: copyError } = await tryCatch(
+      vscode.workspace.fs.copy(
+        vscode.Uri.file(selectedTemplate),
+        vscode.Uri.file(targetPath),
+        { overwrite: false }
+      )
+    );
+    if (copyError) {
+      vscode.window.showErrorMessage("Failed to create file from template");
+      console.error("Copy error:", copyError);
+      return;
+    }
+
+    vscode.window.showInformationMessage(
+      `Created "${fileName}" from template "${path.basename(selectedTemplate)}"`
+    );
+  }
+}
+
+function longestCommonSuffixLength(a: string, b: string): number {
+  let i = 0;
+  while (
+    i < a.length &&
+    i < b.length &&
+    a[a.length - 1 - i] === b[b.length - 1 - i]
+  ) {
+    i++;
+  }
+  return i;
 }
 
 async function replacePathInWlyFiles(

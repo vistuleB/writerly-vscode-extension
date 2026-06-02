@@ -59,6 +59,29 @@ export const fileUtils = {
     for (const folder of folders) await walk(folder.uri);
     return matches;
   },
+
+  /**
+   * Returns the absolute paths of every file contained in `dirPath` and its
+   * sub-directories (recursively).
+   */
+  listFilesRecursively: async (dirPath: string): Promise<string[]> => {
+    const result: string[] = [];
+
+    const walk = async (dirUri: vscode.Uri): Promise<void> => {
+      const entries = await vscode.workspace.fs.readDirectory(dirUri);
+      for (const [name, type] of entries) {
+        const childPath = path.join(dirUri.fsPath, name);
+        if (type & vscode.FileType.Directory) {
+          await walk(vscode.Uri.file(childPath));
+        } else if (type & vscode.FileType.File) {
+          result.push(childPath);
+        }
+      }
+    };
+
+    await walk(vscode.Uri.file(dirPath));
+    return result;
+  },
 };
 
 const getPossiblePathAtPosition = (
