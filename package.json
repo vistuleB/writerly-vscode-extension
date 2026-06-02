@@ -92,6 +92,11 @@
         "command": "writerly.renameFileUnderCursor",
         "title": "Rename File Under Cursor",
         "category": "Writerly"
+      },
+      {
+        "command": "writerly.moveFileUnderCursor",
+        "title": "Move File Under Cursor",
+        "category": "Writerly"
       }
     ],
     "keybindings": [

@@ -21,6 +21,44 @@ export const fileUtils = {
     }
     return false;
   },
+
+  /**
+   * Given a trailing sub-directory path (e.g. "images" or "assets/images"),
+   * returns every full directory path in the workspace whose tail segments
+   * equal it.
+   */
+  resolvePossibleDirPaths: async (endSubDirPath: string): Promise<string[]> => {
+    const sub = endSubDirPath.replace(/^\/+|\/+$/g, "");
+    if (!sub) return [];
+    const subParts = sub.split("/");
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders) return [];
+
+    const skipDirs = new Set(["node_modules", "dist", "build"]);
+    const matches: string[] = [];
+
+    const walk = async (dirUri: vscode.Uri): Promise<void> => {
+      const entries = await vscode.workspace.fs.readDirectory(dirUri);
+      for (const [name, type] of entries) {
+        if ((type & vscode.FileType.Directory) === 0) continue;
+        if (skipDirs.has(name) || name.startsWith(".")) continue;
+        const childPath = path.join(dirUri.fsPath, name);
+        const childParts = childPath.split(path.sep);
+        if (
+          childParts.length >= subParts.length &&
+          subParts.every(
+            (p, j) => childParts[childParts.length - subParts.length + j] === p
+          )
+        ) {
+          matches.push(childPath);
+        }
+        await walk(vscode.Uri.file(childPath));
+      }
+    };
+
+    for (const folder of folders) await walk(folder.uri);
+    return matches;
+  },
 };
 
 const getPossiblePathAtPosition = (

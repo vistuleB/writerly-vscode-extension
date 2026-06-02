@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "path";
 import { fileUtils } from "./utils/file-utils";
 
 type ActionParams = {
@@ -13,6 +14,9 @@ export class WriterlyFileRenamer {
     const disposables = [
       vscode.commands.registerCommand("writerly.renameFileUnderCursor", () =>
         this.handleFileUnderCursor(this.renameFileUnderCursor)
+      ),
+      vscode.commands.registerCommand("writerly.moveFileUnderCursor", () =>
+        this.handleFileUnderCursor(this.moveFileUnderCursor)
       ),
     ];
 
@@ -61,10 +65,16 @@ export class WriterlyFileRenamer {
         value: resolvedPath.split("/").pop() || "",
         validateInput(value) {
           if (value.trim() === "") {
-            return "File name cannot be empty";
+            return {
+              message: "File name cannot be empty",
+              severity: vscode.InputBoxValidationSeverity.Error,
+            };
           }
           if (value.includes("/")) {
-            return "File name cannot contain slashes";
+            return {
+              message: "File name cannot contain slashes",
+              severity: vscode.InputBoxValidationSeverity.Error,
+            };
           }
         },
       })
@@ -85,7 +95,6 @@ export class WriterlyFileRenamer {
       );
     }
 
-    // Proceed with renaming the file with tryCatch to handle potential errors
     const { error: renameError } = await tryCatch(
       vscode.workspace.fs.rename(
         vscode.Uri.file(resolvedPath),
@@ -99,6 +108,69 @@ export class WriterlyFileRenamer {
     }
 
     const newFilePath = filePath.replace(/[^\/]+$/, newFileName);
+    await replacePathInWlyFiles(filePath, newFilePath);
+  }
+
+  async moveFileUnderCursor(params: ActionParams): Promise<void> {
+    const { filePath, resolvedPath } = params;
+    const { result: newDirPath, error } = await tryCatch(
+      vscode.window.showInputBox({
+        prompt: "Enter new file path",
+        value: filePath.split("/").slice(0, -1).join("/"),
+        validateInput(value) {
+          if (value.trim() === "") {
+            return {
+              message: "File path cannot be empty",
+              severity: vscode.InputBoxValidationSeverity.Error,
+            };
+          }
+        },
+      })
+    );
+    if (!newDirPath || error) {
+      vscode.window.showErrorMessage("Failed to get new file path");
+      console.error("Input box error:", error);
+      return;
+    }
+    const foundDirs = await fileUtils.resolvePossibleDirPaths(newDirPath);
+    if (foundDirs.length === 0) {
+      vscode.window.showErrorMessage(
+        "No matching directory found in workspace for the provided path"
+      );
+      return;
+    }
+    if (foundDirs.length > 1) {
+      vscode.window.showErrorMessage(
+        "Multiple matching directories found in workspace. Please provide a more specific path."
+      );
+      return;
+    }
+    const newResolvedFilePath = path.join(
+      foundDirs[0],
+      path.basename(filePath)
+    );
+    const { error: statError } = await tryCatch(
+      vscode.workspace.fs.stat(vscode.Uri.file(newResolvedFilePath))
+    );
+
+    if (!statError) {
+      vscode.window.showErrorMessage(
+        "A file with the same name already exists in the target directory"
+      );
+    }
+
+    const { error: moveError } = await tryCatch(
+      vscode.workspace.fs.rename(
+        vscode.Uri.file(resolvedPath),
+        vscode.Uri.file(newResolvedFilePath)
+      )
+    );
+    if (moveError) {
+      vscode.window.showErrorMessage("Failed to move file");
+      console.error("Move error:", moveError);
+    }
+
+    const newFilePath = path.join(newDirPath, filePath.split("/").pop()!);
     await replacePathInWlyFiles(filePath, newFilePath);
   }
 }
