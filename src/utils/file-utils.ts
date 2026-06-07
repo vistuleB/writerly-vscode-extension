@@ -30,7 +30,8 @@ export const fileUtils = {
   resolvePossibleDirPaths: async (endSubDirPath: string): Promise<string[]> => {
     const sub = endSubDirPath.replace(/^\/+|\/+$/g, "");
     if (!sub) return [];
-    const subParts = sub.split("/");
+    const subParts = sub.split("/").filter((p) => p !== ".");
+    if (subParts.length === 0) return [];
     const folders = vscode.workspace.workspaceFolders;
     if (!folders) return [];
 
