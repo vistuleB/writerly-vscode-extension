@@ -45,10 +45,10 @@ Writerly is a markup language extension for VS Code that makes creating structur
 The `writerly.createFileUnderCursorFromTemplate` command lets you scaffold a new file directly from a path written in your document. Place the cursor on a file path that does **not** exist yet and run the command. The extension will:
 
 1. Resolve the directory portion of the path to a unique directory in the workspace (it aborts if the directory is ambiguous or missing, or if a file with that name already exists).
-2. Look up your configured template files directory.
+2. Look up your configured template files directory (see below).
 3. Collect every template file (recursively) sharing the same extension as the new file.
 4. Pick the template whose name shares the longest suffix with the new file name.
-5. Copy that template to the new location.
+5. Copy that template to the new location, while renaming it to the new file name.
 
 ### Configuring the template directory
 

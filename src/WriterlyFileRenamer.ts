@@ -13,14 +13,15 @@ export class WriterlyFileRenamer {
   constructor(context: vscode.ExtensionContext) {
     const disposables = [
       vscode.commands.registerCommand("writerly.renameFileUnderCursor", () =>
-        this.handleFileUnderCursor(this.renameFileUnderCursor)
+        this.handleFileUnderCursor(this.renameFileUnderCursor),
       ),
       vscode.commands.registerCommand("writerly.moveFileUnderCursor", () =>
-        this.handleFileUnderCursor(this.moveFileUnderCursor)
+        this.handleFileUnderCursor(this.moveFileUnderCursor),
       ),
       vscode.commands.registerCommand(
         "writerly.createFileUnderCursorFromTemplate",
-        () => this.handleFileUnderCursor(this.createFileUnderCursorFromTemplate)
+        () =>
+          this.handleFileUnderCursor(this.createFileUnderCursorFromTemplate),
       ),
     ];
 
@@ -29,7 +30,7 @@ export class WriterlyFileRenamer {
   }
 
   async handleFileUnderCursor(
-    handler: (params: ActionParams) => Promise<void>
+    handler: (params: ActionParams) => Promise<void>,
   ): Promise<void> {
     const editor = vscode.window.activeTextEditor;
 
@@ -41,7 +42,7 @@ export class WriterlyFileRenamer {
     const [_, filePath, resolvedPath] =
       await fileUtils.getResolvedFilePathAtPosition(
         editor.document,
-        editor.selection.active
+        editor.selection.active,
       );
     if (!filePath) {
       vscode.window.showWarningMessage("No file path found under cursor");
@@ -82,7 +83,7 @@ export class WriterlyFileRenamer {
             };
           }
         },
-      })
+      }),
     );
     if (!newFileName || error) {
       vscode.window.showErrorMessage("Failed to get new file name");
@@ -91,20 +92,20 @@ export class WriterlyFileRenamer {
     }
     const newResolvedFilePath = resolvedPath.replace(/[^\/]+$/, newFileName);
     const { error: statError } = await tryCatch(
-      vscode.workspace.fs.stat(vscode.Uri.file(newResolvedFilePath))
+      vscode.workspace.fs.stat(vscode.Uri.file(newResolvedFilePath)),
     );
 
     if (!statError) {
       vscode.window.showErrorMessage(
-        "A file with the new name already exists in the same directory"
+        "A file with the new name already exists in the same directory",
       );
     }
 
     const { error: renameError } = await tryCatch(
       vscode.workspace.fs.rename(
         vscode.Uri.file(resolvedPath),
-        vscode.Uri.file(newResolvedFilePath)
-      )
+        vscode.Uri.file(newResolvedFilePath),
+      ),
     );
 
     if (renameError) {
@@ -116,7 +117,7 @@ export class WriterlyFileRenamer {
     await replacePathInWlyFiles(filePath, newFilePath);
 
     vscode.window.showInformationMessage(
-      `Renamed file to "${newFileName}" and updated references in .wly files accordingly.`
+      `Renamed file to "${newFileName}" and updated references in .wly files accordingly.`,
     );
   }
 
@@ -143,7 +144,7 @@ export class WriterlyFileRenamer {
             };
           }
         },
-      })
+      }),
     );
     if (!newDirPath || error) {
       vscode.window.showErrorMessage("Failed to get new file path");
@@ -153,35 +154,35 @@ export class WriterlyFileRenamer {
     const foundDirs = await fileUtils.resolvePossibleDirPaths(newDirPath);
     if (foundDirs.length === 0) {
       vscode.window.showErrorMessage(
-        "No matching directory found in workspace for the provided path"
+        "No matching directory found in workspace for the provided path",
       );
       return;
     }
     if (foundDirs.length > 1) {
       vscode.window.showErrorMessage(
-        "Multiple matching directories found in workspace. Please provide a more specific path."
+        "Multiple matching directories found in workspace. Please provide a more specific path.",
       );
       return;
     }
     const newResolvedFilePath = path.join(
       foundDirs[0],
-      path.basename(filePath)
+      path.basename(filePath),
     );
     const { error: statError } = await tryCatch(
-      vscode.workspace.fs.stat(vscode.Uri.file(newResolvedFilePath))
+      vscode.workspace.fs.stat(vscode.Uri.file(newResolvedFilePath)),
     );
 
     if (!statError) {
       vscode.window.showErrorMessage(
-        "A file with the same name already exists in the target directory"
+        "A file with the same name already exists in the target directory",
       );
     }
 
     const { error: moveError } = await tryCatch(
       vscode.workspace.fs.rename(
         vscode.Uri.file(resolvedPath),
-        vscode.Uri.file(newResolvedFilePath)
-      )
+        vscode.Uri.file(newResolvedFilePath),
+      ),
     );
     if (moveError) {
       vscode.window.showErrorMessage("Failed to move file");
@@ -192,7 +193,7 @@ export class WriterlyFileRenamer {
     await replacePathInWlyFiles(filePath, newFilePath);
 
     vscode.window.showInformationMessage(
-      `Moved file to "${newFilePath}" and updated references in .wly files accordingly.`
+      `Moved file to "${newFilePath}" and updated references in .wly files accordingly.`,
     );
   }
 
@@ -204,27 +205,30 @@ export class WriterlyFileRenamer {
     const segments = filePath.split("/");
     const fileName = segments.pop()!;
     const dirPart = segments.join("/");
-
     const targetDirs = await fileUtils.resolvePossibleDirPaths(dirPart);
+
     if (targetDirs.length === 0) {
       vscode.window.showErrorMessage(
-        `No matching directory found in workspace for "${dirPart}"`
+        `No matching directory found in workspace for "${dirPart}"`,
       );
       return;
     }
+
     if (targetDirs.length > 1) {
       vscode.window.showErrorMessage(
-        `Multiple matching directories found in workspace for "${dirPart}". Cannot determine where to create the file.`
+        `Multiple matching directories found in workspace for "${dirPart}". Cannot determine where to create the file.`,
       );
       return;
     }
+
     const targetPath = path.join(targetDirs[0], fileName);
     const { error: targetStatError } = await tryCatch(
-      vscode.workspace.fs.stat(vscode.Uri.file(targetPath))
+      vscode.workspace.fs.stat(vscode.Uri.file(targetPath)),
     );
+
     if (!targetStatError) {
       vscode.window.showErrorMessage(
-        `A file named "${fileName}" already exists in the target directory`
+        `A file named "${fileName}" already exists in the target directory`,
       );
       return;
     }
@@ -233,28 +237,31 @@ export class WriterlyFileRenamer {
     const templateDirSetting = vscode.workspace
       .getConfiguration("writerly")
       .get<string>("templateFilesDirectory");
-    if (!templateDirSetting || templateDirSetting.trim() === "") {
+
+      if (!templateDirSetting || templateDirSetting.trim() === "") {
       vscode.window.showErrorMessage(
-        'No template files directory configured. Set "writerly.templateFilesDirectory" in your workspace settings.'
+        'No template files directory configured. Set "writerly.templateFilesDirectory" in your workspace settings.',
       );
       return;
     }
 
-    const templateDirs = await fileUtils.resolvePossibleDirPaths(
-      templateDirSetting
-    );
-    if (templateDirs.length === 0) {
+    const templateDirs =
+      await fileUtils.resolvePossibleDirPaths(templateDirSetting);
+
+      if (templateDirs.length === 0) {
       vscode.window.showErrorMessage(
-        `Template files directory "${templateDirSetting}" matches no directory in the workspace`
+        `Template files directory "${templateDirSetting}" matches no directory in the workspace`,
       );
       return;
     }
+
     if (templateDirs.length > 1) {
       vscode.window.showErrorMessage(
-        `Template files directory "${templateDirSetting}" matches multiple directories in the workspace. Please make it more specific.`
+        `Template files directory "${templateDirSetting}" matches multiple directories in the workspace. Please make it more specific.`,
       );
       return;
     }
+
     const templateDir = templateDirs[0];
 
     // --- get the extension of the new file ---
@@ -270,7 +277,7 @@ export class WriterlyFileRenamer {
     ).filter((f) => f.endsWith(ext));
     if (templateFiles.length === 0) {
       vscode.window.showErrorMessage(
-        `No template files with extension "${ext}" found in "${templateDirSetting}"`
+        `No template files with extension "${ext}" found in "${templateDirSetting}"`,
       );
       return;
     }
@@ -291,8 +298,8 @@ export class WriterlyFileRenamer {
       vscode.workspace.fs.copy(
         vscode.Uri.file(selectedTemplate),
         vscode.Uri.file(targetPath),
-        { overwrite: false }
-      )
+        { overwrite: false },
+      ),
     );
     if (copyError) {
       vscode.window.showErrorMessage("Failed to create file from template");
@@ -301,7 +308,7 @@ export class WriterlyFileRenamer {
     }
 
     vscode.window.showInformationMessage(
-      `Created "${fileName}" from template "${path.basename(selectedTemplate)}"`
+      `Created "${fileName}" from template "${path.basename(selectedTemplate)}"`,
     );
   }
 }
@@ -320,7 +327,7 @@ function longestCommonSuffixLength(a: string, b: string): number {
 
 async function replacePathInWlyFiles(
   oldPath: string,
-  newPath: string
+  newPath: string,
 ): Promise<void> {
   if (!vscode.workspace.workspaceFolders) {
     return;
@@ -328,7 +335,7 @@ async function replacePathInWlyFiles(
 
   const pattern = new vscode.RelativePattern(
     vscode.workspace.workspaceFolders[0],
-    "**/*.wly"
+    "**/*.wly",
   );
 
   const wlyFiles = await vscode.workspace.findFiles(pattern);
@@ -336,7 +343,7 @@ async function replacePathInWlyFiles(
   await Promise.all(
     wlyFiles.map(async (uri) => {
       const { result: content, error } = await tryCatch(
-        vscode.workspace.openTextDocument(uri)
+        vscode.workspace.openTextDocument(uri),
       );
       if (!content || error) {
         console.error("Error opening text document:", error);
@@ -345,23 +352,23 @@ async function replacePathInWlyFiles(
       const text = content.getText();
       const newText = text.replace(
         new RegExp(`${escapeRegExp(oldPath)}(?=\\s|[})\\]]|$)`, "g"),
-        newPath
+        newPath,
       );
       if (newText !== text) {
         const edit = new vscode.WorkspaceEdit();
         const fullRange = new vscode.Range(
           content.positionAt(0),
-          content.positionAt(text.length)
+          content.positionAt(text.length),
         );
         edit.replace(uri, fullRange, newText);
         const { error: applyError } = await tryCatch(
-          vscode.workspace.applyEdit(edit)
+          vscode.workspace.applyEdit(edit),
         );
         if (applyError) {
           console.error("Error applying workspace edit:", applyError);
         }
       }
-    })
+    }),
   );
 }
 
@@ -370,7 +377,7 @@ function escapeRegExp(s: string): string {
 }
 
 function tryCatch<T, Error>(
-  thenable: Thenable<T>
+  thenable: Thenable<T>,
 ): Promise<{ result?: T; error?: Error }> {
   return new Promise((resolve) => {
     thenable.then(
@@ -379,7 +386,7 @@ function tryCatch<T, Error>(
       },
       (error) => {
         resolve({ error });
-      }
+      },
     );
   });
 }
