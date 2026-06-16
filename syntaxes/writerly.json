@@ -11,6 +11,9 @@
     },
     {
       "include": "#codeblock"
+    },
+    {
+      "include": "#handle-in-text-definition"
     }
   ],
   "repository": {
@@ -74,6 +77,20 @@
           }
         }
       ]
+    },
+    "handle-in-text-definition": {
+      "match": "(?:[ \\(\\[])([\\p{L}\\p{N}\\p{M}_.:\\-\\^]*[\\p{L}\\p{N}\\p{M}_])((?:#[\\p{L}\\p{N}\\p{M}_:\\-]+)*)(##<<)",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.handle.definition.writerly"
+        },
+        "2": {
+          "name": "constant.language.handle.decorator.writerly"
+        },
+        "3": {
+          "name": "punctuation.definition.handle.writerly"
+        }
+      }
     },
     "codeblock": {
       "begin": "^( *)(```)(.*)$",

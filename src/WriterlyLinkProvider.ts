@@ -27,7 +27,7 @@ const PARENT_SUFFIX: string = "__parent.wly";
 const PARENT_SUFFIX_LENGTH: number = 12;
 const MAX_FILES: number = 1500;
 
-const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:\\-\\^+";
+const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:\\-\\^";
 const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_";
 const HANDLE_REGEX_STRING: string = `(?:[${HANDLE_CHARS}]*[${HANDLE_END_CHARS}])`;
 const HANDLE_DEF_RENAME_REGEX = new RegExp(
@@ -36,6 +36,16 @@ const HANDLE_DEF_RENAME_REGEX = new RegExp(
 );
 const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "gu");
 const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/u;
+
+// Decorator chars are HANDLE_CHARS minus '.' and '^'
+const HANDLE_DECORATOR_CHARS: string = "\\p{L}\\p{N}\\p{M}_:\\-";
+const HANDLE_DECORATOR_REGEX_STRING: string = `#[${HANDLE_DECORATOR_CHARS}]+`;
+const HANDLE_DECORATORS_REGEX_STRING: string = `(?:${HANDLE_DECORATOR_REGEX_STRING})*`;
+// Matches "handleName[decorators]##<<" preceded by space, '(', or '['
+const IN_TEXT_DEF_REGEX = new RegExp(
+  `[ \\(\\[](${HANDLE_REGEX_STRING})(${HANDLE_DECORATORS_REGEX_STRING})##<<`,
+  "gu",
+);
 
 export class WriterlyLinkProvider
   implements
@@ -411,6 +421,16 @@ export class WriterlyLinkProvider
           );
         }
 
+        // extract in-text handle definitions (handleName##<<)
+        if (lineType === LineType.Text) {
+          this.extractInTextHandleDefinitions(
+            content,
+            lineNumber,
+            indent,
+            currentFsPath,
+          );
+        }
+
         // extract handle usage (skip certain line types)
         if (this.shouldProcessUsageInLine(lineType)) {
           const usageLinks = this.extractHandleUsage(
@@ -472,6 +492,32 @@ export class WriterlyLinkProvider
     this.definitions.get(handleName)!.push(definition);
   }
 
+  private extractInTextHandleDefinitions(
+    content: string,
+    lineNumber: number,
+    indent: number,
+    fsPath: string,
+  ): void {
+    IN_TEXT_DEF_REGEX.lastIndex = 0;
+    let match;
+    while ((match = IN_TEXT_DEF_REGEX.exec(content)) !== null) {
+      const handleName = match[1];
+      // match.index points to the prefix char (space/'('/'['), handle name starts at +1
+      const handleNameStart = match.index + 1;
+      const range = new vscode.Range(
+        lineNumber,
+        indent + handleNameStart,
+        lineNumber,
+        indent + handleNameStart + handleName.length,
+      );
+      const definition: HandleDefinition = { fsPath, range };
+      if (!this.definitions.has(handleName)) {
+        this.definitions.set(handleName, []);
+      }
+      this.definitions.get(handleName)!.push(definition);
+    }
+  }
+
   private extractHandleUsage(
     content: string,
     lineNumber: number,
@@ -518,7 +564,7 @@ export class WriterlyLinkProvider
         diagnostics.push(
           new vscode.Diagnostic(
             link.range,
-            `Invalid handle name: '${handleName}'. Handles must start with a letter/underscore and contain only alphanumeric chars, dots, underscores, hyphen, %, ^, +, and must end with an alphanumeric char.`,
+            `Invalid handle name: '${handleName}'. Handles must start with a letter/underscore and contain only alphanumeric chars, dots, underscores, hyphens, colons, and carets, and must end with an alphanumeric char or underscore.`,
             vscode.DiagnosticSeverity.Error,
           ),
         );
