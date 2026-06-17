@@ -9,7 +9,8 @@
     !! handle=23aa
 
 This file tests the Writerly extension with the correct .wly file extension.
-The language ID should now be "wly" instead of "writerly". >>h
+The language ID should now be "wly" instead of "writerly". _hi_##<<
+>>_hi_
 
 |> semantic-tokens
     feature=highlighting
