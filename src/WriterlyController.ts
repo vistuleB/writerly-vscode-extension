@@ -4,7 +4,6 @@ import { WriterlyFileProvider } from "./WriterlyFileProvider";
 import { WriterlyFileOpener } from "./WriterlyFileOpener";
 import { WriterlyHoverProvider } from "./WriterlyHoverProvider";
 import { WriterlyCompletionProvider } from "./WriterlyCompletionProvider";
-import { WriterlyRenameWatcher } from "./WriterlyRenameWatcher";
 import { WriterlyFileRenamer } from "./WriterlyFileRenamer";
 
 export class WriterlyController {
