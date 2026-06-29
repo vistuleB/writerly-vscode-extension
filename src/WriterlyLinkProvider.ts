@@ -11,6 +11,15 @@ import {
   isWriterlyParentPath,
 } from "./WriterlyFileExtensions";
 
+/*
+ * WriterlyLinkProvider owns the handle system end to end: workspace indexing,
+ * document links, definitions, rename edits, completions, handle diagnostics,
+ * unused-handle accounting, and parent-file document-tree scoping. These areas
+ * share enough state that they currently live together, but future cleanup could
+ * split out the index/cache, document-tree scope logic, diagnostics, and VS Code
+ * provider adapters.
+ */
+
 enum ValidationState {
   UNKNOWN = "unknown",
   OK = "ok",
@@ -30,6 +39,11 @@ type UsageCounts = Map<HandleName, Map<DocumentTreeKey, number>>;
 
 type HandleDefinition = {
   fsPath: FSPath;
+  range: vscode.Range;
+};
+
+type HandleAtPosition = {
+  handleName: HandleName;
   range: vscode.Range;
 };
 
@@ -137,7 +151,6 @@ export class WriterlyLinkProvider
     this.usageCounts.clear();
     this.parents = [];
     this.isInitialized = false;
-
     this.diagnosticCollection.clear();
 
     if (this.revalidateTimer) {
@@ -305,9 +318,7 @@ export class WriterlyLinkProvider
     // Subtract usages before cached links are removed.
     const cachedLinks = this.documentLinks.get(targetPath);
     if (cachedLinks) {
-      cachedLinks.forEach((link) =>
-        this.updateUsageCount(link.data.handleName, link.data.fsPath, -1),
-      );
+      this.updateUsageCountsForLinks(cachedLinks, -1);
     }
 
     if (parentChanged) this.handleParentFileDelete(uri);
@@ -364,17 +375,11 @@ export class WriterlyLinkProvider
     const currentFsPath = document.uri.fsPath;
 
     const oldLinks = this.documentLinks.get(currentFsPath) || [];
-    oldLinks.forEach((link) =>
-      this.updateUsageCount(link.data.handleName, link.data.fsPath, -1),
-    );
-
+    this.updateUsageCountsForLinks(oldLinks, -1);
     this.clearDocumentDefinitions(currentFsPath);
     const diagnostics: vscode.Diagnostic[] = [];
     const documentLinks = this.walkDocument(document, diagnostics);
-
-    documentLinks.forEach((link) =>
-      this.updateUsageCount(link.data.handleName, link.data.fsPath, 1),
-    );
+    this.updateUsageCountsForLinks(documentLinks, 1);
 
     if (this.isInitialized) {
       this.validateHandleUsage(documentLinks, diagnostics);
@@ -727,13 +732,11 @@ export class WriterlyLinkProvider
   ): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
 
-    // find diagnostics about multiple definitions
     const multipleDefDiagnostics = context.diagnostics.filter((diagnostic) =>
       diagnostic.message.includes("has multiple definitions"),
     );
 
     for (const diagnostic of multipleDefDiagnostics) {
-      // extract handle name from diagnostic message
       const handleMatch = diagnostic.message.match(
         /Handle '([^']+)' has multiple definitions/,
       );
@@ -745,30 +748,8 @@ export class WriterlyLinkProvider
         document.uri.fsPath,
       );
 
-      // create a code action for each definition
       validDefinitions.forEach((def, _index) => {
-        const relativePath = this.getRelativeWorkspacePath(def.fsPath);
-        const lineNumber = def.range.start.line + 1;
-
-        const action = new vscode.CodeAction(
-          `Go to definition in ${relativePath}:${lineNumber}`,
-          vscode.CodeActionKind.QuickFix,
-        );
-
-        let z = def.range.start.translate(0, 7);
-
-        action.command = {
-          title: `Go to ${relativePath}:${lineNumber}`,
-          command: "vscode.open",
-          arguments: [
-            vscode.Uri.file(def.fsPath),
-            {
-              selection: new vscode.Range(z, z),
-              preserveFocus: false,
-            },
-          ],
-        };
-
+        const action = this.createGoToDefinitionAction(def);
         action.diagnostics = [diagnostic];
         actions.push(action);
       });
@@ -790,25 +771,10 @@ export class WriterlyLinkProvider
       return undefined;
     }
 
-    const line = document.lineAt(position);
-    const text = line.text;
-
-    // reset regex and find all usage matches on this line
-    USAGE_REGEX.lastIndex = 0;
-    let usageMatch;
-
-    while ((usageMatch = USAGE_REGEX.exec(text)) !== null) {
-      const matchStart = usageMatch.index;
-      const matchEnd = matchStart + usageMatch[0].length;
-
-      // check if cursor position is within this match
-      if (position.character >= matchStart && position.character <= matchEnd) {
-        const handleName = usageMatch[1];
-        return this.getDefinitionForHandle(handleName, document.uri.fsPath);
-      }
-    }
-
-    return undefined;
+    const usage = this.getUsageOnLine(document, position);
+    return usage
+      ? this.getDefinitionForHandle(usage.handleName, document.uri.fsPath)
+      : undefined;
   }
 
   public prepareRename(
@@ -819,43 +785,9 @@ export class WriterlyLinkProvider
       return undefined;
     }
 
-    // 1. Check if we are at a definition site (handle=name)
-    const defInfo = this.getDefinitionOnLine(document, position);
-    if (defInfo && defInfo.range.contains(position)) {
-      return { range: defInfo.range, placeholder: defInfo.handleName };
-    }
-
-    // 2. Check if we are at an in-text definition site (name##<<)
-    const inTextDefInfo = this.getInTextDefinitionOnLine(document, position);
-    if (inTextDefInfo && inTextDefInfo.range.contains(position)) {
-      return {
-        range: inTextDefInfo.range,
-        placeholder: inTextDefInfo.handleName,
-      };
-    }
-
-    // 3. Check if we are at a usage site (>>name)
-    const line = document.lineAt(position).text;
-    let usageMatch;
-    USAGE_REGEX.lastIndex = 0;
-
-    while ((usageMatch = USAGE_REGEX.exec(line)) !== null) {
-      const matchStart = usageMatch.index;
-      const matchEnd = matchStart + usageMatch[0].length;
-
-      if (position.character >= matchStart && position.character <= matchEnd) {
-        const handleName = usageMatch[1];
-
-        // Return the range of the handle name ONLY (skipping '>>')
-        const nameRange = new vscode.Range(
-          position.line,
-          matchStart + 2, // Skip '>>'
-          position.line,
-          matchEnd,
-        );
-
-        return { range: nameRange, placeholder: handleName };
-      }
+    const handle = this.getHandleAtPosition(document, position);
+    if (handle) {
+      return { range: handle.range, placeholder: handle.handleName };
     }
 
     throw new Error(
@@ -873,53 +805,18 @@ export class WriterlyLinkProvider
       return undefined;
     }
 
-    // 1. Identify the 'oldName' from either a definition or a usage site
-    let oldName: string | undefined;
-
-    // Check if it's a definition site
-    const defOnLine = this.getDefinitionOnLine(document, position);
-    if (defOnLine && defOnLine.range.contains(position)) {
-      oldName = defOnLine.handleName;
-    } else {
-      // Check if it's an in-text definition site
-      const inTextDefOnLine = this.getInTextDefinitionOnLine(
-        document,
-        position,
-      );
-      if (inTextDefOnLine && inTextDefOnLine.range.contains(position)) {
-        oldName = inTextDefOnLine.handleName;
-      } else {
-        // Check if it's a usage site
-        const lineText = document.lineAt(position).text;
-        USAGE_REGEX.lastIndex = 0;
-        let match;
-        while ((match = USAGE_REGEX.exec(lineText)) !== null) {
-          const matchStart = match.index;
-          const matchEnd = matchStart + match[0].length;
-          if (
-            position.character >= matchStart &&
-            position.character <= matchEnd
-          ) {
-            oldName = match[1];
-            break;
-          }
-        }
-      }
-    }
-
-    if (!oldName) {
+    const handle = this.getHandleAtPosition(document, position);
+    if (!handle) {
       return undefined;
     }
+    const oldName = handle.handleName;
 
     const workspaceEdit = new vscode.WorkspaceEdit();
     const originFsPath = document.uri.fsPath;
 
-    // Cache anchored regex. We escape the oldName in case it contains
-    // regex-sensitive characters like '+' or '^' which our handles support.
     const escapedName = oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const exactMatchRegex = new RegExp(`^${escapedName}$`, "u");
 
-    // 2. Iterate through all files in the document tree to apply changes
     for (const [fsPath, links] of this.documentLinks) {
       if (!this.isInSameDocumentTree(originFsPath, fsPath)) {
         continue;
@@ -927,13 +824,11 @@ export class WriterlyLinkProvider
 
       const uri = vscode.Uri.file(fsPath);
 
-      // --- PART A: Rename usage sites (>>oldName) ---
       for (const link of links) {
         if (
           link.data?.handleName &&
           exactMatchRegex.test(link.data.handleName)
         ) {
-          // Offset by 2 characters to skip the '>>' prefix
           const nameRange = new vscode.Range(
             link.range.start.line,
             link.range.start.character + 2,
@@ -944,13 +839,10 @@ export class WriterlyLinkProvider
         }
       }
 
-      // --- PART B: Rename definition sites (handle=oldName) ---
       const defs = this.definitions.get(oldName);
       if (defs) {
         for (const def of defs) {
           if (def.fsPath === fsPath) {
-            // Your extractHandleDefinition already points exactly
-            // at the name part of 'handle=name'
             workspaceEdit.replace(uri, def.range, newName);
           }
         }
@@ -981,43 +873,64 @@ export class WriterlyLinkProvider
     const completionItems: vscode.CompletionItem[] = [];
     const currentFsPath = document.uri.fsPath;
 
-    // 2. Iterate through all known definitions
     for (const [handleName, defs] of this.definitions) {
-      // 3. Only suggest handles that are valid for THIS document tree
-      const isVisible = defs.some((def) =>
-        this.isInSameDocumentTree(currentFsPath, def.fsPath),
-      );
-
-      if (isVisible) {
-        const item = new vscode.CompletionItem(
-          handleName,
-          vscode.CompletionItemKind.Reference,
-        );
-
-        /* John removed the item.detail below b/c he found it more    *
-         * annoying than helpful in unfolded state, & for the image   *
-         * path completion stuff it's nice to have unfolded state, so */
-        // // Documentation shows where the handle is defined
-        // const def = defs[0];
-        // const relPath = this.getRelativeWorkspacePath(def.fsPath);
-        // item.detail = `Defined in ${relPath}`;
-
-        // Ensure the '+' and other special chars don't break the insertion
-        // We provide a Range that only covers the text AFTER '>>' if necessary,
-        // but usually, VSCode handles the replacement based on the word boundary.
-        item.insertText = handleName;
-
-        completionItems.push(item);
-      }
+      if (!this.isHandleVisibleFromFile(defs, currentFsPath)) continue;
+      completionItems.push(this.createHandleCompletionItem(handleName));
     }
 
     return completionItems;
   }
 
+  private createGoToDefinitionAction(
+    definition: HandleDefinition,
+  ): vscode.CodeAction {
+    const relativePath = this.getRelativeWorkspacePath(definition.fsPath);
+    const lineNumber = definition.range.start.line + 1;
+    const action = new vscode.CodeAction(
+      `Go to definition in ${relativePath}:${lineNumber}`,
+      vscode.CodeActionKind.QuickFix,
+    );
+    const selectionStart = definition.range.start.translate(0, 7);
+
+    action.command = {
+      title: `Go to ${relativePath}:${lineNumber}`,
+      command: "vscode.open",
+      arguments: [
+        vscode.Uri.file(definition.fsPath),
+        {
+          selection: new vscode.Range(selectionStart, selectionStart),
+          preserveFocus: false,
+        },
+      ],
+    };
+
+    return action;
+  }
+
+  private isHandleVisibleFromFile(
+    definitions: HandleDefinition[],
+    fsPath: string,
+  ): boolean {
+    return definitions.some((def) =>
+      this.isInSameDocumentTree(fsPath, def.fsPath),
+    );
+  }
+
+  private createHandleCompletionItem(
+    handleName: string,
+  ): vscode.CompletionItem {
+    const item = new vscode.CompletionItem(
+      handleName,
+      vscode.CompletionItemKind.Reference,
+    );
+    item.insertText = handleName;
+    return item;
+  }
+
   private getDefinitionOnLine(
     document: vscode.TextDocument,
     position: vscode.Position,
-  ): { handleName: string; range: vscode.Range } | undefined {
+  ): HandleAtPosition | undefined {
     const line = document.lineAt(position.line);
     const match = line.text.match(HANDLE_DEF_RENAME_REGEX);
 
@@ -1057,7 +970,7 @@ export class WriterlyLinkProvider
   private getInTextDefinitionOnLine(
     document: vscode.TextDocument,
     position: vscode.Position,
-  ): { handleName: string; range: vscode.Range } | undefined {
+  ): HandleAtPosition | undefined {
     const lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
       document,
       position,
@@ -1087,6 +1000,50 @@ export class WriterlyLinkProvider
     }
 
     return undefined;
+  }
+
+  private getUsageOnLine(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): HandleAtPosition | undefined {
+    const line = document.lineAt(position).text;
+    let usageMatch;
+    USAGE_REGEX.lastIndex = 0;
+
+    while ((usageMatch = USAGE_REGEX.exec(line)) !== null) {
+      const matchStart = usageMatch.index;
+      const matchEnd = matchStart + usageMatch[0].length;
+
+      if (position.character >= matchStart && position.character <= matchEnd) {
+        const handleName = usageMatch[1];
+        const range = new vscode.Range(
+          position.line,
+          matchStart + 2,
+          position.line,
+          matchEnd,
+        );
+        return { handleName, range };
+      }
+    }
+
+    return undefined;
+  }
+
+  private getHandleAtPosition(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): HandleAtPosition | undefined {
+    const attributeDefinition = this.getDefinitionOnLine(document, position);
+    if (attributeDefinition?.range.contains(position)) {
+      return attributeDefinition;
+    }
+
+    const inTextDefinition = this.getInTextDefinitionOnLine(document, position);
+    if (inTextDefinition?.range.contains(position)) {
+      return inTextDefinition;
+    }
+
+    return this.getUsageOnLine(document, position);
   }
 
   private getDefinitionForHandle(
@@ -1157,60 +1114,88 @@ export class WriterlyLinkProvider
     const strictRegex = new RegExp(`^(${HANDLE_REGEX_STRING})$`, "u");
 
     this.definitions.forEach((defs, handleName) => {
-      // 1. Get ALL definitions of this handle in the current file
       const localDefs = defs.filter((d) => d.fsPath === currentFsPath);
       if (localDefs.length === 0) return;
 
-      // 2. PRIORITY 1: SYNTAX ERROR
-      // We apply this to every instance of the bad name in this file
       if (!strictRegex.test(handleName)) {
-        localDefs.forEach((localDef) => {
-          diagnostics.push(
-            new vscode.Diagnostic(
-              localDef.range,
-              `Invalid handle name: '${handleName}'.`,
-              vscode.DiagnosticSeverity.Error,
-            ),
-          );
-        });
+        this.addInvalidHandleDefinitionDiagnostics(
+          handleName,
+          localDefs,
+          diagnostics,
+        );
         return;
       }
 
-      // 3. PRIORITY 2: LOGIC ERROR (Duplicates)
-      // Check how many times this handle exists in the whole document tree
       const treeDefs = this.findValidDefinitions(handleName, currentFsPath);
-
       const uniqueTreeDefs = this.dedupeDefinitions(treeDefs);
-
       if (uniqueTreeDefs.length > 1) {
-        // Highlight EVERY occurrence in the current file as a duplicate
-        localDefs.forEach((localDef) => {
-          diagnostics.push(
-            new vscode.Diagnostic(
-              localDef.range,
-              `Handle '${handleName}' is defined in multiple places (${uniqueTreeDefs.length}) in this document tree.`,
-              vscode.DiagnosticSeverity.Error,
-            ),
-          );
-        });
+        this.addDuplicateHandleDefinitionDiagnostics(
+          handleName,
+          localDefs,
+          uniqueTreeDefs.length,
+          diagnostics,
+        );
         return;
       }
 
-      // 4. PRIORITY 3: LINT WARNING (Unused)
       if (this.isUnusedWarningEnabled()) {
         if (this.getUsageCountInDocumentTree(handleName, currentFsPath) === 0) {
-          // If unused, highlight all definitions in this file (usually just one, but safe to loop)
-          localDefs.forEach((localDef) => {
-            diagnostics.push(
-              new vscode.Diagnostic(
-                localDef.range,
-                `Unused handle: '${handleName}' is defined but never used.`,
-                vscode.DiagnosticSeverity.Warning,
-              ),
-            );
-          });
+          this.addUnusedHandleDefinitionDiagnostics(
+            handleName,
+            localDefs,
+            diagnostics,
+          );
         }
       }
+    });
+  }
+
+  private addInvalidHandleDefinitionDiagnostics(
+    handleName: HandleName,
+    definitions: HandleDefinition[],
+    diagnostics: vscode.Diagnostic[],
+  ): void {
+    definitions.forEach((definition) => {
+      diagnostics.push(
+        new vscode.Diagnostic(
+          definition.range,
+          `Invalid handle name: '${handleName}'.`,
+          vscode.DiagnosticSeverity.Error,
+        ),
+      );
+    });
+  }
+
+  private addDuplicateHandleDefinitionDiagnostics(
+    handleName: HandleName,
+    definitions: HandleDefinition[],
+    definitionCount: number,
+    diagnostics: vscode.Diagnostic[],
+  ): void {
+    definitions.forEach((definition) => {
+      diagnostics.push(
+        new vscode.Diagnostic(
+          definition.range,
+          `Handle '${handleName}' is defined in multiple places (${definitionCount}) in this document tree.`,
+          vscode.DiagnosticSeverity.Error,
+        ),
+      );
+    });
+  }
+
+  private addUnusedHandleDefinitionDiagnostics(
+    handleName: HandleName,
+    definitions: HandleDefinition[],
+    diagnostics: vscode.Diagnostic[],
+  ): void {
+    definitions.forEach((definition) => {
+      diagnostics.push(
+        new vscode.Diagnostic(
+          definition.range,
+          `Unused handle: '${handleName}' is defined but never used.`,
+          vscode.DiagnosticSeverity.Warning,
+        ),
+      );
     });
   }
 
@@ -1295,9 +1280,16 @@ export class WriterlyLinkProvider
   private rebuildUsageCounts(): void {
     this.usageCounts.clear();
     for (const links of this.documentLinks.values()) {
-      for (const link of links) {
-        this.updateUsageCount(link.data.handleName, link.data.fsPath, 1);
-      }
+      this.updateUsageCountsForLinks(links, 1);
+    }
+  }
+
+  private updateUsageCountsForLinks(
+    links: vscode.DocumentLink[],
+    delta: number,
+  ): void {
+    for (const link of links) {
+      this.updateUsageCount(link.data.handleName, link.data.fsPath, delta);
     }
   }
 
