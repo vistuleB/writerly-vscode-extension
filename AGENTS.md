@@ -149,8 +149,8 @@ The most complex provider. It maintains workspace-wide state and implements:
 - **Usage**: `>><name>` anywhere outside of code blocks and tag lines
 
 **Handle name character set** (Unicode-aware):
-- Allowed interior: letters (`\p{L}`), digits (`\p{N}`), marks (`\p{M}`), `_`, `.`, `:`, `-`, `^`, `+`
-- Must end with: letter, digit, or mark (`\p{L}\p{N}\p{M}_`)
+- Allowed interior: letters (`\p{L}`), digits (`\p{N}`), marks (`\p{M}`), `_`, `.`, `:`, `-`, `^`
+- Must end with: letter, digit, mark, `_`, or `^` (`\p{L}\p{N}\p{M}_^`)
 
 **Internal state:**
 - `definitions: Map<HandleName, HandleDefinition[]>` — maps each handle name to all files and

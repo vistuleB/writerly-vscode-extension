@@ -50,7 +50,7 @@ type HandleAtPosition = {
 const MAX_FILES: number = 1500;
 
 const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:\\-\\^";
-const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_";
+const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_\\^";
 const HANDLE_REGEX_STRING: string = `(?:[${HANDLE_CHARS}]*[${HANDLE_END_CHARS}])`;
 const HANDLE_DEF_RENAME_REGEX = new RegExp(
   `^\\s*(?:!!\\s*)?handle=\\s*(${HANDLE_REGEX_STRING})(#|\\s|$)`,
@@ -585,7 +585,7 @@ export class WriterlyLinkProvider
         diagnostics.push(
           new vscode.Diagnostic(
             link.range,
-            `Invalid handle name: '${handleName}'. Handles must start with a letter/underscore and contain only alphanumeric chars, dots, underscores, hyphens, colons, and carets, and must end with an alphanumeric char or underscore.`,
+            `Invalid handle name: '${handleName}'. Handles may contain letters, numbers, marks, dots, underscores, hyphens, colons, and carets, and must end with a letter, number, mark, underscore, or caret.`,
             vscode.DiagnosticSeverity.Error,
           ),
         );

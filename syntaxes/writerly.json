@@ -79,7 +79,7 @@
       ]
     },
     "handle-in-text-definition": {
-      "match": "(?:^|[ {(\\[])([\\p{L}\\p{N}\\p{M}_.:\\-\\^]*[\\p{L}\\p{N}\\p{M}_])((?:#[\\p{L}\\p{N}\\p{M}_:\\-]+)*)(##<<)",
+      "match": "(?:^|[ {(\\[])([\\p{L}\\p{N}\\p{M}_.:\\-\\^]*[\\p{L}\\p{N}\\p{M}_\\^])((?:#[\\p{L}\\p{N}\\p{M}_:\\-]+)*)(##<<)",
       "captures": {
         "1": {
           "name": "entity.name.function.handle.definition.writerly"
