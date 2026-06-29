@@ -6,8 +6,14 @@ interface FileNode {
   name: string;
   type: "file" | "directory";
   fullPath: string;
+  uri?: vscode.Uri;
   children: FileNode[];
 }
+
+type ImagePath = {
+  relativePath: string;
+  uri: vscode.Uri;
+};
 
 /**
  * Custom CompletionItem that preserves the full path for the resolution phase.
@@ -18,6 +24,7 @@ class WriterlyFileCompletionItem extends vscode.CompletionItem {
     public kind: vscode.CompletionItemKind,
     public fullPath: string,
     public nodeType: "file" | "directory",
+    public uri: vscode.Uri | undefined,
   ) {
     super(label, kind);
   }
@@ -75,8 +82,8 @@ export class WriterlyCompletionProvider
     this.nameToNodesMap.clear();
 
     // 3. Re-index immediately (without the 300ms delay)
-    const flatPaths = await this.getAllImageRelativePaths();
-    this.fileTree = this.buildFileTree(flatPaths);
+    const imagePaths = await this.getAllImagePaths();
+    this.fileTree = this.buildFileTree(imagePaths);
     this.rebuildLookupMap();
   }
 
@@ -87,16 +94,16 @@ export class WriterlyCompletionProvider
     if (this.loadFilesTimeout) clearTimeout(this.loadFilesTimeout);
 
     this.loadFilesTimeout = setTimeout(async () => {
-      const flatPaths = await this.getAllImageRelativePaths();
-      this.fileTree = this.buildFileTree(flatPaths);
+      const imagePaths = await this.getAllImagePaths();
+      this.fileTree = this.buildFileTree(imagePaths);
       this.rebuildLookupMap();
     }, 300);
   }
 
-  private buildFileTree(paths: string[]): FileNode[] {
+  private buildFileTree(paths: ImagePath[]): FileNode[] {
     const root: FileNode[] = [];
-    for (const path of paths) {
-      const parts = path.split("/");
+    for (const imagePath of paths) {
+      const parts = imagePath.relativePath.split("/");
       let currentLevel = root;
       let accumulatedPath = "";
 
@@ -111,6 +118,7 @@ export class WriterlyCompletionProvider
             name: part,
             type: isFile ? "file" : "directory",
             fullPath: accumulatedPath,
+            uri: isFile ? imagePath.uri : undefined,
             children: [],
           };
           currentLevel.push(existingNode);
@@ -135,13 +143,16 @@ export class WriterlyCompletionProvider
     }
   }
 
-  private async getAllImageRelativePaths(): Promise<string[]> {
+  private async getAllImagePaths(): Promise<ImagePath[]> {
     const excludePattern = "{**/node_modules/**,**/build/**,**/.*/**,**/.*}";
     const files = await vscode.workspace.findFiles(
       `**/*.{${this.imgExtensions.join(",")}}`,
       excludePattern,
     );
-    return files.map((file) => vscode.workspace.asRelativePath(file, false));
+    return files.map((file) => ({
+      relativePath: vscode.workspace.asRelativePath(file, false),
+      uri: file,
+    }));
   }
 
   public provideCompletionItems(
@@ -233,6 +244,7 @@ export class WriterlyCompletionProvider
       isDir ? vscode.CompletionItemKind.Folder : vscode.CompletionItemKind.File,
       node.fullPath,
       node.type,
+      node.uri,
     );
 
     item.insertText = isDir ? node.name + "/" : node.name;
@@ -267,16 +279,10 @@ export class WriterlyCompletionProvider
       return item;
     }
 
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-
-    if (workspaceFolder) {
-      const absolutePath = vscode.Uri.joinPath(
-        workspaceFolder.uri,
-        item.fullPath,
-      );
+    if (item.uri) {
       const docs = new vscode.MarkdownString();
       docs.supportHtml = true;
-      docs.appendMarkdown(`![Preview](${absolutePath.toString()})`);
+      docs.appendMarkdown(`![Preview](${item.uri.toString()})`);
       item.documentation = docs;
     }
 
