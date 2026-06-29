@@ -198,7 +198,9 @@ export class WriterlyFileRenamer {
       return;
     }
 
-    const foundDirs = await fileUtils.resolvePossibleDirPaths(newDirPath);
+    const foundDirs = await fileUtils.resolvePossibleDirPaths(newDirPath, {
+      rootRelativeTo: target.document.uri.fsPath,
+    });
     if (foundDirs.length === 0) {
       vscode.window.showErrorMessage(
         "No matching directory found in workspace for the provided path",
@@ -305,6 +307,7 @@ class WriterlyTemplateFileCreator {
     const { fileName, dirPath } = splitReferencePath(filePath);
     const targetDir = await this.resolveUniqueDirectory(
       dirPath,
+      target.document.uri.fsPath,
       `No matching directory found in workspace for "${dirPath}"`,
       `Multiple matching directories found in workspace for "${dirPath}". Cannot determine where to create the file.`,
     );
@@ -331,6 +334,7 @@ class WriterlyTemplateFileCreator {
 
     const templateDir = await this.resolveUniqueDirectory(
       templateDirSetting,
+      target.document.uri.fsPath,
       `Template files directory "${templateDirSetting}" matches no directory in the workspace`,
       `Template files directory "${templateDirSetting}" matches multiple directories in the workspace. Please make it more specific.`,
     );
@@ -363,10 +367,13 @@ class WriterlyTemplateFileCreator {
 
   private async resolveUniqueDirectory(
     dirPath: string,
+    rootRelativeTo: string,
     notFoundMessage: string,
     ambiguousMessage: string,
   ): Promise<string | undefined> {
-    const dirs = await fileUtils.resolvePossibleDirPaths(dirPath);
+    const dirs = await fileUtils.resolvePossibleDirPaths(dirPath, {
+      rootRelativeTo,
+    });
     if (dirs.length === 0) {
       vscode.window.showErrorMessage(notFoundMessage);
       return undefined;

@@ -19,6 +19,10 @@ export type FileResolution =
   | { kind: "unique"; fsPath: string }
   | { kind: "ambiguous"; fsPaths: string[] };
 
+type DirectoryResolutionOptions = {
+  rootRelativeTo?: string;
+};
+
 export const fileUtils = {
   getFileResolutionAtPosition: async (
     document: vscode.TextDocument,
@@ -44,17 +48,25 @@ export const fileUtils = {
   },
 
   /**
-   * Given a trailing sub-directory path (e.g. "images" or "assets/images"),
-   * returns every full directory path in the workspace whose tail segments
-   * equal it.
+   * Bare paths are matched by trailing path segments anywhere in the workspace.
+   * Paths beginning with "./" are matched relative to workspace folders
+   * containing `rootRelativeTo`.
    */
-  resolvePossibleDirPaths: async (endSubDirPath: string): Promise<string[]> => {
-    const sub = endSubDirPath.replace(/^\/+|\/+$/g, "");
+  resolvePossibleDirPaths: async (
+    dirPath: string,
+    options: DirectoryResolutionOptions = {}
+  ): Promise<string[]> => {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders) return [];
+
+    if (isWorkspaceRootRelativePath(dirPath)) {
+      return resolveWorkspaceRootRelativeDirPaths(dirPath, options);
+    }
+
+    const sub = dirPath.replace(/^\/+|\/+$/g, "");
     if (!sub) return [];
     const subParts = sub.split("/").filter((p) => p !== ".");
     if (subParts.length === 0) return [];
-    const folders = vscode.workspace.workspaceFolders;
-    if (!folders) return [];
 
     const matches: string[] = [];
 
@@ -183,4 +195,44 @@ async function resolveUniqueFilePath(
   if (files.length === 0) return { kind: "notFound" };
   if (files.length === 1) return { kind: "unique", fsPath: files[0] };
   return { kind: "ambiguous", fsPaths: files };
+}
+
+function isWorkspaceRootRelativePath(dirPath: string): boolean {
+  return dirPath === "." || dirPath.startsWith("./");
+}
+
+async function resolveWorkspaceRootRelativeDirPaths(
+  dirPath: string,
+  options: DirectoryResolutionOptions
+): Promise<string[]> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders) return [];
+
+  const roots = options.rootRelativeTo
+    ? folders.filter((folder) =>
+        isPathUnderDirectory(options.rootRelativeTo!, folder.uri.fsPath)
+      )
+    : [...folders];
+  const relativePath = dirPath.replace(/^\.\/*/, "");
+  const matches: string[] = [];
+
+  for (const folder of roots) {
+    const candidate = path.join(folder.uri.fsPath, relativePath);
+    try {
+      const stat = await vscode.workspace.fs.stat(vscode.Uri.file(candidate));
+      if (stat.type & vscode.FileType.Directory) {
+        matches.push(candidate);
+      }
+    } catch (error) {}
+  }
+
+  return matches;
+}
+
+function isPathUnderDirectory(filePath: string, dirPath: string): boolean {
+  const relativePath = path.relative(dirPath, filePath);
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  );
 }

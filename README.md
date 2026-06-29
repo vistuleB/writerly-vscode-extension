@@ -52,7 +52,7 @@ The `writerly.createFileUnderCursorFromTemplate` command lets you scaffold a new
 
 ### Configuring the template directory
 
-The command requires the `writerly.templateFilesDirectory` setting, which points to a directory in your workspace that holds your template files. The value is matched against directories in your workspace and **must resolve to exactly one directory** (the command aborts otherwise). A leading `./` is allowed.
+The command requires the `writerly.templateFilesDirectory` setting, which points to a directory in your workspace that holds your template files. Bare paths are matched against directory suffixes in the workspace and **must resolve to exactly one directory** (the command aborts otherwise). A leading `./` makes the path relative to the workspace folder containing the active Writerly document.
 
 This setting is workspace-scoped — You can set it in the workspace's `.vscode/settings.json`:
 
