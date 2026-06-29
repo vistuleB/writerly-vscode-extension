@@ -31,6 +31,27 @@ const PATH_COMPLETION_TRIGGER_CHARACTERS = [
   "_",
 ];
 const FILENAME_CHARACTER_PATTERN = /^[A-Za-z0-9._-]$/;
+const PATH_ATTRIBUTE_NAMES = new Set([
+  "original",
+  "href",
+  "srcset",
+  "poster",
+  "data",
+  "background",
+  "icon",
+  "favicon",
+  "image",
+  "logo",
+  "thumbnail",
+  "preview",
+  "cover",
+  "file",
+  "path",
+  "url",
+  "uri",
+  "source",
+  "use",
+]);
 
 /**
  * Custom CompletionItem that preserves the full path for the resolution phase.
@@ -232,8 +253,12 @@ export class WriterlyCompletionProvider
       .lineAt(position)
       .text.substring(0, position.character);
 
-    const attributeMatch = linePrefix.match(/\b(src|original)=\s*(\S*)$/);
+    const attributeMatch = linePrefix.match(
+      /(?:^|\s)([A-Za-z0-9_.:-]+)=\s*(\S*)$/,
+    );
     if (attributeMatch) {
+      if (!this.isPathAttributeName(attributeMatch[1])) return undefined;
+
       const lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
         document,
         position,
@@ -255,6 +280,11 @@ export class WriterlyCompletionProvider
     }
 
     return undefined;
+  }
+
+  private isPathAttributeName(attributeName: string): boolean {
+    const normalized = attributeName.toLowerCase();
+    return normalized.endsWith("src") || PATH_ATTRIBUTE_NAMES.has(normalized);
   }
 
   private retriggerPathCompletionAfterFilenameCharacter(
