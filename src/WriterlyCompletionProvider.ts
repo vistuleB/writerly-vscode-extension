@@ -17,6 +17,10 @@ type ImagePath = {
   uri: vscode.Uri;
 };
 
+type PathCompletionContext = {
+  fullTypedPath: string;
+};
+
 /**
  * Custom CompletionItem that preserves the full path for the resolution phase.
  */
@@ -53,6 +57,7 @@ export class WriterlyCompletionProvider
         "=",
         " ",
         "/",
+        "(",
       );
 
     const watcher = vscode.workspace.createFileSystemWatcher(
@@ -167,23 +172,13 @@ export class WriterlyCompletionProvider
       return undefined;
     }
 
-    const lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
+    const completionContext = this.getPathCompletionContext(
       document,
       position,
     );
-    if (lineType !== LineType.Attribute) {
-      return undefined;
-    }
+    if (!completionContext) return undefined;
 
-    const linePrefix = document
-      .lineAt(position)
-      .text.substring(0, position.character);
-
-    const match = linePrefix.match(/\b(src|original)=\s*(\S*)$/);
-
-    if (!match) return undefined;
-
-    const fullTypedPath = match[2];
+    const fullTypedPath = completionContext.fullTypedPath;
     const parts = fullTypedPath.split("/");
     const currentSearch = parts[parts.length - 1].toLowerCase();
     const lockedSegments = parts.slice(0, -1);
@@ -210,6 +205,31 @@ export class WriterlyCompletionProvider
     return sortedNodes.map((node) =>
       this.createCompletionItem(node, position, currentSearch),
     );
+  }
+
+  private getPathCompletionContext(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): PathCompletionContext | undefined {
+    const lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
+      document,
+      position,
+    );
+    const linePrefix = document
+      .lineAt(position)
+      .text.substring(0, position.character);
+
+    if (lineType === LineType.Attribute) {
+      const match = linePrefix.match(/\b(src|original)=\s*(\S*)$/);
+      return match ? { fullTypedPath: match[2] } : undefined;
+    }
+
+    if (lineType === LineType.Text) {
+      const match = linePrefix.match(/!\[[^\]]*\]\(([^)\s]*)$/);
+      return match ? { fullTypedPath: match[1] } : undefined;
+    }
+
+    return undefined;
   }
 
   private searchNodesByMap(search: string): FileNode[] {
