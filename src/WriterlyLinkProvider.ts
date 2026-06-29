@@ -822,7 +822,16 @@ export class WriterlyLinkProvider
       return { range: defInfo.range, placeholder: defInfo.handleName };
     }
 
-    // 2. Check if we are at a usage site (>>name)
+    // 2. Check if we are at an in-text definition site (name##<<)
+    const inTextDefInfo = this.getInTextDefinitionOnLine(document, position);
+    if (inTextDefInfo && inTextDefInfo.range.contains(position)) {
+      return {
+        range: inTextDefInfo.range,
+        placeholder: inTextDefInfo.handleName,
+      };
+    }
+
+    // 3. Check if we are at a usage site (>>name)
     const line = document.lineAt(position).text;
     let usageMatch;
     USAGE_REGEX.lastIndex = 0;
@@ -869,19 +878,28 @@ export class WriterlyLinkProvider
     if (defOnLine && defOnLine.range.contains(position)) {
       oldName = defOnLine.handleName;
     } else {
-      // Check if it's a usage site
-      const lineText = document.lineAt(position).text;
-      USAGE_REGEX.lastIndex = 0;
-      let match;
-      while ((match = USAGE_REGEX.exec(lineText)) !== null) {
-        const matchStart = match.index;
-        const matchEnd = matchStart + match[0].length;
-        if (
-          position.character >= matchStart &&
-          position.character <= matchEnd
-        ) {
-          oldName = match[1];
-          break;
+      // Check if it's an in-text definition site
+      const inTextDefOnLine = this.getInTextDefinitionOnLine(
+        document,
+        position,
+      );
+      if (inTextDefOnLine && inTextDefOnLine.range.contains(position)) {
+        oldName = inTextDefOnLine.handleName;
+      } else {
+        // Check if it's a usage site
+        const lineText = document.lineAt(position).text;
+        USAGE_REGEX.lastIndex = 0;
+        let match;
+        while ((match = USAGE_REGEX.exec(lineText)) !== null) {
+          const matchStart = match.index;
+          const matchEnd = matchStart + match[0].length;
+          if (
+            position.character >= matchStart &&
+            position.character <= matchEnd
+          ) {
+            oldName = match[1];
+            break;
+          }
         }
       }
     }
@@ -1031,6 +1049,41 @@ export class WriterlyLinkProvider
     );
 
     return { handleName, range };
+  }
+
+  private getInTextDefinitionOnLine(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): { handleName: string; range: vscode.Range } | undefined {
+    const lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
+      document,
+      position,
+    );
+    if (lineType !== LineType.Text) return undefined;
+
+    const line = document.lineAt(position.line).text.trimEnd();
+    const spaces = line.match(/^( *)/)?.[1] || "";
+    const indent = spaces.length;
+    const content = line.slice(indent);
+
+    IN_TEXT_DEF_REGEX.lastIndex = 0;
+    let match;
+    while ((match = IN_TEXT_DEF_REGEX.exec(content)) !== null) {
+      const handleName = match[1];
+      const handleNameStart = match.index + match[0].indexOf(handleName);
+      const range = new vscode.Range(
+        position.line,
+        indent + handleNameStart,
+        position.line,
+        indent + handleNameStart + handleName.length,
+      );
+
+      if (range.contains(position)) {
+        return { handleName, range };
+      }
+    }
+
+    return undefined;
   }
 
   private getDefinitionForHandle(
