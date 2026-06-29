@@ -5,14 +5,25 @@ const forbiddenChars = /[\s'"=\[\]\{\}\(\);!<>|]/;
 const excludedWorkspacePaths =
   "{**/node_modules/**,**/.*/**,**/dist/**,**/build/**}";
 const skippedDirectoryNames = new Set(["node_modules", "dist", "build"]);
-const imageFileExtensions = new Set([
-  ".svg",
-  ".png",
-  ".ico",
-  ".jpeg",
-  ".jpg",
-  ".gif",
-]);
+export const SUPPORTED_IMAGE_FILE_EXTENSIONS = [
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "svg",
+  "webp",
+  "avif",
+  "heic",
+  "heif",
+  "bmp",
+  "ipe",
+  "psd",
+  "tif",
+  "tiff",
+] as const;
+const supportedImageFileExtensions = new Set(
+  SUPPORTED_IMAGE_FILE_EXTENSIONS.map((ext) => `.${ext}`),
+);
 
 export type FileResolution =
   | { kind: "notFound" }
@@ -44,7 +55,9 @@ export const fileUtils = {
   resolvePossibleFilePaths,
 
   isImageFile: (filePath: string): boolean => {
-    return imageFileExtensions.has(path.extname(filePath).toLowerCase());
+    return supportedImageFileExtensions.has(
+      path.extname(filePath).toLowerCase()
+    );
   },
 
   /**

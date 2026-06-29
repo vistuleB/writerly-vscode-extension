@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { isWriterlyFilePath } from "./WriterlyFileExtensions";
+import { SUPPORTED_IMAGE_FILE_EXTENSIONS } from "./utils/file-utils";
 
 interface FileNode {
   name: string;
@@ -28,26 +29,10 @@ export class WriterlyCompletionProvider
   private fileTree: FileNode[] = [];
   private nameToNodesMap: Map<string, FileNode[]> = new Map();
   private loadFilesTimeout: NodeJS.Timeout | undefined;
-
-  private readonly imgExtensions: string[] = (() => {
-    const base = [
-      "png",
-      "jpg",
-      "jpeg",
-      "gif",
-      "svg",
-      "webp",
-      "avif",
-      "heic",
-      "heif",
-      "bmp",
-      "ipe",
-      "psd",
-      "tif",
-      "tiff",
-    ];
-    return [...base, ...base.map((ext) => ext.toUpperCase())];
-  })();
+  private readonly imgExtensions: string[] = [
+    ...SUPPORTED_IMAGE_FILE_EXTENSIONS,
+    ...SUPPORTED_IMAGE_FILE_EXTENSIONS.map((ext) => ext.toUpperCase()),
+  ];
 
   constructor(context: vscode.ExtensionContext) {
     this.loadFiles();
