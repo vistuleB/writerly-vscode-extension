@@ -1,9 +1,18 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import * as fs from "fs";
 
 const forbiddenChars = /[\s'"=\[\]\{\}\(\);!<>|]/;
-const excludedWorkspacePaths = "{**/node_modules/**,**/.*/**,**/dist/**,**/build/**}";
+const excludedWorkspacePaths =
+  "{**/node_modules/**,**/.*/**,**/dist/**,**/build/**}";
+const skippedDirectoryNames = new Set(["node_modules", "dist", "build"]);
+const imageFileExtensions = new Set([
+  ".svg",
+  ".png",
+  ".ico",
+  ".jpeg",
+  ".jpg",
+  ".gif",
+]);
 
 export type FileResolution =
   | { kind: "notFound" }
@@ -22,7 +31,7 @@ export const fileUtils = {
   },
 
   fileExists: async (filePath: string): Promise<boolean> => {
-    const files = await resolvePossibleFilePaths(filePath, 1);
+    const files = await findMatchingFilePaths(filePath, 1);
     return files.length > 0;
   },
 
@@ -30,24 +39,8 @@ export const fileUtils = {
 
   resolvePossibleFilePaths,
 
-  getResolvedFilePathAtPosition: async (
-    document: vscode.TextDocument,
-    position: vscode.Position
-  ): Promise<[vscode.Range, string, string]> => {
-    const [range, filePath, resolution] =
-      await fileUtils.getFileResolutionAtPosition(document, position);
-    return [
-      range,
-      filePath,
-      resolution.kind === "unique" ? resolution.fsPath : "",
-    ];
-  },
-
   isImageFile: (filePath: string): boolean => {
-    for (const ext of [".svg", ".png", ".ico", ".jpeg", ".jpg", ".gif"]) {
-      if (filePath.endsWith(ext)) return true;
-    }
-    return false;
+    return imageFileExtensions.has(path.extname(filePath).toLowerCase());
   },
 
   /**
@@ -63,14 +56,13 @@ export const fileUtils = {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders) return [];
 
-    const skipDirs = new Set(["node_modules", "dist", "build"]);
     const matches: string[] = [];
 
     const walk = async (dirUri: vscode.Uri): Promise<void> => {
       const entries = await vscode.workspace.fs.readDirectory(dirUri);
       for (const [name, type] of entries) {
         if ((type & vscode.FileType.Directory) === 0) continue;
-        if (skipDirs.has(name) || name.startsWith(".")) continue;
+        if (skippedDirectoryNames.has(name) || name.startsWith(".")) continue;
         const childPath = path.join(dirUri.fsPath, name);
         const childParts = childPath.split(path.sep);
         if (
@@ -165,7 +157,11 @@ const normalizeSearchPath = (filePath: string): string => {
   return filePath;
 };
 
-async function resolvePossibleFilePaths(
+async function resolvePossibleFilePaths(filePath: string): Promise<string[]> {
+  return findMatchingFilePaths(filePath);
+}
+
+async function findMatchingFilePaths(
   filePath: string,
   maxResults?: number
 ): Promise<string[]> {
@@ -183,7 +179,7 @@ async function resolvePossibleFilePaths(
 async function resolveUniqueFilePath(
   filePath: string
 ): Promise<FileResolution> {
-  const files = await resolvePossibleFilePaths(filePath, 2);
+  const files = await findMatchingFilePaths(filePath, 2);
   if (files.length === 0) return { kind: "notFound" };
   if (files.length === 1) return { kind: "unique", fsPath: files[0] };
   return { kind: "ambiguous", fsPaths: files };
