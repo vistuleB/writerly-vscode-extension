@@ -1,6 +1,7 @@
 |> article
     title=Main Article
     src=logo.svg
+    src=inner_dir/s_logo.svg
     handle=_55_
     !!src=logo.svg
 

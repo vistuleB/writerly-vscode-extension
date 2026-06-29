@@ -52,6 +52,12 @@
           "type": "boolean",
           "default": true,
           "description": "Enable or disable warnings for unused handle definitions."
+        },
+        "writerly.templateFilesDirectory": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Workspace-relative directory containing Writerly template files used by 'Create File Under Cursor From Template'. Should be set at the workspace level."
         }
       }
     },
@@ -86,6 +92,21 @@
       {
         "command": "writerly.restart",
         "title": "Restart Extension",
+        "category": "Writerly"
+      },
+      {
+        "command": "writerly.renameFileUnderCursor",
+        "title": "Rename File Under Cursor",
+        "category": "Writerly"
+      },
+      {
+        "command": "writerly.moveFileUnderCursor",
+        "title": "Move File Under Cursor",
+        "category": "Writerly"
+      },
+      {
+        "command": "writerly.createFileUnderCursorFromTemplate",
+        "title": "Create File Under Cursor From Template",
         "category": "Writerly"
       }
     ],

@@ -1,13 +1,14 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import { WriterlyFileOpener, OpeningMethod } from "./WriterlyFileOpener";
+import { fileUtils } from "./utils/file-utils";
 
 export class WriterlyHoverProvider implements vscode.HoverProvider {
   constructor(context: vscode.ExtensionContext) {
     let disposables = [
       vscode.languages.registerHoverProvider(
         { scheme: "file", language: "writerly" },
-        this,
+        this
       ),
     ];
 
@@ -26,13 +27,10 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
   public async provideHover(
     document: vscode.TextDocument,
     position: vscode.Position,
-    _token: vscode.CancellationToken,
+    _token: vscode.CancellationToken
   ): Promise<vscode.Hover | undefined> {
     const [range, _filePath, resolvedPath] =
-      await WriterlyFileOpener.getResolvedFilePathAtPosition(
-        document,
-        position,
-      );
+      await fileUtils.getResolvedFilePathAtPosition(document, position);
 
     if (!resolvedPath) return undefined;
 
@@ -47,42 +45,42 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
     const appendOpeningLinks = () => {
       hoverContent.appendMarkdown(
         `[← Open with default](${openCommand}?${encodeURI(
-          JSON.stringify([resolvedPath, OpeningMethod.WITH_DEFAULT]),
-        )})${separator}`,
+          JSON.stringify([resolvedPath, OpeningMethod.WITH_DEFAULT])
+        )})${separator}`
       );
       const fileUri = vscode.Uri.file(resolvedPath);
-      if (WriterlyFileOpener.isImageFile(resolvedPath)) {
+      if (fileUtils.isImageFile(resolvedPath)) {
         hoverContent.appendMarkdown(
           `[📄 Open as text file](${openCommand}?${encodeURI(
-            JSON.stringify([resolvedPath, OpeningMethod.WITH_VSCODE]),
-          )})${separator}`,
+            JSON.stringify([resolvedPath, OpeningMethod.WITH_VSCODE])
+          )})${separator}`
         );
         hoverContent.appendMarkdown(
           `[️️️️️️🖼️ Open as image](${openCommand}?${encodeURI(
-            JSON.stringify([resolvedPath, OpeningMethod.AS_IMAGE_WITH_VSCODE]),
-          )})${separator}`,
+            JSON.stringify([resolvedPath, OpeningMethod.AS_IMAGE_WITH_VSCODE])
+          )})${separator}`
         );
       } else {
         hoverContent.appendMarkdown(
           `[📄 Open with VSCode](${openCommand}?${encodeURI(
-            JSON.stringify([resolvedPath, OpeningMethod.WITH_VSCODE]),
-          )})${separator}`,
+            JSON.stringify([resolvedPath, OpeningMethod.WITH_VSCODE])
+          )})${separator}`
         );
       }
       hoverContent.appendMarkdown(
         `[🔍 Show in Explorer](${revealCommand}?${encodeURI(
-          JSON.stringify([fileUri]),
-        )})\n\n`,
+          JSON.stringify([fileUri])
+        )})\n\n`
       );
     };
 
     const appendLinkedImage = () => {
-      if (WriterlyFileOpener.isImageFile(resolvedPath)) {
+      if (fileUtils.isImageFile(resolvedPath)) {
         const imageUri = vscode.Uri.file(resolvedPath);
         hoverContent.appendMarkdown(
           `[<img src="${imageUri.toString()}">](${openCommand}?${encodeURI(
-            JSON.stringify([resolvedPath, OpeningMethod.WITH_DEFAULT]),
-          )})\n\n`,
+            JSON.stringify([resolvedPath, OpeningMethod.WITH_DEFAULT])
+          )})\n\n`
         );
       }
     };

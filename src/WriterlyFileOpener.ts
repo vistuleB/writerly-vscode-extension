@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { spawn } from "cross-spawn";
-const forbiddenChars = /[\s'"=\[\]\{\}\(\);!<>|]/;
+import { fileUtils } from "./utils/file-utils";
 
 export enum OpeningMethod {
   WITH_DEFAULT,
@@ -15,28 +15,28 @@ export class WriterlyFileOpener {
     let disposables = [
       vscode.commands.registerCommand(
         "writerly.openUnderCursorWithDefault",
-        () => WriterlyFileOpener.openUnderCursor(OpeningMethod.WITH_DEFAULT),
+        () => WriterlyFileOpener.openUnderCursor(OpeningMethod.WITH_DEFAULT)
       ),
 
       vscode.commands.registerCommand(
         "writerly.openUnderCursorWithVSCode",
-        () => WriterlyFileOpener.openUnderCursor(OpeningMethod.WITH_VSCODE),
+        () => WriterlyFileOpener.openUnderCursor(OpeningMethod.WITH_VSCODE)
       ),
 
       vscode.commands.registerCommand(
         "writerly.openUnderCursorAsImageWithVSCode",
-        () => WriterlyFileOpener.openUnderCursor(OpeningMethod.AS_IMAGE_WITH_VSCODE),
+        () =>
+          WriterlyFileOpener.openUnderCursor(OpeningMethod.AS_IMAGE_WITH_VSCODE)
       ),
 
       vscode.commands.registerCommand("writerly.openFileWithDefault", () =>
-        WriterlyFileOpener.openFileWithDefault(),
+        WriterlyFileOpener.openFileWithDefault()
       ),
 
       vscode.commands.registerCommand(
         "writerly.openResolvedPath",
-        (path, method) => WriterlyFileOpener.openResolvedPath(path, method),
+        (path, method) => WriterlyFileOpener.openResolvedPath(path, method)
       ),
-
     ];
 
     for (const disposable of disposables)
@@ -62,80 +62,11 @@ export class WriterlyFileOpener {
     }
 
     // Verify it's actually an image before calling the system
-    if (targetPath && this.isImageFile(targetPath)) {
+    if (targetPath && fileUtils.isImageFile(targetPath)) {
       await this.openResolvedPath(targetPath, OpeningMethod.WITH_DEFAULT);
     } else {
       vscode.window.showWarningMessage("Active file is not a supported image.");
     }
-  }
-
-  private static getPossiblePathAtPosition(
-    document: vscode.TextDocument,
-    position: vscode.Position,
-  ): [vscode.Range, string] {
-    const line = document.lineAt(position);
-    const text = line.text;
-    const end = this.moveCursorForwardWhileNotForbidden(
-      text,
-      position.character,
-    );
-    const start = this.moveCursorBackwardWhileNotForbidden(
-      text,
-      position.character,
-    );
-    const path = text.substring(start, end);
-    const positionStart = new vscode.Position(position.line, start);
-    const positionEnd = new vscode.Position(position.line, end);
-    return [new vscode.Range(positionStart, positionEnd), path];
-  }
-
-  private static moveCursorForwardWhileNotForbidden(
-    text: string,
-    from: number,
-  ): number {
-    let length = text.length;
-    let end = from;
-    while (end < length) {
-      let c = text.charAt(end);
-      if (forbiddenChars.test(c)) break;
-      end++;
-    }
-    return end;
-  }
-
-  private static moveCursorBackwardWhileNotForbidden(
-    text: string,
-    from: number,
-  ): number {
-    let start = from - 1;
-    while (start >= 0) {
-      let c = text.charAt(start);
-      if (forbiddenChars.test(c)) break;
-      start--;
-    }
-    return start + 1;
-  }
-
-  public static isImageFile(filePath: string): boolean {
-    for (const ext of [".svg", ".png", ".ico", ".jpeg", ".jpg", ".gif"]) {
-      if (filePath.endsWith(ext)) return true;
-    }
-    return false;
-  }
-
-  public static async resolvePath(filePath: string): Promise<string> {
-    while (true) {
-      if (filePath.startsWith("/")) {
-        filePath = filePath.slice(1);
-      } else if (filePath.startsWith("../")) {
-        filePath = filePath.slice(3);
-      } else break;
-    }
-    let files = await vscode.workspace.findFiles(
-      `**/${filePath}`,
-      "{node_modules, .git}",
-    );
-    return files.length > 0 ? files[0].fsPath : "";
   }
 
   private static async openWithSystemCommand(filePath: string): Promise<void> {
@@ -213,7 +144,7 @@ export class WriterlyFileOpener {
 
   private static async justOpenItAlready(
     resolvedPath: string,
-    method: OpeningMethod,
+    method: OpeningMethod
   ): Promise<void> {
     const uri = vscode.Uri.file(resolvedPath);
     switch (method) {
@@ -222,12 +153,12 @@ export class WriterlyFileOpener {
           await vscode.env.openExternal(uri);
         } catch (vscodeError) {
           console.log(
-            `VSCode openExternal failed, falling back to system command: ${vscodeError}`,
+            `VSCode openExternal failed, falling back to system command: ${vscodeError}`
           );
           await WriterlyFileOpener.openWithSystemCommand(resolvedPath);
         }
         vscode.window.showInformationMessage(
-          `Opened: ${path.basename(resolvedPath)}`,
+          `Opened: ${path.basename(resolvedPath)}`
         );
         break;
       }
@@ -244,7 +175,7 @@ export class WriterlyFileOpener {
 
   public static async openResolvedPath(
     resolvedPath: string,
-    method: OpeningMethod,
+    method: OpeningMethod
   ): Promise<void> {
     try {
       if (resolvedPath === undefined) {
@@ -271,7 +202,7 @@ export class WriterlyFileOpener {
         const shouldOpen = await vscode.window.showWarningMessage(
           "This file is very large. Opening it may affect performance.",
           "Open Anyway",
-          "Cancel",
+          "Cancel"
         );
         if (shouldOpen !== "Open Anyway") {
           return;
@@ -285,26 +216,13 @@ export class WriterlyFileOpener {
     }
   }
 
-  public static async getResolvedFilePathAtPosition(
-    document: vscode.TextDocument,
-    position: vscode.Position,
-  ): Promise<[vscode.Range, string, string]> {
-    const [range, filePath] = WriterlyFileOpener.getPossiblePathAtPosition(
-      document,
-      position,
-    );
-    if (!filePath) return [range, filePath, ""];
-    const resolvedPath = await WriterlyFileOpener.resolvePath(filePath);
-    return [range, filePath, resolvedPath];
-  }
-
   public static async openAtPosition(
     document: vscode.TextDocument,
     position: vscode.Position,
-    method: OpeningMethod,
+    method: OpeningMethod
   ): Promise<void> {
     const [_, filePath, resolvedPath] =
-      await WriterlyFileOpener.getResolvedFilePathAtPosition(document, position);
+      await fileUtils.getResolvedFilePathAtPosition(document, position);
     if (!filePath) {
       vscode.window.showWarningMessage("No file path found under cursor");
       return;
