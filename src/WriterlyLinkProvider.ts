@@ -25,6 +25,7 @@ declare module "vscode" {
 type FSPath = string;
 type HandleName = string;
 type DocumentTreeKey = string;
+type UsageCounts = Map<HandleName, Map<DocumentTreeKey, number>>;
 
 type HandleDefinition = {
   fsPath: FSPath;
@@ -66,10 +67,7 @@ export class WriterlyLinkProvider
   private diagnosticCollection: vscode.DiagnosticCollection;
   private isInitialized = false;
   private documentLinks: Map<FSPath, vscode.DocumentLink[]> = new Map();
-  private usageCounts: Map<
-    HandleName,
-    Map<DocumentTreeKey, number>
-  > = new Map();
+  private usageCounts: UsageCounts = new Map();
   private revalidateTimer: NodeJS.Timeout | undefined;
 
   constructor(context: vscode.ExtensionContext) {
@@ -133,27 +131,21 @@ export class WriterlyLinkProvider
    * Called by the WriterlyController.
    */
   public async reset(): Promise<void> {
-    // 1. Clear all internal data structures
     this.definitions.clear();
     this.documentLinks.clear();
     this.usageCounts.clear();
     this.parents = [];
     this.isInitialized = false;
 
-    // 2. Clear all UI markers (red underlines/warnings)
     this.diagnosticCollection.clear();
 
-    // 3. Clear any pending debounced revalidations
     if (this.revalidateTimer) {
       clearTimeout(this.revalidateTimer);
       this.revalidateTimer = undefined;
     }
 
-    // 4. Re-run the full discovery and processing sequence
-    // This will populate the definitions and usageCounts from scratch
     await this.initializeAsync();
 
-    // 5. Force update for currently visible editors
     for (const doc of vscode.workspace.textDocuments) {
       if (this.isWriterlyFile(doc.uri.fsPath)) {
         this.processDocument(doc);
@@ -309,7 +301,7 @@ export class WriterlyLinkProvider
     const targetPath = uri.fsPath;
     const parentChanged = this.isWriterlyParent(uri.fsPath);
 
-    // 1. subtract usages from the tree-scoped counters before we lose the data
+    // Subtract usages before cached links are removed.
     const cachedLinks = this.documentLinks.get(targetPath);
     if (cachedLinks) {
       cachedLinks.forEach((link) =>
@@ -317,10 +309,8 @@ export class WriterlyLinkProvider
       );
     }
 
-    // 2. handle parent directory logic
     if (parentChanged) this.handleParentFileDelete(uri);
 
-    // 3. clear definitions from the map
     for (const [handleName, definitions] of this.definitions) {
       const filteredDefinitions = definitions.filter(
         (def) => def.fsPath !== targetPath,
@@ -333,17 +323,14 @@ export class WriterlyLinkProvider
       }
     }
 
-    // clear the diagnostics for the deleted file
     this.diagnosticCollection.delete(uri);
 
-    // 4. remove from links map
     this.documentLinks.delete(targetPath);
 
     if (parentChanged) {
       this.rebuildUsageCounts();
     }
 
-    // 5. trigger tree revalidation to clear warnings in other files
     if (this.isInitialized) {
       this.triggerTreeRevalidation(targetPath);
     }
@@ -375,18 +362,15 @@ export class WriterlyLinkProvider
   ): vscode.DocumentLink[] {
     const currentFsPath = document.uri.fsPath;
 
-    // 1. subtract old usages from this specific file before clearing
     const oldLinks = this.documentLinks.get(currentFsPath) || [];
     oldLinks.forEach((link) =>
       this.updateUsageCount(link.data.handleName, link.data.fsPath, -1),
     );
 
-    // 2. standard cleanup and extraction
     this.clearDocumentDefinitions(currentFsPath);
     const diagnostics: vscode.Diagnostic[] = [];
     const documentLinks = this.walkDocument(document, diagnostics);
 
-    // 3. add new usages to the tree-scoped counters
     documentLinks.forEach((link) =>
       this.updateUsageCount(link.data.handleName, link.data.fsPath, 1),
     );
@@ -395,7 +379,6 @@ export class WriterlyLinkProvider
       this.validateHandleUsage(documentLinks, diagnostics);
       this.validateHandleDefinitions(document, diagnostics);
 
-      // 4. trigger the debounced revalidation
       if (triggerRevalidation) {
         this.triggerTreeRevalidation(currentFsPath);
       }
@@ -447,7 +430,6 @@ export class WriterlyLinkProvider
           diagnostics,
         );
 
-        // extract handle definitions
         if (lineType === LineType.Attribute) {
           this.extractHandleDefinition(
             content,
@@ -457,7 +439,6 @@ export class WriterlyLinkProvider
           );
         }
 
-        // extract in-text handle definitions (handleName##<<)
         if (lineType === LineType.Text) {
           this.extractInTextHandleDefinitions(
             content,
@@ -467,7 +448,6 @@ export class WriterlyLinkProvider
           );
         }
 
-        // extract handle usage (skip certain line types)
         if (this.shouldProcessUsageInLine(lineType)) {
           const usageLinks = this.extractHandleUsage(
             content,
@@ -520,12 +500,7 @@ export class WriterlyLinkProvider
         handleName.length,
     );
 
-    // ALWAYS add to definitions, even if invalid
-    const definition: HandleDefinition = { fsPath, range };
-    if (!this.definitions.has(handleName)) {
-      this.definitions.set(handleName, []);
-    }
-    this.definitions.get(handleName)!.push(definition);
+    this.addDefinition(handleName, { fsPath, range });
   }
 
   private extractInTextHandleDefinitions(
@@ -545,12 +520,17 @@ export class WriterlyLinkProvider
         lineNumber,
         indent + handleNameStart + handleName.length,
       );
-      const definition: HandleDefinition = { fsPath, range };
-      if (!this.definitions.has(handleName)) {
-        this.definitions.set(handleName, []);
-      }
-      this.definitions.get(handleName)!.push(definition);
+      this.addDefinition(handleName, { fsPath, range });
     }
+  }
+
+  private addDefinition(
+    handleName: HandleName,
+    definition: HandleDefinition,
+  ): void {
+    const definitions = this.definitions.get(handleName) || [];
+    definitions.push(definition);
+    this.definitions.set(handleName, definitions);
   }
 
   private extractHandleUsage(
@@ -1190,17 +1170,7 @@ export class WriterlyLinkProvider
       // Check how many times this handle exists in the whole document tree
       const treeDefs = this.findValidDefinitions(handleName, currentFsPath);
 
-      // De-duplicate definitions by path and range to handle stale cache or redundant indexing
-      const uniqueTreeDefs = treeDefs.filter(
-        (def, index, self) =>
-          index ===
-          self.findIndex(
-            (t) =>
-              t.fsPath === def.fsPath &&
-              t.range.start.line === def.range.start.line &&
-              t.range.start.character === def.range.start.character,
-          ),
-      );
+      const uniqueTreeDefs = this.dedupeDefinitions(treeDefs);
 
       if (uniqueTreeDefs.length > 1) {
         // Highlight EVERY occurrence in the current file as a duplicate
@@ -1265,6 +1235,29 @@ export class WriterlyLinkProvider
         }
       }
     }, 300);
+  }
+
+  private dedupeDefinitions(
+    definitions: HandleDefinition[],
+  ): HandleDefinition[] {
+    return definitions.filter(
+      (definition, index, allDefinitions) =>
+        index ===
+        allDefinitions.findIndex((candidate) =>
+          this.isSameDefinition(candidate, definition),
+        ),
+    );
+  }
+
+  private isSameDefinition(
+    a: HandleDefinition,
+    b: HandleDefinition,
+  ): boolean {
+    return (
+      a.fsPath === b.fsPath &&
+      a.range.start.line === b.range.start.line &&
+      a.range.start.character === b.range.start.character
+    );
   }
 
   private getDocumentTreeKeys(fsPath: string): DocumentTreeKey[] {
