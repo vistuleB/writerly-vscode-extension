@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import {
+  isWriterlyFilePath,
+  WRITERLY_FILE_GLOB,
+} from "./WriterlyFileExtensions";
 
 type WriterlyTreeItem = WriterlyFileItem | WriterlyFolderItem;
 
@@ -18,7 +22,7 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
 
   constructor(context: vscode.ExtensionContext) {
     this.fileSystemWatcher =
-      vscode.workspace.createFileSystemWatcher("**/*.wly");
+      vscode.workspace.createFileSystemWatcher(WRITERLY_FILE_GLOB);
 
     this.treeView = vscode.window.createTreeView("writerlyFiles", {
       treeDataProvider: this,
@@ -74,7 +78,7 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
     if (
       this.treeView?.visible &&
       editor &&
-      editor.document.uri.fsPath.endsWith(".wly")
+      isWriterlyFilePath(editor.document.uri.fsPath)
     ) {
       const item = new WriterlyFileItem(editor.document.uri);
       // 'reveal' needs getParent to work!
@@ -104,7 +108,7 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
       this.isScanning = true;
       try {
         this.writerlyFilesCache = await vscode.workspace.findFiles(
-          "**/*.wly",
+          WRITERLY_FILE_GLOB,
           "**/node_modules/**",
         );
       } finally {

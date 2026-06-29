@@ -1,5 +1,5 @@
 {
-  "fileTypes": ["wly"],
+  "fileTypes": ["wly", "writerly"],
   "name": "Writerly",
   "scopeName": "source.writerly",
   "patterns": [

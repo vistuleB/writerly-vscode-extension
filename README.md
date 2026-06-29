@@ -1,6 +1,6 @@
 # Writerly VSCode Extension
 
-Writerly is a markup language extension for VS Code that makes creating structured documents easier. This extension provides syntax highlighting, error reporting, and navigation tools for Writerly (`.wly`) files.
+Writerly is a markup language extension for VS Code that makes creating structured documents easier. This extension provides syntax highlighting, error reporting, and navigation tools for Writerly (`.wly` and `.writerly`) files.
 
 ## Features
 
@@ -25,7 +25,7 @@ Writerly is a markup language extension for VS Code that makes creating structur
 
 ### Manage Files From the Editor
 
-- Rename the file referenced under your cursor (and update every `.wly` reference to it)
+- Rename the file referenced under your cursor (and update every Writerly reference to it)
 - Move the file under your cursor to another directory in the workspace (references are updated too)
 - Create a new file from a template by placing your cursor on a not-yet-existing file path
 

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import { fileUtils } from "./utils/file-utils";
+import { WRITERLY_FILE_GLOB } from "./WriterlyFileExtensions";
 
 type ActionParams = {
   filePath: string;
@@ -119,7 +120,7 @@ export class WriterlyFileRenamer {
     await replacePathInWlyFiles(filePath, newFilePath);
 
     vscode.window.showInformationMessage(
-      `Renamed file to "${newFileName}" and updated references in .wly files accordingly.`,
+      `Renamed file to "${newFileName}" and updated references in Writerly files accordingly.`,
     );
   }
 
@@ -197,7 +198,7 @@ export class WriterlyFileRenamer {
     await replacePathInWlyFiles(filePath, newFilePath);
 
     vscode.window.showInformationMessage(
-      `Moved file to "${newFilePath}" and updated references in .wly files accordingly.`,
+      `Moved file to "${newFilePath}" and updated references in Writerly files accordingly.`,
     );
   }
 
@@ -339,7 +340,7 @@ async function replacePathInWlyFiles(
 
   const pattern = new vscode.RelativePattern(
     vscode.workspace.workspaceFolders[0],
-    "**/*.wly",
+    WRITERLY_FILE_GLOB,
   );
 
   const wlyFiles = await vscode.workspace.findFiles(pattern);

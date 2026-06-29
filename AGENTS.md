@@ -9,8 +9,7 @@ State what was observed, what changed, what command was run, and what the result
 ## What This Repo Does
 
 A TypeScript VSCode extension (publisher: `TabbyNotes`) that provides editor support for
-`.wly` (Writerly) files. It activates automatically for files with the `.wly` or `.writerly`
-extension.
+Writerly files. It activates automatically for files with the `.wly` or `.writerly` extension.
 
 Features:
 - Syntax highlighting (TextMate grammar)
@@ -159,11 +158,12 @@ The most complex provider. It maintains workspace-wide state and implements:
 - `documentLinks: Map<FSPath, vscode.DocumentLink[]>` — cached usage links per file
 - `usageCounts: Map<HandleName, number>` — total usage count across all files (used for
   unused-handle warnings)
-- `parents: FSPath[]` — list of directories that contain a `__parent.wly` file (used to
+- `parents: FSPath[]` — list of directories that contain a `__parent.wly` or
+  `__parent.writerly` file (used to
   determine which handles are reachable from which scope)
 
-**Lifecycle:** on startup, `initializeAsync()` discovers all `__parent.wly` files and processes
-all `.wly` files in the workspace. A `FileSystemWatcher` keeps state current as files are
+**Lifecycle:** on startup, `initializeAsync()` discovers all `__parent.<writerly-extension>` files
+and processes all Writerly files in the workspace. A `FileSystemWatcher` keeps state current as files are
 created, changed, deleted, or renamed. Changes are debounced via `triggerTreeRevalidation`.
 
 Unused handle warnings are controlled by the `writerly.enableUnusedHandleWarnings` setting.
@@ -179,7 +179,7 @@ resolves to an existing file, it shows:
 
 ### `WriterlyCompletionProvider` — Path Autocomplete
 
-Triggered on `=`, ` `, `/` in `.wly` files. Offers completions only when the cursor is in
+Triggered on `=`, ` `, `/` in Writerly files. Offers completions only when the cursor is in
 `src=<path>` or `original=<path>` position. Builds an in-memory file tree of all image files
 in the workspace (PNG, JPG, JPEG, GIF, SVG, WebP, BMP, IPE, PSD, TIFF — both cases).
 Directory completions re-trigger suggest automatically. File completions show an inline image
@@ -195,7 +195,7 @@ characters `[\s'"=\[\]\{\}\(\);!<>|]`) relative to the workspace root, then open
 
 ### `WriterlyFileProvider` — Activity Bar Tree View
 
-Displays all `.wly` files in the workspace in a tree, mirroring the directory structure.
+Displays all Writerly files in the workspace in a tree, mirroring the directory structure.
 Auto-reveals the currently active editor's file in the tree. Refreshes on file system changes.
 
 ## Language Configuration

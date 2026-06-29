@@ -1,6 +1,13 @@
 import * as vscode from "vscode";
 import { WriterlyDocumentWalker, LineType } from "./WriterlyDocumentWalker";
 import WriterlyStaticValidator from "./WriterlyStaticValidator";
+import {
+  getWriterlyParentDir,
+  isWriterlyFilePath,
+  isWriterlyParentPath,
+  WRITERLY_FILE_GLOB,
+  WRITERLY_PARENT_FILE_GLOB,
+} from "./WriterlyFileExtensions";
 
 enum ValidationState {
   UNKNOWN = "unknown",
@@ -22,9 +29,6 @@ type HandleDefinition = {
   range: vscode.Range;
 };
 
-const FILE_EXTENSION: string = ".wly";
-const PARENT_SUFFIX: string = "__parent.wly";
-const PARENT_SUFFIX_LENGTH: number = 12;
 const MAX_FILES: number = 1500;
 
 const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:\\-\\^";
@@ -67,7 +71,7 @@ export class WriterlyLinkProvider
     this.diagnosticCollection =
       vscode.languages.createDiagnosticCollection("writerly-links");
     const watcher = vscode.workspace.createFileSystemWatcher(
-      `**/*${FILE_EXTENSION}`,
+      WRITERLY_FILE_GLOB,
     );
     watcher.onDidChange((uri) => this.processUri(uri));
     watcher.onDidCreate((uri) => this.createUri(uri));
@@ -171,7 +175,7 @@ export class WriterlyLinkProvider
 
   private async processAllDocuments(): Promise<void> {
     const uris = await vscode.workspace.findFiles(
-      `**/*${FILE_EXTENSION}`,
+      WRITERLY_FILE_GLOB,
       null,
       MAX_FILES,
     );
@@ -181,17 +185,16 @@ export class WriterlyLinkProvider
   }
 
   private parentPath(path: FSPath): string {
-    if (path.endsWith(PARENT_SUFFIX)) {
-      return path.slice(0, -PARENT_SUFFIX_LENGTH);
-    } else {
-      console.error("non-parent given to parentPath");
-      return path;
-    }
+    const parentDir = getWriterlyParentDir(path);
+    if (parentDir) return parentDir;
+
+    console.error("non-parent given to parentPath");
+    return path;
   }
 
   private async discoverParentDirectories(): Promise<void> {
     const parentFiles = await vscode.workspace.findFiles(
-      `**/*${PARENT_SUFFIX}`,
+      WRITERLY_PARENT_FILE_GLOB,
       null,
       MAX_FILES,
     );
@@ -237,15 +240,15 @@ export class WriterlyLinkProvider
 
   // utility methods
   private isWriterlyFile(fsPath: string): boolean {
-    return fsPath.endsWith(FILE_EXTENSION);
+    return isWriterlyFilePath(fsPath);
   }
 
   private isWriterlyParent(fsPath: string): boolean {
-    return fsPath.endsWith(PARENT_SUFFIX);
+    return isWriterlyParentPath(fsPath);
   }
 
   private getParentDirFromFilePath(filePath: string): string {
-    return filePath.replace(new RegExp(`${PARENT_SUFFIX}$`), "");
+    return getWriterlyParentDir(filePath) ?? filePath;
   }
 
   // parent directory management methods
