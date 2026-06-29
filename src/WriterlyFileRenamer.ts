@@ -13,19 +13,29 @@ type ActionParams = {
   position: vscode.Position;
 };
 
+type FileCommandOptions = {
+  requireExistingFile: boolean;
+};
+
 export class WriterlyFileRenamer {
   constructor(context: vscode.ExtensionContext) {
     const disposables = [
       vscode.commands.registerCommand("writerly.renameFileUnderCursor", () =>
-        this.handleFileUnderCursor(this.renameFileUnderCursor),
+        this.handleFileUnderCursor(this.renameFileUnderCursor, {
+          requireExistingFile: true,
+        }),
       ),
       vscode.commands.registerCommand("writerly.moveFileUnderCursor", () =>
-        this.handleFileUnderCursor(this.moveFileUnderCursor),
+        this.handleFileUnderCursor(this.moveFileUnderCursor, {
+          requireExistingFile: true,
+        }),
       ),
       vscode.commands.registerCommand(
         "writerly.createFileUnderCursorFromTemplate",
         () =>
-          this.handleFileUnderCursor(this.createFileUnderCursorFromTemplate),
+          this.handleFileUnderCursor(this.createFileUnderCursorFromTemplate, {
+            requireExistingFile: false,
+          }),
       ),
     ];
 
@@ -35,6 +45,7 @@ export class WriterlyFileRenamer {
 
   async handleFileUnderCursor(
     handler: (params: ActionParams) => Promise<void>,
+    options: FileCommandOptions,
   ): Promise<void> {
     const editor = vscode.window.activeTextEditor;
 
@@ -50,8 +61,8 @@ export class WriterlyFileRenamer {
       return;
     }
 
-    const [_, filePath, resolvedPath] =
-      await fileUtils.getResolvedFilePathAtPosition(
+    const [_, filePath, resolution] =
+      await fileUtils.getFileResolutionAtPosition(
         editor.document,
         editor.selection.active,
       );
@@ -60,9 +71,21 @@ export class WriterlyFileRenamer {
       return;
     }
 
+    if (resolution.kind === "ambiguous") {
+      vscode.window.showWarningMessage(
+        `Multiple matching files found for: ${filePath}`,
+      );
+      return;
+    }
+
+    if (resolution.kind === "notFound" && options.requireExistingFile) {
+      vscode.window.showWarningMessage(`File not found: ${filePath}`);
+      return;
+    }
+
     await handler({
       filePath,
-      resolvedPath,
+      resolvedPath: resolution.kind === "unique" ? resolution.fsPath : "",
       document: editor.document,
       position: editor.selection.active,
     });

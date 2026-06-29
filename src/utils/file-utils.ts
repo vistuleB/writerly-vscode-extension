@@ -3,16 +3,44 @@ import * as path from "path";
 import * as fs from "fs";
 
 const forbiddenChars = /[\s'"=\[\]\{\}\(\);!<>|]/;
+const excludedWorkspacePaths = "{**/node_modules/**,**/.*/**,**/dist/**,**/build/**}";
+
+export type FileResolution =
+  | { kind: "notFound" }
+  | { kind: "unique"; fsPath: string }
+  | { kind: "ambiguous"; fsPaths: string[] };
 
 export const fileUtils = {
+  getFileResolutionAtPosition: async (
+    document: vscode.TextDocument,
+    position: vscode.Position
+  ): Promise<[vscode.Range, string, FileResolution]> => {
+    const [range, filePath] = getPossiblePathAtPosition(document, position);
+    if (!filePath) return [range, filePath, { kind: "notFound" }];
+    const resolution = await resolveUniqueFilePath(filePath);
+    return [range, filePath, resolution];
+  },
+
+  fileExists: async (filePath: string): Promise<boolean> => {
+    const files = await resolvePossibleFilePaths(filePath, 1);
+    return files.length > 0;
+  },
+
+  resolveUniqueFilePath,
+
+  resolvePossibleFilePaths,
+
   getResolvedFilePathAtPosition: async (
     document: vscode.TextDocument,
     position: vscode.Position
   ): Promise<[vscode.Range, string, string]> => {
-    const [range, filePath] = getPossiblePathAtPosition(document, position);
-    if (!filePath) return [range, filePath, ""];
-    const resolvedPath = await resolvePath(filePath);
-    return [range, filePath, resolvedPath];
+    const [range, filePath, resolution] =
+      await fileUtils.getFileResolutionAtPosition(document, position);
+    return [
+      range,
+      filePath,
+      resolution.kind === "unique" ? resolution.fsPath : "",
+    ];
   },
 
   isImageFile: (filePath: string): boolean => {
@@ -126,7 +154,7 @@ const moveCursorBackwardWhileNotForbidden = (
   return start + 1;
 };
 
-const resolvePath = async (filePath: string): Promise<string> => {
+const normalizeSearchPath = (filePath: string): string => {
   while (true) {
     if (filePath.startsWith("/")) {
       filePath = filePath.slice(1);
@@ -134,9 +162,29 @@ const resolvePath = async (filePath: string): Promise<string> => {
       filePath = filePath.slice(3);
     } else break;
   }
-  let files = await vscode.workspace.findFiles(
-    `**/${filePath}`,
-    "{**/node_modules/**,**/.*/**,**/dist/**,**/build/**}"
-  );
-  return files.length > 0 ? files[0].fsPath : "";
+  return filePath;
 };
+
+async function resolvePossibleFilePaths(
+  filePath: string,
+  maxResults?: number
+): Promise<string[]> {
+  const normalizedPath = normalizeSearchPath(filePath);
+  if (!normalizedPath) return [];
+
+  const files = await vscode.workspace.findFiles(
+    `**/${normalizedPath}`,
+    excludedWorkspacePaths,
+    maxResults
+  );
+  return files.map((uri) => uri.fsPath);
+}
+
+async function resolveUniqueFilePath(
+  filePath: string
+): Promise<FileResolution> {
+  const files = await resolvePossibleFilePaths(filePath, 2);
+  if (files.length === 0) return { kind: "notFound" };
+  if (files.length === 1) return { kind: "unique", fsPath: files[0] };
+  return { kind: "ambiguous", fsPaths: files };
+}

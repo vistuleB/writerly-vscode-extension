@@ -34,10 +34,11 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
       return undefined;
     }
 
-    const [range, _filePath, resolvedPath] =
-      await fileUtils.getResolvedFilePathAtPosition(document, position);
+    const [range, _filePath, resolution] =
+      await fileUtils.getFileResolutionAtPosition(document, position);
 
-    if (!resolvedPath) return undefined;
+    if (resolution.kind !== "unique") return undefined;
+    const resolvedPath = resolution.fsPath;
 
     let hoverContent = new vscode.MarkdownString();
     hoverContent.supportHtml = true;

@@ -229,17 +229,23 @@ export class WriterlyFileOpener {
       return;
     }
 
-    const [_, filePath, resolvedPath] =
-      await fileUtils.getResolvedFilePathAtPosition(document, position);
+    const [_, filePath, resolution] =
+      await fileUtils.getFileResolutionAtPosition(document, position);
     if (!filePath) {
       vscode.window.showWarningMessage("No file path found under cursor");
       return;
     }
-    if (!resolvedPath) {
+    if (resolution.kind === "notFound") {
       vscode.window.showWarningMessage(`File not found: ${filePath}`);
       return;
     }
-    await WriterlyFileOpener.openResolvedPath(resolvedPath, method);
+    if (resolution.kind === "ambiguous") {
+      vscode.window.showWarningMessage(
+        `Multiple matching files found for: ${filePath}`,
+      );
+      return;
+    }
+    await WriterlyFileOpener.openResolvedPath(resolution.fsPath, method);
   }
 
   public static async openUnderCursor(method: OpeningMethod): Promise<void> {
