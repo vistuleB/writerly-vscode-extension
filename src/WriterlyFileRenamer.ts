@@ -549,8 +549,6 @@ function reportFileCommandError(message: string, error?: unknown): void {
   vscode.window.showErrorMessage(message);
   if (error) {
     console.error(message, error);
-  } else {
-    console.error(message);
   }
 }
 
