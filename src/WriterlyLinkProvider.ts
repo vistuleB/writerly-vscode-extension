@@ -46,9 +46,9 @@ const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/u;
 const HANDLE_DECORATOR_CHARS: string = "\\p{L}\\p{N}\\p{M}_:\\-";
 const HANDLE_DECORATOR_REGEX_STRING: string = `#[${HANDLE_DECORATOR_CHARS}]+`;
 const HANDLE_DECORATORS_REGEX_STRING: string = `(?:${HANDLE_DECORATOR_REGEX_STRING})*`;
-// Matches "handleName[decorators]##<<" preceded by space, '{', '(', or '['
+// Matches "handleName[decorators]##<<" at start of content or preceded by space, '{', '(', or '['
 const IN_TEXT_DEF_REGEX = new RegExp(
-  `[ {(\\[](${HANDLE_REGEX_STRING})(${HANDLE_DECORATORS_REGEX_STRING})##<<`,
+  `(?:^|[ {(\\[])(${HANDLE_REGEX_STRING})(${HANDLE_DECORATORS_REGEX_STRING})##<<`,
   "gu",
 );
 
@@ -517,8 +517,7 @@ export class WriterlyLinkProvider
     let match;
     while ((match = IN_TEXT_DEF_REGEX.exec(content)) !== null) {
       const handleName = match[1];
-      // match.index points to the prefix char (space/'('/'['), handle name starts at +1
-      const handleNameStart = match.index + 1;
+      const handleNameStart = match.index + match[0].indexOf(handleName);
       const range = new vscode.Range(
         lineNumber,
         indent + handleNameStart,
