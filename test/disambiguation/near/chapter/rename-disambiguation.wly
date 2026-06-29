@@ -1,0 +1,6 @@
+|> disambiguation-test
+    source=assets/ambiguous-note-target.txt
+
+Place the cursor on assets/ambiguous-note-target.txt and run
+Writerly: Rename File Under Cursor.
+

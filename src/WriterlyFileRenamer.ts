@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { fileUtils, type FileResolution } from "./utils/file-utils";
+import {
+  fileUtils,
+  type DirectoryResolution,
+  type FileResolution,
+} from "./utils/file-utils";
 import {
   getWriterlyFileGlob,
   isWriterlyFilePath,
@@ -11,6 +15,7 @@ type FileCommandTarget = {
   resolution: FileResolution;
   document: vscode.TextDocument;
   position: vscode.Position;
+  ambiguityNotes: string[];
 };
 
 type FileCommandOptions = {
@@ -62,45 +67,63 @@ export class WriterlyFileRenamer {
     const editor = vscode.window.activeTextEditor;
 
     if (!editor) {
-      vscode.window.showWarningMessage("No active editor found");
+      reportFileCommandError("No active editor found");
       return;
     }
 
     if (!isWriterlyFilePath(editor.document.uri.fsPath)) {
-      vscode.window.showWarningMessage(
+      reportFileCommandError(
         "Writerly file commands are disabled for this file extension",
       );
       return;
     }
 
-    const [_, filePath, resolution] =
-      await fileUtils.getFileResolutionAtPosition(
+    const { result: fileResolution, error: resolutionError } = await tryCatch(
+      fileUtils.getFileResolutionAtPosition(
         editor.document,
         editor.selection.active,
+        { rootRelativeTo: editor.document.uri.fsPath },
+      ),
+    );
+    if (!fileResolution || resolutionError) {
+      reportFileCommandError(
+        "Failed to resolve file path under cursor",
+        resolutionError,
       );
+      return;
+    }
+
+    const [_, filePath, resolution] = fileResolution;
     if (!filePath) {
-      vscode.window.showWarningMessage("No file path found under cursor");
+      reportFileCommandError("No file path found under cursor");
       return;
     }
 
     if (resolution.kind === "ambiguous") {
-      vscode.window.showWarningMessage(
-        `Multiple matching files found for: ${filePath}`,
+      reportFileCommandError(
+        `Multiple matching files found for "${filePath}" and closest ancestor directory tie-breaking could not choose one. Matches: ${formatPathList(resolution.fsPaths)}`,
       );
       return;
     }
 
     if (resolution.kind === "notFound" && options.requireExistingFile) {
-      vscode.window.showWarningMessage(`File not found: ${filePath}`);
+      reportFileCommandError(`File not found: ${filePath}`);
       return;
     }
 
-    await handler({
-      filePath,
-      resolution,
-      document: editor.document,
-      position: editor.selection.active,
-    });
+    const ambiguityNotes = getResolvedAmbiguousPathNote(filePath, resolution);
+
+    try {
+      await handler({
+        filePath,
+        resolution,
+        document: editor.document,
+        position: editor.selection.active,
+        ambiguityNotes: ambiguityNotes ? [ambiguityNotes] : [],
+      });
+    } catch (error) {
+      reportFileCommandError("Writerly file command failed unexpectedly", error);
+    }
   }
 
   private async renameFileUnderCursor(
@@ -166,8 +189,9 @@ export class WriterlyFileRenamer {
       newFilePath,
     );
 
-    vscode.window.showInformationMessage(
+    await reportFileCommandSuccess(
       `Renamed file to "${newFileName}" and updated references in Writerly files accordingly.`,
+      target.ambiguityNotes,
     );
   }
 
@@ -198,23 +222,21 @@ export class WriterlyFileRenamer {
       return;
     }
 
-    const foundDirs = await fileUtils.resolvePossibleDirPaths(newDirPath, {
+    const dirResolution = await fileUtils.resolveDirectoryPath(newDirPath, {
       rootRelativeTo: target.document.uri.fsPath,
     });
-    if (foundDirs.length === 0) {
-      vscode.window.showErrorMessage(
-        "No matching directory found in workspace for the provided path",
-      );
-      return;
-    }
-    if (foundDirs.length > 1) {
-      vscode.window.showErrorMessage(
-        "Multiple matching directories found in workspace. Please provide a more specific path.",
-      );
+    const targetDir = getResolvedDirectoryPath(
+      newDirPath,
+      dirResolution,
+      "No matching directory found in workspace for the provided path",
+      undefined,
+      target.ambiguityNotes,
+    );
+    if (!targetDir) {
       return;
     }
 
-    const newResolvedFilePath = path.join(foundDirs[0], fileName);
+    const newResolvedFilePath = path.join(targetDir, fileName);
     if (await pathExists(newResolvedFilePath)) {
       vscode.window.showErrorMessage(
         "A file with the same name already exists in the target directory",
@@ -240,8 +262,9 @@ export class WriterlyFileRenamer {
       newFilePath,
     );
 
-    vscode.window.showInformationMessage(
+    await reportFileCommandSuccess(
       `Moved file to "${newFilePath}" and updated references in Writerly files accordingly.`,
+      target.ambiguityNotes,
     );
   }
 }
@@ -310,6 +333,7 @@ class WriterlyTemplateFileCreator {
       target.document.uri.fsPath,
       `No matching directory found in workspace for "${dirPath}"`,
       `Multiple matching directories found in workspace for "${dirPath}". Cannot determine where to create the file.`,
+      target.ambiguityNotes,
     );
     if (!targetDir) return;
 
@@ -337,6 +361,7 @@ class WriterlyTemplateFileCreator {
       target.document.uri.fsPath,
       `Template files directory "${templateDirSetting}" matches no directory in the workspace`,
       `Template files directory "${templateDirSetting}" matches multiple directories in the workspace. Please make it more specific.`,
+      target.ambiguityNotes,
     );
     if (!templateDir) return;
 
@@ -360,8 +385,9 @@ class WriterlyTemplateFileCreator {
       return;
     }
 
-    vscode.window.showInformationMessage(
+    await reportFileCommandSuccess(
       `Created "${fileName}" from template "${path.basename(selectedTemplate)}"`,
+      target.ambiguityNotes,
     );
   }
 
@@ -370,19 +396,18 @@ class WriterlyTemplateFileCreator {
     rootRelativeTo: string,
     notFoundMessage: string,
     ambiguousMessage: string,
+    ambiguityNotes: string[],
   ): Promise<string | undefined> {
-    const dirs = await fileUtils.resolvePossibleDirPaths(dirPath, {
+    const resolution = await fileUtils.resolveDirectoryPath(dirPath, {
       rootRelativeTo,
     });
-    if (dirs.length === 0) {
-      vscode.window.showErrorMessage(notFoundMessage);
-      return undefined;
-    }
-    if (dirs.length > 1) {
-      vscode.window.showErrorMessage(ambiguousMessage);
-      return undefined;
-    }
-    return dirs[0];
+    return getResolvedDirectoryPath(
+      dirPath,
+      resolution,
+      notFoundMessage,
+      ambiguousMessage,
+      ambiguityNotes,
+    );
   }
 
   private async selectTemplateFile(
@@ -420,11 +445,44 @@ class WriterlyTemplateFileCreator {
 function getExistingResolvedPath(
   target: FileCommandTarget,
 ): string | undefined {
-  if (target.resolution.kind === "unique") {
+  if (
+    target.resolution.kind === "unique" ||
+    target.resolution.kind === "resolvedAmbiguous"
+  ) {
     return target.resolution.fsPath;
   }
 
-  vscode.window.showWarningMessage(`File not found: ${target.filePath}`);
+  reportFileCommandError(`File not found: ${target.filePath}`);
+  return undefined;
+}
+
+function getResolvedDirectoryPath(
+  referencePath: string,
+  resolution: DirectoryResolution,
+  notFoundMessage: string,
+  ambiguousMessage?: string,
+  ambiguityNotes?: string[],
+): string | undefined {
+  if (
+    resolution.kind === "unique" ||
+    resolution.kind === "resolvedAmbiguous"
+  ) {
+    const note = getResolvedAmbiguousPathNote(referencePath, resolution);
+    if (note) ambiguityNotes?.push(note);
+    return resolution.fsPath;
+  }
+
+  if (resolution.kind === "ambiguous") {
+    reportFileCommandError(
+      `${
+        ambiguousMessage ??
+        `Multiple matching directories found for "${referencePath}" and closest ancestor directory tie-breaking could not choose one.`
+      } Matches: ${formatPathList(resolution.fsPaths)}`,
+    );
+    return undefined;
+  }
+
+  reportFileCommandError(notFoundMessage);
   return undefined;
 }
 
@@ -464,6 +522,40 @@ function longestCommonSuffixLength(a: string, b: string): number {
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getResolvedAmbiguousPathNote(
+  referencePath: string,
+  resolution: FileResolution | DirectoryResolution,
+): string | undefined {
+  if (resolution.kind !== "resolvedAmbiguous") return undefined;
+
+  return `Note: Ambiguous path "${referencePath}" matched multiple locations. Resolved to "${resolution.fsPath}" by closest ancestor directory tie-breaking. Other matches: ${formatPathList(resolution.alternatives)}.`;
+}
+
+async function reportFileCommandSuccess(
+  message: string,
+  ambiguityNotes: string[],
+): Promise<void> {
+  vscode.window.showInformationMessage(message);
+
+  for (const note of ambiguityNotes) {
+    console.info(note);
+    await vscode.window.showWarningMessage(note, { modal: true });
+  }
+}
+
+function reportFileCommandError(message: string, error?: unknown): void {
+  vscode.window.showErrorMessage(message);
+  if (error) {
+    console.error(message, error);
+  } else {
+    console.error(message);
+  }
+}
+
+function formatPathList(paths: string[]): string {
+  return paths.map((fsPath) => `"${fsPath}"`).join(", ");
 }
 
 function tryCatch<T, Error>(

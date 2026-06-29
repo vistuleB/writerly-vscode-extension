@@ -28,7 +28,15 @@ const supportedImageFileExtensions = new Set(
 export type FileResolution =
   | { kind: "notFound" }
   | { kind: "unique"; fsPath: string }
+  | {
+      kind: "resolvedAmbiguous";
+      fsPath: string;
+      alternatives: string[];
+      reason: "closestAncestor";
+    }
   | { kind: "ambiguous"; fsPaths: string[] };
+
+export type DirectoryResolution = FileResolution;
 
 type DirectoryResolutionOptions = {
   rootRelativeTo?: string;
@@ -37,11 +45,12 @@ type DirectoryResolutionOptions = {
 export const fileUtils = {
   getFileResolutionAtPosition: async (
     document: vscode.TextDocument,
-    position: vscode.Position
+    position: vscode.Position,
+    options: DirectoryResolutionOptions = {}
   ): Promise<[vscode.Range, string, FileResolution]> => {
     const [range, filePath] = getPossiblePathAtPosition(document, position);
     if (!filePath) return [range, filePath, { kind: "notFound" }];
-    const resolution = await resolveUniqueFilePath(filePath);
+    const resolution = await resolveUniqueFilePath(filePath, options);
     return [range, filePath, resolution];
   },
 
@@ -51,6 +60,8 @@ export const fileUtils = {
   },
 
   resolveUniqueFilePath,
+
+  resolveDirectoryPath,
 
   resolvePossibleFilePaths,
 
@@ -202,12 +213,53 @@ async function findMatchingFilePaths(
 }
 
 async function resolveUniqueFilePath(
-  filePath: string
+  filePath: string,
+  options: DirectoryResolutionOptions = {}
 ): Promise<FileResolution> {
-  const files = await findMatchingFilePaths(filePath, 2);
-  if (files.length === 0) return { kind: "notFound" };
-  if (files.length === 1) return { kind: "unique", fsPath: files[0] };
-  return { kind: "ambiguous", fsPaths: files };
+  const files = await findMatchingFilePaths(
+    filePath,
+    options.rootRelativeTo ? undefined : 2
+  );
+  return resolveBestPath(files, options, true);
+}
+
+async function resolveDirectoryPath(
+  dirPath: string,
+  options: DirectoryResolutionOptions = {}
+): Promise<DirectoryResolution> {
+  const dirs = await fileUtils.resolvePossibleDirPaths(dirPath, options);
+  return resolveBestPath(dirs, options, false);
+}
+
+function resolveBestPath(
+  paths: string[],
+  options: DirectoryResolutionOptions,
+  compareParentDirectories: boolean
+): FileResolution {
+  if (paths.length === 0) return { kind: "notFound" };
+  if (paths.length === 1) return { kind: "unique", fsPath: paths[0] };
+  if (!options.rootRelativeTo) return { kind: "ambiguous", fsPaths: paths };
+
+  const ranked = paths
+    .map((fsPath) => ({
+      fsPath,
+      score: commonAncestorDepth(
+        compareParentDirectories ? path.dirname(fsPath) : fsPath,
+        path.dirname(options.rootRelativeTo!)
+      ),
+    }))
+    .sort((a, b) => b.score - a.score);
+  const best = ranked[0];
+  const tiedBest = ranked.filter((candidate) => candidate.score === best.score);
+
+  if (tiedBest.length > 1) return { kind: "ambiguous", fsPaths: paths };
+
+  return {
+    kind: "resolvedAmbiguous",
+    fsPath: best.fsPath,
+    alternatives: paths.filter((fsPath) => fsPath !== best.fsPath),
+    reason: "closestAncestor",
+  };
 }
 
 function isWorkspaceRootRelativePath(dirPath: string): boolean {
@@ -248,4 +300,20 @@ function isPathUnderDirectory(filePath: string, dirPath: string): boolean {
     relativePath === "" ||
     (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
   );
+}
+
+function commonAncestorDepth(a: string, b: string): number {
+  const aParts = path.resolve(a).split(path.sep);
+  const bParts = path.resolve(b).split(path.sep);
+  let depth = 0;
+
+  while (
+    depth < aParts.length &&
+    depth < bParts.length &&
+    aParts[depth] === bParts[depth]
+  ) {
+    depth++;
+  }
+
+  return depth;
 }
