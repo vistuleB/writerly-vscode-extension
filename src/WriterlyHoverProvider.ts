@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import { WriterlyFileOpener, OpeningMethod } from "./WriterlyFileOpener";
 import { fileUtils } from "./utils/file-utils";
+import { isWriterlyFilePath } from "./WriterlyFileExtensions";
 
 export class WriterlyHoverProvider implements vscode.HoverProvider {
   constructor(context: vscode.ExtensionContext) {
@@ -29,6 +30,10 @@ export class WriterlyHoverProvider implements vscode.HoverProvider {
     position: vscode.Position,
     _token: vscode.CancellationToken
   ): Promise<vscode.Hover | undefined> {
+    if (!isWriterlyFilePath(document.uri.fsPath)) {
+      return undefined;
+    }
+
     const [range, _filePath, resolvedPath] =
       await fileUtils.getResolvedFilePathAtPosition(document, position);
 

@@ -224,4 +224,5 @@ keep the build consistent).
 
 | Setting | Default | Description |
 |---|---|---|
+| `writerly.enabledFileExtensions` | `[".wly", ".writerly"]` | File extensions this extension actively processes |
 | `writerly.enableUnusedHandleWarnings` | `true` | Show warnings for `handle=` definitions that are never referenced with `>>` |

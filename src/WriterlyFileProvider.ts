@@ -2,8 +2,9 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import {
+  ALL_WRITERLY_FILE_GLOB,
+  getWriterlyFileGlob,
   isWriterlyFilePath,
-  WRITERLY_FILE_GLOB,
 } from "./WriterlyFileExtensions";
 
 type WriterlyTreeItem = WriterlyFileItem | WriterlyFolderItem;
@@ -22,7 +23,7 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
 
   constructor(context: vscode.ExtensionContext) {
     this.fileSystemWatcher =
-      vscode.workspace.createFileSystemWatcher(WRITERLY_FILE_GLOB);
+      vscode.workspace.createFileSystemWatcher(ALL_WRITERLY_FILE_GLOB);
 
     this.treeView = vscode.window.createTreeView("writerlyFiles", {
       treeDataProvider: this,
@@ -107,10 +108,10 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
     if (this.writerlyFilesCache.length === 0 && !element && !this.isScanning) {
       this.isScanning = true;
       try {
-        this.writerlyFilesCache = await vscode.workspace.findFiles(
-          WRITERLY_FILE_GLOB,
-          "**/node_modules/**",
-        );
+        const fileGlob = getWriterlyFileGlob();
+        this.writerlyFilesCache = fileGlob
+          ? await vscode.workspace.findFiles(fileGlob, "**/node_modules/**")
+          : [];
       } finally {
         this.isScanning = false;
       }

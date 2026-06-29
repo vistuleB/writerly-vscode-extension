@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { isWriterlyFilePath } from "./WriterlyFileExtensions";
 
 interface FileNode {
   name: string;
@@ -158,6 +159,10 @@ export class WriterlyCompletionProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): vscode.ProviderResult<vscode.CompletionItem[]> {
+    if (!isWriterlyFilePath(document.uri.fsPath)) {
+      return undefined;
+    }
+
     const linePrefix = document
       .lineAt(position)
       .text.substring(0, position.character);

@@ -2,11 +2,12 @@ import * as vscode from "vscode";
 import { WriterlyDocumentWalker, LineType } from "./WriterlyDocumentWalker";
 import WriterlyStaticValidator from "./WriterlyStaticValidator";
 import {
+  ALL_WRITERLY_FILE_GLOB,
   getWriterlyParentDir,
+  getWriterlyFileGlob,
+  getWriterlyParentFileGlob,
   isWriterlyFilePath,
   isWriterlyParentPath,
-  WRITERLY_FILE_GLOB,
-  WRITERLY_PARENT_FILE_GLOB,
 } from "./WriterlyFileExtensions";
 
 enum ValidationState {
@@ -71,7 +72,7 @@ export class WriterlyLinkProvider
     this.diagnosticCollection =
       vscode.languages.createDiagnosticCollection("writerly-links");
     const watcher = vscode.workspace.createFileSystemWatcher(
-      WRITERLY_FILE_GLOB,
+      ALL_WRITERLY_FILE_GLOB,
     );
     watcher.onDidChange((uri) => this.processUri(uri));
     watcher.onDidCreate((uri) => this.createUri(uri));
@@ -174,8 +175,11 @@ export class WriterlyLinkProvider
   }
 
   private async processAllDocuments(): Promise<void> {
+    const fileGlob = getWriterlyFileGlob();
+    if (!fileGlob) return;
+
     const uris = await vscode.workspace.findFiles(
-      WRITERLY_FILE_GLOB,
+      fileGlob,
       null,
       MAX_FILES,
     );
@@ -193,8 +197,14 @@ export class WriterlyLinkProvider
   }
 
   private async discoverParentDirectories(): Promise<void> {
+    const parentGlob = getWriterlyParentFileGlob();
+    if (!parentGlob) {
+      this.parents = [];
+      return;
+    }
+
     const parentFiles = await vscode.workspace.findFiles(
-      WRITERLY_PARENT_FILE_GLOB,
+      parentGlob,
       null,
       MAX_FILES,
     );
@@ -330,6 +340,8 @@ export class WriterlyLinkProvider
   }
 
   private async processUri(uri: vscode.Uri): Promise<void> {
+    if (!this.isWriterlyFile(uri.fsPath)) return;
+
     try {
       const document = await vscode.workspace.openTextDocument(uri);
       this.processDocument(document);
@@ -662,6 +674,8 @@ export class WriterlyLinkProvider
     document: vscode.TextDocument,
     _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.DocumentLink[]> {
+    if (!this.isWriterlyFile(document.uri.fsPath)) return undefined;
+
     let links = this.documentLinks.get(document.uri.fsPath);
     if (links !== undefined) {
       return links.filter(
@@ -766,6 +780,10 @@ export class WriterlyLinkProvider
     position: vscode.Position,
     _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.Definition> {
+    if (!this.isWriterlyFile(document.uri.fsPath)) {
+      return undefined;
+    }
+
     if (!this.isInitialized) {
       return undefined;
     }
@@ -795,6 +813,10 @@ export class WriterlyLinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): { range: vscode.Range; placeholder: string } | undefined {
+    if (!this.isWriterlyFile(document.uri.fsPath)) {
+      return undefined;
+    }
+
     // 1. Check if we are at a definition site (handle=name)
     const defInfo = this.getDefinitionOnLine(document, position);
     if (defInfo && defInfo.range.contains(position)) {
@@ -836,6 +858,10 @@ export class WriterlyLinkProvider
     newName: string,
     _token: vscode.CancellationToken,
   ): Promise<vscode.WorkspaceEdit | undefined> {
+    if (!this.isWriterlyFile(document.uri.fsPath)) {
+      return undefined;
+    }
+
     // 1. Identify the 'oldName' from either a definition or a usage site
     let oldName: string | undefined;
 
@@ -920,6 +946,10 @@ export class WriterlyLinkProvider
     _token: vscode.CancellationToken,
     _context: vscode.CompletionContext,
   ): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
+    if (!this.isWriterlyFile(document.uri.fsPath)) {
+      return undefined;
+    }
+
     // 1. Check if we are actually after a '>>'
     const linePrefix = document
       .lineAt(position)

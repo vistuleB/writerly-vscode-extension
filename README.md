@@ -61,3 +61,46 @@ This setting is workspace-scoped — You can set it in the workspace's `.vscode/
   "writerly.templateFilesDirectory": "./templates"
 }
 ```
+
+## File Extension Settings
+
+Writerly contributes both `.wly` and `.writerly` as language extensions. The
+`writerly.enabledFileExtensions` setting controls which of those extensions
+Writerly actively scans and processes for diagnostics, handles, hovers,
+completions, file-tree entries, and reference updates.
+
+Default:
+
+```jsonc
+{
+  "writerly.enabledFileExtensions": [".wly", ".writerly"]
+}
+```
+
+To process only `.writerly` files:
+
+```jsonc
+{
+  "writerly.enabledFileExtensions": [".writerly"]
+}
+```
+
+To stop Writerly from actively processing either extension:
+
+```jsonc
+{
+  "writerly.enabledFileExtensions": []
+}
+```
+
+VS Code file association is separate. To make `.wly` open as another language,
+also set `files.associations` in user or workspace settings:
+
+```jsonc
+{
+  "files.associations": {
+    "*.wly": "plaintext"
+  },
+  "writerly.enabledFileExtensions": [".writerly"]
+}
+```

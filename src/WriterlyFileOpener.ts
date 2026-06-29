@@ -3,6 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { spawn } from "cross-spawn";
 import { fileUtils } from "./utils/file-utils";
+import { isWriterlyFilePath } from "./WriterlyFileExtensions";
 
 export enum OpeningMethod {
   WITH_DEFAULT,
@@ -221,6 +222,13 @@ export class WriterlyFileOpener {
     position: vscode.Position,
     method: OpeningMethod
   ): Promise<void> {
+    if (!isWriterlyFilePath(document.uri.fsPath)) {
+      vscode.window.showWarningMessage(
+        "Writerly file commands are disabled for this file extension",
+      );
+      return;
+    }
+
     const [_, filePath, resolvedPath] =
       await fileUtils.getResolvedFilePathAtPosition(document, position);
     if (!filePath) {

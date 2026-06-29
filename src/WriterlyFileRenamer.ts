@@ -1,7 +1,10 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import { fileUtils } from "./utils/file-utils";
-import { WRITERLY_FILE_GLOB } from "./WriterlyFileExtensions";
+import {
+  getWriterlyFileGlob,
+  isWriterlyFilePath,
+} from "./WriterlyFileExtensions";
 
 type ActionParams = {
   filePath: string;
@@ -37,6 +40,13 @@ export class WriterlyFileRenamer {
 
     if (!editor) {
       vscode.window.showWarningMessage("No active editor found");
+      return;
+    }
+
+    if (!isWriterlyFilePath(editor.document.uri.fsPath)) {
+      vscode.window.showWarningMessage(
+        "Writerly file commands are disabled for this file extension",
+      );
       return;
     }
 
@@ -338,9 +348,12 @@ async function replacePathInWlyFiles(
     return;
   }
 
+  const fileGlob = getWriterlyFileGlob();
+  if (!fileGlob) return;
+
   const pattern = new vscode.RelativePattern(
     vscode.workspace.workspaceFolders[0],
-    WRITERLY_FILE_GLOB,
+    fileGlob,
   );
 
   const wlyFiles = await vscode.workspace.findFiles(pattern);

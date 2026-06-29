@@ -23,6 +23,14 @@ export class WriterlyController {
     context.subscriptions.push(
       vscode.commands.registerCommand("writerly.restart", () => this.restart())
     );
+
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration("writerly.enabledFileExtensions")) {
+          this.restart();
+        }
+      })
+    );
   }
 
   public async restart() {
