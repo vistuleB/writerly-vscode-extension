@@ -21,6 +21,17 @@ type PathCompletionContext = {
   fullTypedPath: string;
 };
 
+const PATH_COMPLETION_TRIGGER_CHARACTERS = [
+  "=",
+  " ",
+  "/",
+  "(",
+  ".",
+  "-",
+  "_",
+];
+const FILENAME_CHARACTER_PATTERN = /^[A-Za-z0-9._-]$/;
+
 /**
  * Custom CompletionItem that preserves the full path for the resolution phase.
  */
@@ -54,10 +65,7 @@ export class WriterlyCompletionProvider
       vscode.languages.registerCompletionItemProvider(
         { scheme: "file", language: "writerly" },
         this,
-        "=",
-        " ",
-        "/",
-        "(",
+        ...PATH_COMPLETION_TRIGGER_CHARACTERS,
       );
 
     const watcher = vscode.workspace.createFileSystemWatcher(
@@ -70,7 +78,16 @@ export class WriterlyCompletionProvider
     watcher.onDidDelete(debouncedLoad);
     // watcher.onDidChange(debouncedLoad);
 
-    context.subscriptions.push(completionItemProvider, watcher);
+    const retriggerPathCompletion =
+      vscode.workspace.onDidChangeTextDocument((event) => {
+        this.retriggerPathCompletionAfterFilenameCharacter(event);
+      });
+
+    context.subscriptions.push(
+      completionItemProvider,
+      watcher,
+      retriggerPathCompletion,
+    );
   }
 
   /**
@@ -211,25 +228,50 @@ export class WriterlyCompletionProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): PathCompletionContext | undefined {
-    const lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
-      document,
-      position,
-    );
     const linePrefix = document
       .lineAt(position)
       .text.substring(0, position.character);
 
-    if (lineType === LineType.Attribute) {
-      const match = linePrefix.match(/\b(src|original)=\s*(\S*)$/);
-      return match ? { fullTypedPath: match[2] } : undefined;
+    const attributeMatch = linePrefix.match(/\b(src|original)=\s*(\S*)$/);
+    if (attributeMatch) {
+      const lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
+        document,
+        position,
+      );
+      return lineType === LineType.Attribute
+        ? { fullTypedPath: attributeMatch[2] }
+        : undefined;
     }
 
-    if (lineType === LineType.Text) {
-      const match = linePrefix.match(/!\[[^\]]*\]\(([^)\s]*)$/);
-      return match ? { fullTypedPath: match[1] } : undefined;
+    const markdownImageMatch = linePrefix.match(/!\[[^\]]*\]\(([^)\s]*)$/);
+    if (markdownImageMatch) {
+      const lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
+        document,
+        position,
+      );
+      return lineType === LineType.Text
+        ? { fullTypedPath: markdownImageMatch[1] }
+        : undefined;
     }
 
     return undefined;
+  }
+
+  private retriggerPathCompletionAfterFilenameCharacter(
+    event: vscode.TextDocumentChangeEvent,
+  ): void {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document !== event.document) return;
+    if (!isWriterlyFilePath(event.document.uri.fsPath)) return;
+    if (event.contentChanges.length !== 1) return;
+
+    const change = event.contentChanges[0];
+    if (!FILENAME_CHARACTER_PATTERN.test(change.text)) return;
+
+    const position = change.range.start.translate(0, change.text.length);
+    if (!this.getPathCompletionContext(event.document, position)) return;
+
+    void vscode.commands.executeCommand("editor.action.triggerSuggest");
   }
 
   private searchNodesByMap(search: string): FileNode[] {
