@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "path";
 import { WriterlyDocumentWalker, LineType } from "./WriterlyDocumentWalker";
 import WriterlyStaticValidator from "./WriterlyStaticValidator";
 import {
@@ -643,13 +644,14 @@ export class WriterlyLinkProvider
   }
 
   private getRelativeWorkspacePath(fullPath: string): string {
-    if (!vscode.workspace.workspaceFolders) {
-      return fullPath.split(/[/\\]/).pop() || fullPath;
-    }
+    for (const folder of vscode.workspace.workspaceFolders || []) {
+      const workspaceRoot = folder.uri.fsPath;
+      if (!this.isPathUnderParent(fullPath, workspaceRoot)) continue;
 
-    const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
-    if (fullPath.startsWith(workspaceRoot)) {
-      return fullPath.slice(workspaceRoot.length).replace(/^[/\\]/, "/");
+      const relativePath = path.relative(workspaceRoot, fullPath);
+      return relativePath
+        ? this.normalizePathSeparators(relativePath)
+        : folder.name;
     }
 
     return fullPath.split(/[/\\]/).pop() || fullPath;
@@ -1136,7 +1138,15 @@ export class WriterlyLinkProvider
   }
 
   private isPathUnderParent(filePath: string, parentPath: string): boolean {
-    return filePath.startsWith(parentPath);
+    const relativePath = path.relative(parentPath, filePath);
+    return (
+      relativePath === "" ||
+      (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+    );
+  }
+
+  private normalizePathSeparators(filePath: string): string {
+    return filePath.replace(/\\/g, "/");
   }
 
   private validateHandleDefinitions(
