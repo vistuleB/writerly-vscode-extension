@@ -24,6 +24,7 @@ declare module "vscode" {
 
 type FSPath = string;
 type HandleName = string;
+type DocumentTreeKey = string;
 
 type HandleDefinition = {
   fsPath: FSPath;
@@ -65,7 +66,10 @@ export class WriterlyLinkProvider
   private diagnosticCollection: vscode.DiagnosticCollection;
   private isInitialized = false;
   private documentLinks: Map<FSPath, vscode.DocumentLink[]> = new Map();
-  private usageCounts: Map<HandleName, number> = new Map();
+  private usageCounts: Map<
+    HandleName,
+    Map<DocumentTreeKey, number>
+  > = new Map();
   private revalidateTimer: NodeJS.Timeout | undefined;
 
   constructor(context: vscode.ExtensionContext) {
@@ -281,6 +285,8 @@ export class WriterlyLinkProvider
     const oldPath = oldUri.fsPath;
     const newPath = newUri.fsPath;
 
+    const parentChanged =
+      this.isWriterlyParent(oldPath) || this.isWriterlyParent(newPath);
     if (this.isWriterlyParent(oldPath)) this.handleParentFileDelete(oldUri);
     if (this.isWriterlyParent(newPath)) this.handleParentFileCreate(newUri);
 
@@ -293,21 +299,26 @@ export class WriterlyLinkProvider
         this.definitions.set(handleName, updatedDefinitions);
       }
     }
+
+    if (parentChanged) {
+      this.rebuildUsageCounts();
+    }
   }
 
   private deleteUri(uri: vscode.Uri): void {
     const targetPath = uri.fsPath;
+    const parentChanged = this.isWriterlyParent(uri.fsPath);
 
-    // 1. subtract usages from the global counter before we lose the data
+    // 1. subtract usages from the tree-scoped counters before we lose the data
     const cachedLinks = this.documentLinks.get(targetPath);
     if (cachedLinks) {
       cachedLinks.forEach((link) =>
-        this.updateUsageCount(link.data.handleName, -1),
+        this.updateUsageCount(link.data.handleName, link.data.fsPath, -1),
       );
     }
 
     // 2. handle parent directory logic
-    if (this.isWriterlyParent(uri.fsPath)) this.handleParentFileDelete(uri);
+    if (parentChanged) this.handleParentFileDelete(uri);
 
     // 3. clear definitions from the map
     for (const [handleName, definitions] of this.definitions) {
@@ -328,6 +339,10 @@ export class WriterlyLinkProvider
     // 4. remove from links map
     this.documentLinks.delete(targetPath);
 
+    if (parentChanged) {
+      this.rebuildUsageCounts();
+    }
+
     // 5. trigger tree revalidation to clear warnings in other files
     if (this.isInitialized) {
       this.triggerTreeRevalidation(targetPath);
@@ -335,8 +350,12 @@ export class WriterlyLinkProvider
   }
 
   private async createUri(uri: vscode.Uri): Promise<void> {
-    if (this.isWriterlyParent(uri.fsPath)) this.handleParentFileCreate(uri);
-    this.processUri(uri);
+    const parentChanged = this.isWriterlyParent(uri.fsPath);
+    if (parentChanged) this.handleParentFileCreate(uri);
+    await this.processUri(uri);
+    if (parentChanged) {
+      this.rebuildUsageCounts();
+    }
   }
 
   private async processUri(uri: vscode.Uri): Promise<void> {
@@ -358,16 +377,18 @@ export class WriterlyLinkProvider
 
     // 1. subtract old usages from this specific file before clearing
     const oldLinks = this.documentLinks.get(currentFsPath) || [];
-    oldLinks.forEach((link) => this.updateUsageCount(link.data.handleName, -1));
+    oldLinks.forEach((link) =>
+      this.updateUsageCount(link.data.handleName, link.data.fsPath, -1),
+    );
 
     // 2. standard cleanup and extraction
     this.clearDocumentDefinitions(currentFsPath);
     const diagnostics: vscode.Diagnostic[] = [];
     const documentLinks = this.walkDocument(document, diagnostics);
 
-    // 3. add new usages to the global counter
+    // 3. add new usages to the tree-scoped counters
     documentLinks.forEach((link) =>
-      this.updateUsageCount(link.data.handleName, 1),
+      this.updateUsageCount(link.data.handleName, link.data.fsPath, 1),
     );
 
     if (this.isInitialized) {
@@ -1197,8 +1218,7 @@ export class WriterlyLinkProvider
 
       // 4. PRIORITY 3: LINT WARNING (Unused)
       if (this.isUnusedWarningEnabled()) {
-        const globalUsageCount = this.usageCounts.get(handleName) || 0;
-        if (globalUsageCount === 0) {
+        if (this.getUsageCountInDocumentTree(handleName, currentFsPath) === 0) {
           // If unused, highlight all definitions in this file (usually just one, but safe to loop)
           localDefs.forEach((localDef) => {
             diagnostics.push(
@@ -1247,14 +1267,56 @@ export class WriterlyLinkProvider
     }, 300);
   }
 
-  // helper to modify counts safely
-  private updateUsageCount(handleName: string, delta: number) {
-    const current = this.usageCounts.get(handleName) || 0;
-    const next = current + delta;
-    if (next <= 0) {
+  private getDocumentTreeKeys(fsPath: string): DocumentTreeKey[] {
+    return [
+      fsPath,
+      ...this.parents.filter((parentPath) =>
+        this.isPathUnderParent(fsPath, parentPath),
+      ),
+    ];
+  }
+
+  private getUsageCountInDocumentTree(
+    handleName: string,
+    fsPath: string,
+  ): number {
+    const countsByTree = this.usageCounts.get(handleName);
+    if (!countsByTree) return 0;
+
+    return this.getDocumentTreeKeys(fsPath).reduce(
+      (sum, treeKey) => sum + (countsByTree.get(treeKey) || 0),
+      0,
+    );
+  }
+
+  private rebuildUsageCounts(): void {
+    this.usageCounts.clear();
+    for (const links of this.documentLinks.values()) {
+      for (const link of links) {
+        this.updateUsageCount(link.data.handleName, link.data.fsPath, 1);
+      }
+    }
+  }
+
+  private updateUsageCount(handleName: string, fsPath: string, delta: number) {
+    let countsByTree = this.usageCounts.get(handleName);
+    if (!countsByTree) {
+      countsByTree = new Map();
+      this.usageCounts.set(handleName, countsByTree);
+    }
+
+    for (const treeKey of this.getDocumentTreeKeys(fsPath)) {
+      const current = countsByTree.get(treeKey) || 0;
+      const next = current + delta;
+      if (next <= 0) {
+        countsByTree.delete(treeKey);
+      } else {
+        countsByTree.set(treeKey, next);
+      }
+    }
+
+    if (countsByTree.size === 0) {
       this.usageCounts.delete(handleName);
-    } else {
-      this.usageCounts.set(handleName, next);
     }
   }
   private isUnusedWarningEnabled(): boolean {
