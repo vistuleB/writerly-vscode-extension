@@ -41,9 +41,9 @@ const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/u;
 const HANDLE_DECORATOR_CHARS: string = "\\p{L}\\p{N}\\p{M}_:\\-";
 const HANDLE_DECORATOR_REGEX_STRING: string = `#[${HANDLE_DECORATOR_CHARS}]+`;
 const HANDLE_DECORATORS_REGEX_STRING: string = `(?:${HANDLE_DECORATOR_REGEX_STRING})*`;
-// Matches "handleName[decorators]##<<" preceded by space, '(', or '['
+// Matches "handleName[decorators]##<<" preceded by space, '{', '(', or '['
 const IN_TEXT_DEF_REGEX = new RegExp(
-  `[ \\(\\[](${HANDLE_REGEX_STRING})(${HANDLE_DECORATORS_REGEX_STRING})##<<`,
+  `[ {(\\[](${HANDLE_REGEX_STRING})(${HANDLE_DECORATORS_REGEX_STRING})##<<`,
   "gu",
 );
 
