@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import { isWriterlyFilePath } from "./WriterlyFileExtensions";
+import { LineType, WriterlyDocumentWalker } from "./WriterlyDocumentWalker";
 import { SUPPORTED_IMAGE_FILE_EXTENSIONS } from "./utils/file-utils";
 
 interface FileNode {
@@ -163,6 +164,14 @@ export class WriterlyCompletionProvider
     position: vscode.Position,
   ): vscode.ProviderResult<vscode.CompletionItem[]> {
     if (!isWriterlyFilePath(document.uri.fsPath)) {
+      return undefined;
+    }
+
+    const lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
+      document,
+      position,
+    );
+    if (lineType !== LineType.Attribute) {
       return undefined;
     }
 
