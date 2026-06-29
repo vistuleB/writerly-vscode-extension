@@ -37,9 +37,13 @@ export class WriterlyCompletionProvider
       "gif",
       "svg",
       "webp",
+      "avif",
+      "heic",
+      "heif",
       "bmp",
       "ipe",
       "psd",
+      "tif",
       "tiff",
     ];
     return [...base, ...base.map((ext) => ext.toUpperCase())];
