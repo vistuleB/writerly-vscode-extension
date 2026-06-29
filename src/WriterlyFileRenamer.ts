@@ -99,6 +99,7 @@ export class WriterlyFileRenamer {
       vscode.window.showErrorMessage(
         "A file with the new name already exists in the same directory",
       );
+      return;
     }
 
     const { error: renameError } = await tryCatch(
@@ -111,6 +112,7 @@ export class WriterlyFileRenamer {
     if (renameError) {
       vscode.window.showErrorMessage("Failed to rename file");
       console.error("Rename error:", renameError);
+      return;
     }
 
     const newFilePath = filePath.replace(/[^\/]+$/, newFileName);
@@ -176,6 +178,7 @@ export class WriterlyFileRenamer {
       vscode.window.showErrorMessage(
         "A file with the same name already exists in the target directory",
       );
+      return;
     }
 
     const { error: moveError } = await tryCatch(
@@ -187,6 +190,7 @@ export class WriterlyFileRenamer {
     if (moveError) {
       vscode.window.showErrorMessage("Failed to move file");
       console.error("Move error:", moveError);
+      return;
     }
 
     const newFilePath = path.join(newDirPath, fileName);
