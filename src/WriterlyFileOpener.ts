@@ -62,12 +62,12 @@ export class WriterlyFileOpener {
       targetPath = uri.fsPath;
     }
 
-    // Verify it's actually an image before calling the system
-    if (targetPath && fileUtils.isImageFile(targetPath)) {
-      await this.openResolvedPath(targetPath, OpeningMethod.WITH_DEFAULT);
-    } else {
-      vscode.window.showWarningMessage("Active file is not a supported image.");
+    if (!targetPath) {
+      vscode.window.showWarningMessage("No active file found.");
+      return;
     }
+
+    await this.openResolvedPath(targetPath, OpeningMethod.WITH_DEFAULT);
   }
 
   private static async openWithSystemCommand(filePath: string): Promise<void> {
