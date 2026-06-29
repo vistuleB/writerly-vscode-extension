@@ -12,12 +12,52 @@ import {
 } from "./WriterlyFileExtensions";
 
 /*
- * WriterlyLinkProvider owns the handle system end to end: workspace indexing,
- * document links, definitions, rename edits, completions, handle diagnostics,
- * unused-handle accounting, and parent-file document-tree scoping. These areas
- * share enough state that they currently live together, but future cleanup could
- * split out the index/cache, document-tree scope logic, diagnostics, and VS Code
- * provider adapters.
+ * WriterlyLinkProvider currently owns the handle subsystem end to end.
+ *
+ * Maintained state:
+ * - definitions: maps each handle name to every definition range currently
+ *   indexed in active Writerly files. Multiple definitions are allowed in the
+ *   raw cache; diagnostics and navigation resolve ambiguity later within the
+ *   caller's document-tree scope.
+ * - documentLinks: maps each file path to the handle-usage links extracted
+ *   from that file. Each link stores the handle name, source file path, and
+ *   current validation state so link rendering, diagnostics, rename, and usage
+ *   counts all work from the same extracted usage data.
+ * - usageCounts: maps each handle name to usage counts per document tree.
+ *   Counts are updated when a file is reprocessed so unused-handle diagnostics
+ *   stay scoped to the same parent-file tree as definitions.
+ * - parents: stores directories containing configured Writerly parent files.
+ *   This scope index decides which definitions are visible from a given file.
+ * - diagnosticCollection: owns all handle and syntax diagnostics reported by
+ *   this provider; diagnostics are replaced per file after reprocessing.
+ * - isInitialized/revalidateTimer: prevent premature provider work and debounce
+ *   tree-wide revalidation after parent-file changes.
+ *
+ * Features provided:
+ * - Workspace indexing:
+ *   - discovers active Writerly files and parent files
+ *   - walks documents to extract handle definitions and usages
+ *   - updates caches from file-system events and open-document changes
+ * - Document-tree scoping:
+ *   - resolves the parent-file tree containing a file
+ *   - filters definitions and usage counts to that tree
+ * - Editor navigation:
+ *   - DocumentLinkProvider renders >>handle usages as clickable editor links
+ *   - DefinitionProvider resolves F12 targets for visible, unambiguous handles
+ * - Rename support:
+ *   - RenameProvider renames attribute definitions, in-text definitions, and
+ *     usages across the current document tree
+ * - Completion support:
+ *   - CompletionItemProvider offers visible handle names after >>
+ * - Diagnostics and quick fixes:
+ *   - runs WriterlyStaticValidator while walking documents
+ *   - reports invalid handle names, unresolved usages, duplicate definitions,
+ *     and optionally unused definitions
+ *   - CodeActionProvider offers quick fixes for unresolved handle diagnostics
+ *
+ * These domains share the same definition/link/scope caches, so they remain in
+ * one file for now. Future factoring can split the index/cache, document-tree
+ * scope resolution, diagnostics, and VS Code provider adapters.
  */
 
 enum ValidationState {
