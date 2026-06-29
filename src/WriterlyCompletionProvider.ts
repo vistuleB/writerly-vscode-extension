@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "path";
 import { isWriterlyFilePath } from "./WriterlyFileExtensions";
 import { SUPPORTED_IMAGE_FILE_EXTENSIONS } from "./utils/file-utils";
 
@@ -112,7 +113,9 @@ export class WriterlyCompletionProvider
         const isFile = i === parts.length - 1;
         accumulatedPath = accumulatedPath ? `${accumulatedPath}/${part}` : part;
 
-        let existingNode = currentLevel.find((node) => node.name === part);
+        let existingNode = isFile
+          ? undefined
+          : currentLevel.find((node) => node.name === part);
         if (!existingNode) {
           existingNode = {
             name: part,
@@ -191,12 +194,11 @@ export class WriterlyCompletionProvider
       }
     }
 
-    const uniqueResults = new Map<string, FileNode>();
-    for (const n of candidateNodes) {
-      uniqueResults.set(`${n.name}-${n.type}`, n);
-    }
-
-    return Array.from(uniqueResults.values()).map((node) =>
+    const sortedNodes = this.sortNodesByCloseness(
+      this.dedupeCandidateNodes(candidateNodes),
+      document.uri.fsPath,
+    );
+    return sortedNodes.map((node) =>
       this.createCompletionItem(node, position, currentSearch),
     );
   }
@@ -208,13 +210,7 @@ export class WriterlyCompletionProvider
         found.push(...nodes);
       }
     }
-    const seen = new Set<string>();
-    return found.filter((node) => {
-      const key = `${node.name}-${node.type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return found;
   }
 
   private findNodesBySequence(sequence: string[]): FileNode[] {
@@ -231,6 +227,50 @@ export class WriterlyCompletionProvider
       if (walker) matches.push(walker);
     }
     return matches;
+  }
+
+  private dedupeCandidateNodes(nodes: FileNode[]): FileNode[] {
+    const seen = new Set<string>();
+    return nodes.filter((node) => {
+      const key = node.uri?.fsPath ?? `${node.type}:${node.fullPath}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private sortNodesByCloseness(
+    nodes: FileNode[],
+    currentFsPath: string,
+  ): FileNode[] {
+    return [...nodes].sort((a, b) => {
+      const closenessDelta =
+        this.commonAncestorDepth(b.uri?.fsPath, currentFsPath) -
+        this.commonAncestorDepth(a.uri?.fsPath, currentFsPath);
+      if (closenessDelta !== 0) return closenessDelta;
+      return a.fullPath.localeCompare(b.fullPath);
+    });
+  }
+
+  private commonAncestorDepth(
+    candidateFsPath: string | undefined,
+    currentFsPath: string,
+  ): number {
+    if (!candidateFsPath) return -1;
+
+    const candidateParts = path.dirname(candidateFsPath).split(path.sep);
+    const currentParts = path.dirname(currentFsPath).split(path.sep);
+    let depth = 0;
+
+    while (
+      depth < candidateParts.length &&
+      depth < currentParts.length &&
+      candidateParts[depth] === currentParts[depth]
+    ) {
+      depth++;
+    }
+
+    return depth;
   }
 
   private createCompletionItem(
@@ -252,6 +292,14 @@ export class WriterlyCompletionProvider
     const pathParts = node.fullPath.split("/");
     if (pathParts.length > 1) {
       item.detail = `in ${pathParts.slice(0, -1).join(" › ")}`;
+    }
+    const workspaceFolder = node.uri
+      ? vscode.workspace.getWorkspaceFolder(node.uri)
+      : undefined;
+    if (workspaceFolder) {
+      item.detail = item.detail
+        ? `${item.detail} (${workspaceFolder.name})`
+        : `in ${workspaceFolder.name}`;
     }
 
     const startPos = position.translate(0, -currentSearch.length);
