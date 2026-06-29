@@ -7,27 +7,54 @@ Writerly is a markup language extension for VS Code that makes creating structur
 ### Open and Preview Files & Images
 
 - Open any file under your cursor with the default application by using `Ctrl+Shift+O` (or `Cmd+Shift+O` on Mac)
-- Hover over filenames to preview images directly inside of documents (supports PNG, JPG, SVG, and more)
-- Get file suggestions when typing `src=` or `original=` attributes
+- Hover over resolved image filenames to preview PNG, JPG/JPEG, GIF, SVG, and ICO files
+- Get image-like file suggestions when typing `src=` or `original=` attributes
 
 ### Navigate Your Documents
 
-- Create links between sections using `>>MyRef` handles
+- Create links between sections using `>>MyRef` handle usages
+- Define handles with `handle=MyRef` attributes or in text with `MyRef##<<`
 - Jump to any link with `F12`
 - Rename links everywhere with `F2`
-- See warnings about unused links
+- See warnings about unused handle definitions
 
 ### Smart Writing Help
 
-- Get real-time feedback about your formatting
-- See warnings for undefined references
-- Auto-complete file paths when typing `src=` or `original=`
+- Get diagnostics for indentation, tabs in initial whitespace, tag syntax, empty tags, and code block structure
+- See diagnostics for undefined handles, duplicate handle definitions, and invalid handle names
+- Auto-complete image-like file paths when typing `src=` or `original=`
 
 ### Manage Files From the Editor
 
-- Rename the file referenced under your cursor (and update every Writerly reference to it)
-- Move the file under your cursor to another directory in the workspace (references are updated too)
+- Rename the file referenced under your cursor and update matching path text in Writerly files
+- Move the file under your cursor to another directory in the workspace and update matching path text in Writerly files
 - Create a new file from a template by placing your cursor on a not-yet-existing file path
+
+## Handles
+
+Handle definitions are indexed across the active Writerly file set. A handle can
+be defined as an attribute line after a tag:
+
+```writerly
+|> section
+    handle=MyRef
+```
+
+It can also be defined inline in text:
+
+```writerly
+MyRef##<<
+```
+
+Handle usages use `>>`:
+
+```writerly
+See >>MyRef
+```
+
+`F12` goes to a single unambiguous definition. `F2` renames matching definitions
+and usages in the same document tree. Undefined usages, duplicate definitions,
+invalid names, and optionally unused definitions are reported as diagnostics.
 
 ## Available Commands
 
@@ -44,7 +71,7 @@ Writerly is a markup language extension for VS Code that makes creating structur
 
 The `writerly.createFileUnderCursorFromTemplate` command lets you scaffold a new file directly from a path written in your document. Place the cursor on a file path that does **not** exist yet and run the command. The extension will:
 
-1. Resolve the directory portion of the path to a unique directory in the workspace (it aborts if the directory is ambiguous or missing, or if a file with that name already exists).
+1. Resolve the directory portion of the path to a unique directory in the workspace (it aborts if the directory is ambiguous or missing, or if a file with that name already exists). Bare directory paths are suffix-matched. Paths beginning with `./` are resolved relative to the workspace folder containing the active Writerly document.
 2. Look up your configured template files directory (see below).
 3. Collect every template file (recursively) sharing the same extension as the new file.
 4. Pick the template whose name shares the longest suffix with the new file name.
@@ -61,6 +88,59 @@ This setting is workspace-scoped — You can set it in the workspace's `.vscode/
   "writerly.templateFilesDirectory": "./templates"
 }
 ```
+
+## Path Resolution
+
+Under-cursor open, hover, rename, move, and create-from-template commands
+resolve path text against files or directories in the workspace.
+
+- File operations require one unique matching file. If multiple matching files
+  exist, the command aborts.
+- Hover requires one unique matching file. If the path is missing or ambiguous,
+  no hover is shown.
+- Directory prompts for move/create-from-template require one unique matching
+  directory.
+- Bare directory paths are suffix-matched anywhere in the workspace.
+- Directory paths beginning with `./` are resolved relative to the workspace
+  folder containing the active Writerly document.
+
+Reference updates after file rename/move use matching text replacement in
+Writerly files. They are not parser-aware replacements limited to `src=` or
+`original=` attributes.
+
+## File Path Completion
+
+Path completion is offered inside `src=` and `original=` attribute values.
+Indexed file extensions are:
+
+```text
+png, jpg, jpeg, gif, svg, webp, avif, heic, heif, bmp, ipe, psd, tif, tiff
+```
+
+Uppercase variants are also indexed.
+
+## Diagnostics And Language Behavior
+
+The extension reports diagnostics for:
+
+- indentation that is too deep, too low, or not a multiple of four spaces
+- tabs in initial whitespace
+- empty tags
+- invalid tag names
+- code block openings inside code blocks
+- unclosed code blocks
+- spaces in code block info annotations
+- invalid handle names
+- undefined handle usages
+- duplicate handle definitions in the same document tree
+- unused handle definitions, when enabled
+
+Language configuration:
+
+- `!!` is the line comment marker.
+- Pressing Enter after a `|>` line auto-indents the next line.
+- `{}`, `[]`, `()`, and `""` are configured as auto-closing/surrounding pairs.
+- Folding is indentation-based.
 
 ## File Extension Settings
 
@@ -104,3 +184,16 @@ also set `files.associations` in user or workspace settings:
   "writerly.enabledFileExtensions": [".writerly"]
 }
 ```
+
+## Other Settings
+
+Unused handle warnings are enabled by default:
+
+```jsonc
+{
+  "writerly.enableUnusedHandleWarnings": true
+}
+```
+
+Set it to `false` to keep handle diagnostics enabled while suppressing unused
+definition warnings.

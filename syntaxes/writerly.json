@@ -32,7 +32,7 @@
       ]
     },
     "block-with-attributes": {
-      "begin": "^( *)(\\|\\>?)( *)(|(?:.*[^ ]))( *)$",
+      "begin": "^( *)(\\|>)( *)(|(?:.*[^ ]))( *)$",
       "beginCaptures": {
         "1": {
           "name": "punctuation.whitespace.leading"
