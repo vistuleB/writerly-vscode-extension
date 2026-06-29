@@ -10,7 +10,7 @@
 
 This file tests the Writerly extension with the correct .wly file extension.
 The language ID should now be "wly" instead of "writerly". _Hi_##<<
->>_Hi_ >>yoyo-24_
+>>_Hi_ >>yoyo-24_ ![](inner_dir/s_logo.svg)
 
 |> semantic-tokens
     feature=highlighting
