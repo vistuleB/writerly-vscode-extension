@@ -60,22 +60,23 @@ invalid names, and optionally unused definitions are reported as diagnostics.
 
 ## Writerly Document Trees
 
-Writerly documents can be assembled from a single `.wly` file or from a
-directory tree of `.wly` files.
+For editor features, the extension groups `.wly` files into document trees using
+the same directory shape as Writerly assembly, with one deliberate difference:
+the extension ignores `#` path segments so commented-out fragments remain fully
+editable.
 
-Two different Writerly files are considered able to belong to the same document
-tree when there is some directory that could be assembled as one Writerly
-document and that directory would include both files:
+Two different Writerly files belong to the same extension document tree when
+there is some directory that contains both files as part of its `.wly` subtree:
 
-- The directory must contain at least one direct uncommented `.wly` file.
-- Both files must be uncommented `.wly` descendants of that directory.
-- Commented files and subtrees are ignored. A path is commented when the file
-  name or any directory segment starts with `#`, such as `#draft.wly` or
-  `chapter/#old-scene/scene.wly`.
+- The directory must contain at least one direct `.wly` file.
+- Both files must be `.wly` descendants of that directory.
+- A subtree such as `#draft/` may be excluded by the Writerly assembler, but the
+  extension still treats it as editable Writerly material for handles, rename,
+  completion, and diagnostics.
 - `__parent.wly` is not required for document-tree membership. It affects the
   assembled structure by making descendant files appear nested under that parent
   file.
-- A single `.wly` file can also be assembled by itself.
+- A single `.wly` file also has its own document scope.
 
 ## Available Commands
 

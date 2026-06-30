@@ -28,8 +28,9 @@ import {
  * - usageCounts: maps each handle name to usage counts per document tree.
  *   Counts are updated when a file is reprocessed so unused-handle diagnostics
  *   stay scoped to the same assemblable document roots as definitions.
- * - documentRoots: stores assemblable root directories. A directory is a root
- *   when it contains at least one direct uncommented .wly file.
+ * - documentRoots: stores extension document roots. A directory is a root when
+ *   it contains at least one direct .wly file; editor semantics intentionally
+ *   ignore # path segments.
  * - diagnosticCollection: owns all handle and syntax diagnostics reported by
  *   this provider; diagnostics are replaced per file after reprocessing.
  * - isInitialized/revalidateTimer: prevent premature provider work and debounce

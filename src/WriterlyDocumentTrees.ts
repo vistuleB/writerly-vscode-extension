@@ -15,7 +15,7 @@ export async function discoverWriterlyDocumentRoots(
   const roots = new Set<string>();
 
   for (const uri of uris) {
-    if (isUncommentedWriterlyPath(uri.fsPath)) {
+    if (isWriterlyFilePath(uri.fsPath)) {
       roots.add(path.dirname(uri.fsPath));
     }
   }
@@ -27,15 +27,14 @@ export function getDocumentTreeKeys(
   fsPath: string,
   documentRoots: readonly string[],
 ): string[] {
-  const keys = [fsPath];
-  if (!isUncommentedWriterlyPath(fsPath)) return keys;
+  if (!isWriterlyFilePath(fsPath)) return [];
 
-  keys.push(
+  return [
+    fsPath,
     ...documentRoots.filter((rootPath) =>
       isPathUnderDirectory(fsPath, rootPath),
     ),
-  );
-  return keys;
+  ];
 }
 
 export function isInSameWriterlyDocumentTree(
@@ -43,13 +42,13 @@ export function isInSameWriterlyDocumentTree(
   secondFsPath: string,
   documentRoots: readonly string[],
 ): boolean {
-  if (firstFsPath === secondFsPath) return true;
   if (
-    !isUncommentedWriterlyPath(firstFsPath) ||
-    !isUncommentedWriterlyPath(secondFsPath)
+    !isWriterlyFilePath(firstFsPath) ||
+    !isWriterlyFilePath(secondFsPath)
   ) {
     return false;
   }
+  if (firstFsPath === secondFsPath) return true;
 
   return documentRoots.some(
     (rootPath) =>
@@ -61,14 +60,12 @@ export function isInSameWriterlyDocumentTree(
 export async function getNearestWriterlyDocumentRoot(
   fsPath: string,
 ): Promise<string | undefined> {
+  if (!isWriterlyFilePath(fsPath)) return undefined;
+
   const roots = await discoverWriterlyDocumentRoots();
   return roots
     .filter((rootPath) => isPathUnderDirectory(fsPath, rootPath))
     .sort((a, b) => b.length - a.length)[0];
-}
-
-export function isUncommentedWriterlyPath(fsPath: string): boolean {
-  return isWriterlyFilePath(fsPath) && !hasCommentedPathSegment(fsPath);
 }
 
 export function isPathUnderDirectory(fsPath: string, dirPath: string): boolean {
@@ -77,24 +74,4 @@ export function isPathUnderDirectory(fsPath: string, dirPath: string): boolean {
     relativePath === "" ||
     (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
   );
-}
-
-function hasCommentedPathSegment(fsPath: string): boolean {
-  const workspaceFolder = getClosestWorkspaceFolder(fsPath);
-  const relativePath = workspaceFolder
-    ? path.relative(workspaceFolder.uri.fsPath, fsPath)
-    : fsPath;
-
-  return relativePath
-    .split(path.sep)
-    .some((segment) => segment.startsWith("#"));
-}
-
-function getClosestWorkspaceFolder(
-  fsPath: string,
-): vscode.WorkspaceFolder | undefined {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  return folders
-    .filter((folder) => isPathUnderDirectory(fsPath, folder.uri.fsPath))
-    .sort((a, b) => b.uri.fsPath.length - a.uri.fsPath.length)[0];
 }

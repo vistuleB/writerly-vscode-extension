@@ -6,6 +6,10 @@ Use factual, information-only language. Avoid conversational validation, emotion
 praise, filler, or agreement phrases such as "fair", "good call", "makes sense", or similar.
 State what was observed, what changed, what command was run, and what the result was.
 
+## Interpreting User Intent
+
+A message phrased as a question is not an action request by default, even when it discusses a possible code change. If the user ends a paragraph or message with `?`, first answer the question and give an opinion or recommendation. Do not edit files, run commits, or change behavior from that question alone. Proceed with implementation only after an explicit imperative request such as "please implement", "do this", "change it", "commit it", or equivalent.
+
 ## What This Repo Does
 
 A TypeScript VSCode extension (publisher: `TabbyNotes`) that provides editor support for
@@ -159,8 +163,9 @@ The most complex provider. It maintains workspace-wide state and implements:
 - `usageCounts: Map<HandleName, number>` — total usage count across all files (used for
   unused-handle warnings)
 - `documentRoots: FSPath[]` — list of assemblable root directories. A directory
-  is an assemblable root when it contains at least one direct uncommented `.wly`
-  file.
+  is an extension document root when it contains at least one direct `.wly` file.
+  The extension intentionally ignores `#` path segments for editor semantics,
+  even though the Writerly assembler treats them as commented out.
 
 **Lifecycle:** on startup, `initializeAsync()` discovers assemblable root directories
 and processes all Writerly files in the workspace. A `FileSystemWatcher` keeps state current as files are
