@@ -28,6 +28,7 @@ Writerly is a markup language extension for VS Code that makes creating structur
 
 - Rename the file referenced under your cursor and update matching path text in Writerly files
 - Move the file under your cursor to another directory in the workspace and update matching path text in Writerly files
+- Move multiple selected file references at once when they share the same source directory
 - Use `F2` / Rename Symbol on the filename part of a file path to rename the referenced file
 - Use `F2` / Rename Symbol on the directory part of a file path to move the referenced file
 - Create a new file from a template by placing your cursor on a not-yet-existing file path
@@ -89,7 +90,7 @@ same document tree:
 - `writerly.openUnderCursorAsImageWithVSCode` - Open image under cursor with VS Code
 - `writerly.openFileWithDefault` - Open current file with system default
 - `writerly.renameFileUnderCursor` - Rename the file under the cursor and update references
-- `writerly.moveFileUnderCursor` - Move the file under the cursor to another workspace directory
+- `writerly.moveFileUnderCursor` - Move the file or same-directory multi-cursor files under selection to another workspace directory
 - `writerly.createFileUnderCursorFromTemplate` - Create the file under the cursor from a matching template
 - `writerly.restart` - Restart the extension
 

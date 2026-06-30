@@ -200,6 +200,13 @@ characters `[\s'"=\[\]\{\}\(\);!<>|]`) relative to the workspace root, then open
 - `OpeningMethod.WITH_VSCODE` — VSCode text editor
 - `OpeningMethod.AS_IMAGE_WITH_VSCODE` — VSCode image viewer
 
+### `WriterlyFileRenamer` — Rename And Move References
+
+Handles file-reference rename/move commands and Rename Symbol integration. The
+move command supports multiple selections when every selected reference uses the
+same source directory; it prompts once for the destination and moves the unique
+resolved files as one batch.
+
 ### `WriterlyFileProvider` — Activity Bar Tree View
 
 Displays all Writerly files in the workspace in a tree, mirroring the directory structure.

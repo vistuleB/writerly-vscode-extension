@@ -49,6 +49,12 @@ type FileOperationEdit = {
   successMessage: string;
 };
 
+type PathReplacement = {
+  oldResolvedPath: string;
+  oldPath: string;
+  newPath: string;
+};
+
 const PATH_TOKEN_FORBIDDEN_CHARS = /[\s'"=\[\]\{\}\(\);!<>|]/;
 
 class UserReportedFileOperationError extends Error {}
@@ -56,13 +62,15 @@ class UserReportedFileOperationError extends Error {}
 /*
  * WriterlyFileRenamer owns file-reference mutation workflows. It is mostly
  * stateless: each command or RenameProvider call resolves the path under the
- * active cursor, builds a one-shot WorkspaceEdit, applies or returns that edit,
- * and then discards all per-call data.
+ * active cursor or selections, builds a one-shot WorkspaceEdit, applies or
+ * returns that edit, and then discards all per-call data.
  *
  * Entry points:
  * - Commands:
  *   - writerly.renameFileUnderCursor prompts for a new basename.
- *   - writerly.moveFileUnderCursor prompts for a new directory path.
+ *   - writerly.moveFileUnderCursor prompts for a new directory path. With
+ *     multiple selections, all selected paths must share the same source
+ *     directory and are moved as one batch.
  *   - writerly.createFileUnderCursorFromTemplate creates a missing file path
  *     from the configured template directory.
  * - RenameProvider:
@@ -105,9 +113,7 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
         ),
       ),
       vscode.commands.registerCommand("writerly.moveFileUnderCursor", () =>
-        this.handleFileUnderCursor((target) => this.moveFileUnderCursor(target), {
-          requireExistingFile: true,
-        }),
+        this.handleMoveFileUnderSelections(),
       ),
       vscode.commands.registerCommand(
         "writerly.createFileUnderCursorFromTemplate",
@@ -261,7 +267,10 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
     const operation =
       renameTarget.mode === "fileName"
         ? await buildRenameFileEdit(target, newName)
-        : await buildMoveFileEdit(target, newName);
+        : await buildMoveFilesEdit(
+            await this.getRenameProviderMoveTargets(document, target),
+            newName,
+          );
 
     return operation?.edit;
   }
@@ -303,14 +312,110 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
     await applyFileOperationEdit(operation, target.ambiguityNotes);
   }
 
-  private async moveFileUnderCursor(target: FileCommandTarget): Promise<void> {
-    const { filePath } = target;
-    const { fileName, dirPath } = splitReferencePath(filePath);
+  private async handleMoveFileUnderSelections(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+
+    if (!editor) {
+      reportFileCommandError("No active editor found");
+      return;
+    }
+
+    if (!isWriterlyFilePath(editor.document.uri.fsPath)) {
+      reportFileCommandError(
+        "Writerly file commands are disabled for this file extension",
+      );
+      return;
+    }
+
+    const targets: FileCommandTarget[] = [];
+
+    for (const selection of editor.selections) {
+      const target = await this.getFileCommandTargetForSelection(
+        editor.document,
+        selection,
+        { requireExistingFile: true },
+      );
+      if (!target) return;
+      targets.push(target);
+    }
+
+    try {
+      await this.moveFilesUnderSelections(targets);
+    } catch (error) {
+      if (error instanceof UserReportedFileOperationError) return;
+      reportFileCommandError("Writerly file command failed unexpectedly", error);
+    }
+  }
+
+  private async getFileCommandTargetForSelection(
+    document: vscode.TextDocument,
+    selection: vscode.Selection,
+    options: FileCommandOptions,
+  ): Promise<FileCommandTarget | undefined> {
+    const positions = getSelectionResolutionPositions(selection);
+
+    for (const position of positions) {
+      const target = await this.getFileCommandTarget(document, position, {
+        ...options,
+        reportErrors: false,
+      });
+      if (target) return target;
+    }
+
+    reportFileCommandError("No resolvable file path found under selection");
+    return undefined;
+  }
+
+  private async getRenameProviderMoveTargets(
+    document: vscode.TextDocument,
+    fallbackTarget: FileCommandTarget,
+  ): Promise<FileCommandTarget[]> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document !== document || editor.selections.length < 2) {
+      return [fallbackTarget];
+    }
+
+    const targets: FileCommandTarget[] = [];
+
+    for (const selection of editor.selections) {
+      const target = await this.getFileCommandTargetForSelection(
+        document,
+        selection,
+        {
+          requireExistingFile: true,
+          throwOnAmbiguousPath: true,
+          throwOnMissingFile: true,
+        },
+      );
+      if (!target) return [fallbackTarget];
+      targets.push(target);
+    }
+
+    return targets;
+  }
+
+  private async moveFilesUnderSelections(
+    targets: FileCommandTarget[],
+  ): Promise<void> {
+    if (targets.length === 0) return;
+
+    const uniqueTargets = dedupeTargetsByResolvedPath(targets);
+    if (!uniqueTargets) return;
+
+    const sharedDirPath = getSharedMoveSourceDirectory(targets);
+    if (sharedDirPath === undefined) return;
+
+    const firstTarget = uniqueTargets[0];
+    const firstFileName = splitReferencePath(firstTarget.filePath).fileName;
+    const promptFileDescription =
+      uniqueTargets.length === 1
+        ? `"${firstFileName}"`
+        : `${uniqueTargets.length} files`;
 
     const { result: newDirPath, error } = await tryCatch(
       vscode.window.showInputBox({
-        prompt: `Enter new directory path for "${fileName}"`,
-        value: dirPath,
+        prompt: `Enter new directory path for ${promptFileDescription}`,
+        value: sharedDirPath,
         validateInput(value) {
           if (value.trim() === "") {
             return {
@@ -327,10 +432,10 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
       return;
     }
 
-    const operation = await buildMoveFileEdit(target, newDirPath);
+    const operation = await buildMoveFilesEdit(uniqueTargets, newDirPath);
     if (!operation) return;
 
-    await applyFileOperationEdit(operation, target.ambiguityNotes);
+    await applyFileOperationEdit(operation, collectAmbiguityNotes(uniqueTargets));
   }
 }
 
@@ -373,47 +478,88 @@ async function buildMoveFileEdit(
   target: FileCommandTarget,
   newDirPath: string,
 ): Promise<FileOperationEdit | undefined> {
-  const resolvedPath = getExistingResolvedPath(target);
-  if (!resolvedPath) return undefined;
+  return buildMoveFilesEdit([target], newDirPath);
+}
+
+async function buildMoveFilesEdit(
+  targets: FileCommandTarget[],
+  newDirPath: string,
+): Promise<FileOperationEdit | undefined> {
+  if (targets.length === 0) return undefined;
+
+  const uniqueTargets = dedupeTargetsByResolvedPath(targets);
+  if (!uniqueTargets) return undefined;
 
   if (newDirPath.trim() === "") {
     reportFileCommandError("Directory path cannot be empty");
     return undefined;
   }
 
-  const { fileName } = splitReferencePath(target.filePath);
+  const firstTarget = uniqueTargets[0];
   const dirResolution = await fileUtils.resolveDirectoryPath(newDirPath, {
-    rootRelativeTo: target.document.uri.fsPath,
-    resolutionRoot: target.resolutionRoot,
+    rootRelativeTo: firstTarget.document.uri.fsPath,
+    resolutionRoot: firstTarget.resolutionRoot,
   });
   const targetDir = getResolvedDirectoryPath(
     newDirPath,
     dirResolution,
     "No matching directory found in workspace for the provided path",
     undefined,
-    target.ambiguityNotes,
+    firstTarget.ambiguityNotes,
   );
   if (!targetDir) return undefined;
 
-  const newResolvedFilePath = path.join(targetDir, fileName);
-  if (await pathExists(newResolvedFilePath)) {
-    reportFileCommandError(
-      "A file with the same name already exists in the target directory",
+  const edit = new vscode.WorkspaceEdit();
+  const replacements: PathReplacement[] = [];
+  const destinationPaths = new Set<string>();
+
+  for (const target of uniqueTargets) {
+    const resolvedPath = getExistingResolvedPath(target);
+    if (!resolvedPath) return undefined;
+
+    const { fileName } = splitReferencePath(target.filePath);
+    const newResolvedFilePath = path.join(targetDir, fileName);
+    const destinationKey = path.resolve(newResolvedFilePath);
+
+    if (destinationPaths.has(destinationKey)) {
+      reportFileCommandError(
+        `Multiple selected files would move to the same destination: "${newResolvedFilePath}"`,
+      );
+      return undefined;
+    }
+    destinationPaths.add(destinationKey);
+
+    if (await pathExists(newResolvedFilePath)) {
+      reportFileCommandError(
+        `A file named "${fileName}" already exists in the target directory`,
+      );
+      return undefined;
+    }
+
+    const newFilePath = joinReferencePath(newDirPath, fileName);
+    edit.renameFile(
+      vscode.Uri.file(resolvedPath),
+      vscode.Uri.file(newResolvedFilePath),
+      { overwrite: false },
     );
-    return undefined;
+    replacements.push({
+      oldResolvedPath: resolvedPath,
+      oldPath: target.filePath,
+      newPath: newFilePath,
+    });
   }
 
-  const newFilePath = joinReferencePath(newDirPath, fileName);
-  const edit = await buildFileReferenceOperationEdit(
-    resolvedPath,
-    newResolvedFilePath,
-    target.filePath,
-    newFilePath,
+  await WriterlyPathReferenceUpdater.addPathReplacementEdits(
+    edit,
+    replacements,
   );
 
   return {
     edit,
-    successMessage: `Moved file to "${newFilePath}" and updated references in Writerly files accordingly.`,
+    successMessage:
+      uniqueTargets.length === 1
+        ? `Moved file to "${replacements[0].newPath}" and updated references in Writerly files accordingly.`
+        : `Moved ${uniqueTargets.length} files to "${newDirPath}" and updated references in Writerly files accordingly.`,
   };
 }
 
@@ -431,9 +577,13 @@ async function buildFileReferenceOperationEdit(
   );
   await WriterlyPathReferenceUpdater.addPathReplacementEdits(
     edit,
-    oldResolvedPath,
-    oldReferencePath,
-    newReferencePath,
+    [
+      {
+        oldResolvedPath,
+        oldPath: oldReferencePath,
+        newPath: newReferencePath,
+      },
+    ],
   );
   return edit;
 }
@@ -443,20 +593,23 @@ async function buildFileReferenceOperationEdit(
 class WriterlyPathReferenceUpdater {
   static async addPathReplacementEdits(
     workspaceEdit: vscode.WorkspaceEdit,
-    oldResolvedPath: string,
-    oldPath: string,
-    newPath: string,
+    replacements: PathReplacement[],
   ): Promise<void> {
     if (!vscode.workspace.workspaceFolders) {
       return;
     }
+    if (replacements.length === 0) return;
 
     const fileGlob = getWriterlyFileGlob();
     if (!fileGlob) return;
 
     const writerlyFiles = await vscode.workspace.findFiles(fileGlob);
+    const oldPathAlternatives = [...new Set(replacements.map((r) => r.oldPath))]
+      .sort((a, b) => b.length - a.length)
+      .map(escapeRegExp)
+      .join("|");
     const pathRegex = new RegExp(
-      `(^|[=\\(\\[\\{/ ])(${escapeRegExp(oldPath)})(?=\\s|[})\\]]|$)`,
+      `(^|[=\\(\\[\\{/ ])(${oldPathAlternatives})(?=\\s|[})\\]]|$)`,
       "g",
     );
 
@@ -474,9 +627,7 @@ class WriterlyPathReferenceUpdater {
         document,
         text,
         pathRegex,
-        oldPath,
-        newPath,
-        oldResolvedPath,
+        replacements,
       );
       if (newText === text) continue;
 
@@ -492,21 +643,23 @@ class WriterlyPathReferenceUpdater {
     document: vscode.TextDocument,
     text: string,
     pathRegex: RegExp,
-    oldPath: string,
-    newPath: string,
-    oldResolvedPath: string,
+    replacements: PathReplacement[],
   ): Promise<string> {
     const resolutionRoot = await getDocumentResolutionRoot(document.uri.fsPath);
+    const replacementsByOldPath = groupReplacementsByOldPath(replacements);
     let nextText = "";
     let lastIndex = 0;
     let changed = false;
 
     for (const match of text.matchAll(pathRegex)) {
       const prefix = match[1];
+      const oldPath = match[2];
       const oldPathStart = match.index! + prefix.length;
       const oldPathEnd = oldPathStart + oldPath.length;
       const tokenText = getPathTokenAtOffset(text, oldPathStart);
       if (!tokenText) continue;
+      const candidates = replacementsByOldPath.get(oldPath);
+      if (!candidates) continue;
 
       const resolution = await fileUtils.resolveUniqueFilePath(tokenText, {
         rootRelativeTo: document.uri.fsPath,
@@ -524,11 +677,17 @@ class WriterlyPathReferenceUpdater {
 
       if (
         (resolution.kind === "unique" ||
-          resolution.kind === "resolvedAmbiguous") &&
-        path.resolve(resolution.fsPath) === path.resolve(oldResolvedPath)
+          resolution.kind === "resolvedAmbiguous")
       ) {
+        const replacement = candidates.find(
+          (candidate) =>
+            path.resolve(resolution.fsPath) ===
+            path.resolve(candidate.oldResolvedPath),
+        );
+        if (!replacement) continue;
+
         nextText += text.slice(lastIndex, oldPathStart);
-        nextText += newPath;
+        nextText += replacement.newPath;
         lastIndex = oldPathEnd;
         changed = true;
       }
@@ -712,6 +871,69 @@ function getExistingResolvedPath(
   return undefined;
 }
 
+function dedupeTargetsByResolvedPath(
+  targets: FileCommandTarget[],
+): FileCommandTarget[] | undefined {
+  const targetsByResolvedPath = new Map<string, FileCommandTarget>();
+
+  for (const target of targets) {
+    const resolvedPath = getExistingResolvedPath(target);
+    if (!resolvedPath) return undefined;
+    const key = path.resolve(resolvedPath);
+    if (!targetsByResolvedPath.has(key)) {
+      targetsByResolvedPath.set(key, target);
+    }
+  }
+
+  return [...targetsByResolvedPath.values()];
+}
+
+function getSharedMoveSourceDirectory(
+  targets: FileCommandTarget[],
+): string | undefined {
+  const dirPaths = new Set(
+    targets.map((target) => splitReferencePath(target.filePath).dirPath),
+  );
+
+  if (dirPaths.size > 1) {
+    reportFileCommandError(
+      `Multi-cursor file move requires all selected paths to use the same source directory. Found: ${[...dirPaths]
+        .map((dirPath) => `"${dirPath || "."}"`)
+        .join(", ")}`,
+    );
+    return undefined;
+  }
+
+  return [...dirPaths][0] ?? "";
+}
+
+function collectAmbiguityNotes(targets: FileCommandTarget[]): string[] {
+  return [...new Set(targets.flatMap((target) => target.ambiguityNotes))];
+}
+
+function getSelectionResolutionPositions(
+  selection: vscode.Selection,
+): vscode.Position[] {
+  const positions = [
+    selection.active,
+    selection.anchor,
+    selection.start,
+    selection.end,
+  ];
+
+  if (!selection.isEmpty && selection.end.character > 0) {
+    positions.push(selection.end.translate(0, -1));
+  }
+
+  const seen = new Set<string>();
+  return positions.filter((position) => {
+    const key = `${position.line}:${position.character}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function getFileReferenceRenameTarget(
   target: FileCommandTarget,
 ): FileReferenceRenameTarget | undefined {
@@ -804,6 +1026,20 @@ function replaceReferenceFileName(filePath: string, newFileName: string): string
 
 function joinReferencePath(dirPath: string, fileName: string): string {
   return dirPath ? `${dirPath}/${fileName}` : fileName;
+}
+
+function groupReplacementsByOldPath(
+  replacements: PathReplacement[],
+): Map<string, PathReplacement[]> {
+  const replacementsByOldPath = new Map<string, PathReplacement[]>();
+
+  for (const replacement of replacements) {
+    const group = replacementsByOldPath.get(replacement.oldPath) || [];
+    group.push(replacement);
+    replacementsByOldPath.set(replacement.oldPath, group);
+  }
+
+  return replacementsByOldPath;
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
