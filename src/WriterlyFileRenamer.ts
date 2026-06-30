@@ -204,12 +204,12 @@ export class WriterlyFileRenamer {
 
     const { result: newDirPath, error } = await tryCatch(
       vscode.window.showInputBox({
-        prompt: "Enter new file path",
+        prompt: `Enter new directory path for "${fileName}"`,
         value: dirPath,
         validateInput(value) {
           if (value.trim() === "") {
             return {
-              message: "File path cannot be empty",
+              message: "Directory path cannot be empty",
               severity: vscode.InputBoxValidationSeverity.Error,
             };
           }
@@ -217,7 +217,7 @@ export class WriterlyFileRenamer {
       }),
     );
     if (!newDirPath || error) {
-      vscode.window.showErrorMessage("Failed to get new file path");
+      vscode.window.showErrorMessage("Failed to get new directory path");
       console.error("Input box error:", error);
       return;
     }
