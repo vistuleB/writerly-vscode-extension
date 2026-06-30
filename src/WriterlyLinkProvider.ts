@@ -89,8 +89,8 @@ type HandleAtPosition = {
 
 const MAX_FILES: number = 1500;
 
-const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:\\-\\^";
-const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_\\^";
+const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:\\-\\^'";
+const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_\\^'";
 const HANDLE_REGEX_STRING: string = `(?:[${HANDLE_CHARS}]*[${HANDLE_END_CHARS}])`;
 const HANDLE_DEF_RENAME_REGEX = new RegExp(
   `^\\s*(?:!!\\s*)?handle=\\s*(${HANDLE_REGEX_STRING})(#|\\s|$)`,
