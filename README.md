@@ -7,8 +7,8 @@ Writerly is a markup language extension for VS Code that makes creating structur
 ### Open and Preview Files & Images
 
 - Open any file under your cursor with the default application by using `Ctrl+Shift+O` (or `Cmd+Shift+O` on Mac)
-- Hover over resolved image filenames to preview PNG, JPG/JPEG, GIF, SVG, and ICO files
-- Get image-like file suggestions when typing `src=` or `original=` attributes
+- Hover over resolved image filenames to preview supported image-like files
+- Get image-like file suggestions in supported path-bearing attributes and Markdown image links
 
 ### Navigate Your Documents
 
@@ -22,12 +22,14 @@ Writerly is a markup language extension for VS Code that makes creating structur
 
 - Get diagnostics for indentation, tabs in initial whitespace, tag syntax, empty tags, and code block structure
 - See diagnostics for undefined handles, duplicate handle definitions, and invalid handle names
-- Auto-complete image-like file paths when typing `src=` or `original=`
+- Auto-complete image-like file paths in supported path contexts
 
 ### Manage Files From the Editor
 
 - Rename the file referenced under your cursor and update matching path text in Writerly files
 - Move the file under your cursor to another directory in the workspace and update matching path text in Writerly files
+- Use `F2` / Rename Symbol on the filename part of a file path to rename the referenced file
+- Use `F2` / Rename Symbol on the directory part of a file path to move the referenced file
 - Create a new file from a template by placing your cursor on a not-yet-existing file path
 
 ## Handles
@@ -94,24 +96,45 @@ This setting is workspace-scoped — You can set it in the workspace's `.vscode/
 Under-cursor open, hover, rename, move, and create-from-template commands
 resolve path text against files or directories in the workspace.
 
-- File operations require one unique matching file. If multiple matching files
-  exist, the command aborts.
+- File operations use the path text under the cursor to find matching files in
+  the workspace.
+- If exactly one file matches, that file is used.
+- If multiple files match, Writerly compares each match's parent directory with
+  the active Writerly document's directory. If exactly one match has the closest
+  common ancestor, that match is used and the command reports the disambiguation.
+- If multiple matches tie for closest common ancestor, the operation aborts and
+  reports the matching paths.
 - Hover requires one unique matching file. If the path is missing or ambiguous,
   no hover is shown.
-- Directory prompts for move/create-from-template require one unique matching
-  directory.
+- Directory prompts for move/create-from-template use the same closest-ancestor
+  disambiguation rule.
 - Bare directory paths are suffix-matched anywhere in the workspace.
 - Directory paths beginning with `./` are resolved relative to the workspace
   folder containing the active Writerly document.
 
 Reference updates after file rename/move use matching text replacement in
-Writerly files. They are not parser-aware replacements limited to `src=` or
-`original=` attributes.
+Writerly files:
+
+- all active Writerly files in the workspace are scanned
+- updates are not limited to a document tree
+- matches are literal matches of the old reference string, not resolved absolute
+  paths
+- each changed document is updated with a full-document text edit
+- replacements are not parser-aware and are not limited to specific attributes
 
 ## File Path Completion
 
-Path completion is offered inside `src=` and `original=` attribute values.
-Indexed file extensions are:
+Path completion is offered in:
+
+- Writerly attribute values whose attribute name ends with `src`
+- these exact attribute names: `original`, `href`, `srcset`, `poster`, `data`,
+  `background`, `icon`, `favicon`, `image`, `logo`, `thumbnail`, `preview`,
+  `cover`, `file`, `path`, `url`, `uri`, `source`, `use`
+- Markdown image paths in text lines, such as `![alt](path/to/image.png)`
+
+Ordinary Markdown links are not completion contexts.
+
+Indexed image-like file extensions are:
 
 ```text
 png, jpg, jpeg, gif, svg, webp, avif, heic, heif, bmp, ipe, psd, tif, tiff
