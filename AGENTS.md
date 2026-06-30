@@ -9,7 +9,7 @@ State what was observed, what changed, what command was run, and what the result
 ## What This Repo Does
 
 A TypeScript VSCode extension (publisher: `TabbyNotes`) that provides editor support for
-Writerly files. It activates automatically for files with the `.wly` or `.writerly` extension.
+Writerly files. It activates automatically for files with the `.wly` extension.
 
 Features:
 - Syntax highlighting (TextMate grammar)
@@ -158,11 +158,10 @@ The most complex provider. It maintains workspace-wide state and implements:
 - `documentLinks: Map<FSPath, vscode.DocumentLink[]>` — cached usage links per file
 - `usageCounts: Map<HandleName, number>` — total usage count across all files (used for
   unused-handle warnings)
-- `parents: FSPath[]` — list of directories that contain a `__parent.wly` or
-  `__parent.writerly` file (used to
-  determine which handles are reachable from which scope)
+- `parents: FSPath[]` — list of directories that contain a `__parent.wly` file
+  (used to determine which handles are reachable from which scope)
 
-**Lifecycle:** on startup, `initializeAsync()` discovers all `__parent.<writerly-extension>` files
+**Lifecycle:** on startup, `initializeAsync()` discovers all `__parent.wly` files
 and processes all Writerly files in the workspace. A `FileSystemWatcher` keeps state current as files are
 created, changed, deleted, or renamed. Changes are debounced via `triggerTreeRevalidation`.
 
@@ -224,5 +223,4 @@ keep the build consistent).
 
 | Setting | Default | Description |
 |---|---|---|
-| `writerly.enabledFileExtensions` | `[".wly", ".writerly"]` | File extensions this extension actively processes |
 | `writerly.enableUnusedHandleWarnings` | `true` | Show warnings for `handle=` definitions that are never referenced with `>>` |

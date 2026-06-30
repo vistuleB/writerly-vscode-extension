@@ -1,6 +1,6 @@
 # Writerly VSCode Extension
 
-Writerly is a markup language extension for VS Code that makes creating structured documents easier. This extension provides syntax highlighting, error reporting, and navigation tools for Writerly (`.wly` and `.writerly`) files.
+Writerly is a markup language extension for VS Code that makes creating structured documents easier. This extension provides syntax highlighting, error reporting, and navigation tools for Writerly (`.wly`) files.
 
 ## Features
 
@@ -57,6 +57,24 @@ See >>MyRef
 `F12` goes to a single unambiguous definition. `F2` renames matching definitions
 and usages in the same document tree. Undefined usages, duplicate definitions,
 invalid names, and optionally unused definitions are reported as diagnostics.
+
+## Writerly Document Trees
+
+Writerly document-tree membership is based on parent marker files.
+
+- A file named `__parent.wly` marks its containing directory as a Writerly
+  document-tree root.
+- A Writerly file belongs to a document tree when it is inside that root
+  directory or one of its subdirectories.
+- The parent marker file itself is also a Writerly file in that tree.
+- Without a shared parent marker, two different Writerly files are not in the
+  same handle scope. Handles still work inside each individual file.
+- Nested parent markers are allowed. For handle lookup and diagnostics, files
+  can share any containing parent root. For file-path disambiguation, Writerly
+  uses the nearest containing parent root for the active file.
+- If a file has no containing parent marker, file-path disambiguation falls back
+  to the containing workspace folder. That fallback does not create shared
+  handle scope between unrelated files.
 
 ## Available Commands
 
@@ -167,46 +185,26 @@ Language configuration:
 - `{}`, `[]`, `()`, and `""` are configured as auto-closing/surrounding pairs.
 - Folding is indentation-based.
 
-## File Extension Settings
+## File Association Settings
 
-Writerly contributes both `.wly` and `.writerly` as language extensions. The
-`writerly.enabledFileExtensions` setting controls which of those extensions
-Writerly actively scans and processes for diagnostics, handles, hovers,
-completions, file-tree entries, and reference updates.
-
-Default:
-
-```jsonc
-{
-  "writerly.enabledFileExtensions": [".wly", ".writerly"]
-}
-```
-
-To process only `.writerly` files:
-
-```jsonc
-{
-  "writerly.enabledFileExtensions": [".writerly"]
-}
-```
-
-To stop Writerly from actively processing either extension:
-
-```jsonc
-{
-  "writerly.enabledFileExtensions": []
-}
-```
-
-VS Code file association is separate. To make `.wly` open as another language,
-also set `files.associations` in user or workspace settings:
+Writerly contributes `.wly` as its language extension. To make `.wly` open as
+another language in user or workspace settings, use VS Code file associations:
 
 ```jsonc
 {
   "files.associations": {
     "*.wly": "plaintext"
-  },
-  "writerly.enabledFileExtensions": [".writerly"]
+  }
+}
+```
+
+To force `.wly` back to Writerly in a workspace where another association wins:
+
+```jsonc
+{
+  "files.associations": {
+    "*.wly": "writerly"
+  }
 }
 ```
 

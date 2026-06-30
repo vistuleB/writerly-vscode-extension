@@ -39,8 +39,7 @@
           "wly"
         ],
         "extensions": [
-          ".wly",
-          ".writerly"
+          ".wly"
         ],
         "configuration": "./writerly.configuration.json"
       }
@@ -52,23 +51,6 @@
           "type": "boolean",
           "default": true,
           "description": "Enable or disable warnings for unused handle definitions."
-        },
-        "writerly.enabledFileExtensions": {
-          "type": "array",
-          "default": [
-            ".wly",
-            ".writerly"
-          ],
-          "items": {
-            "type": "string",
-            "enum": [
-              ".wly",
-              ".writerly"
-            ]
-          },
-          "uniqueItems": true,
-          "scope": "resource",
-          "description": "Writerly file extensions that this extension actively processes. VS Code may still associate contributed extensions with the Writerly language unless files.associations overrides them."
         },
         "writerly.templateFilesDirectory": {
           "type": "string",
