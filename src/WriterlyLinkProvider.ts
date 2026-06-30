@@ -105,8 +105,8 @@ type HandleResolution =
 
 const MAX_FILES: number = 1500;
 
-const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:\\-\\^";
-const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_\\^";
+const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:'\\-\\^";
+const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_'\\^";
 const HANDLE_REGEX_STRING: string = `(?:[${HANDLE_CHARS}]*[${HANDLE_END_CHARS}])`;
 const HANDLE_DEF_RENAME_REGEX = new RegExp(
   `^\\s*(?:!!\\s*)?handle=\\s*(${HANDLE_REGEX_STRING})(#|\\s|$)`,
@@ -116,7 +116,7 @@ const USAGE_REGEX = new RegExp(`>>(${HANDLE_REGEX_STRING})`, "gu");
 const LOOSE_DEF_REGEX = /^handle=\s*([^\s#|]+)/u;
 
 // Decorator chars are HANDLE_CHARS minus '.' and '^'
-const HANDLE_DECORATOR_CHARS: string = "\\p{L}\\p{N}\\p{M}_:\\-";
+const HANDLE_DECORATOR_CHARS: string = "\\p{L}\\p{N}\\p{M}_:'\\-";
 const HANDLE_DECORATOR_REGEX_STRING: string = `#[${HANDLE_DECORATOR_CHARS}]+`;
 const HANDLE_DECORATORS_REGEX_STRING: string = `(?:${HANDLE_DECORATOR_REGEX_STRING})*`;
 // Matches "handleName[decorators]##<<" at start of content or preceded by space, '{', '(', or '['
@@ -587,7 +587,7 @@ export class WriterlyLinkProvider
         diagnostics.push(
           new vscode.Diagnostic(
             link.range,
-            `Invalid handle name: '${handleName}'. Handles may contain letters, numbers, marks, dots, underscores, hyphens, colons, and carets, and must end with a letter, number, mark, underscore, or caret.`,
+            `Invalid handle name: '${handleName}'. Handles may contain letters, numbers, marks, dots, underscores, hyphens, colons, apostrophes, and carets, and must end with a letter, number, mark, underscore, apostrophe, or caret.`,
             vscode.DiagnosticSeverity.Error,
           ),
         );
