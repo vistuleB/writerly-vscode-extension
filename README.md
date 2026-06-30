@@ -74,7 +74,20 @@ there is some directory that contains both files as part of its `.wly` subtree:
 - A single `.wly` file also has its own document scope.
 
 Within a document tree, handle lookup, duplicate-definition diagnostics,
-completion, and rename all use the same document-wide scope.
+completion, and rename use document-tree scope. Path segments whose names start
+with `#` define commented-out islands inside that tree for lookup and duplicate
+diagnostics:
+
+- Duplicate handle definitions are errors when their islands are comparable:
+  the same island, an ancestor island, or a descendant island.
+- Duplicate handle definitions in incomparable `#` islands do not conflict.
+- Go to definition and usage validation use the nearest accessible island with
+  a single non-ambiguous definition. Accessible means the current island or one
+  of its ancestor islands.
+- If a handle is defined only in descendant or incomparable `#` islands, the
+  usage reports that the definitions are inaccessible.
+- Handle rename applies across the whole document tree, ignoring `#` island
+  boundaries.
 
 ## Available Commands
 

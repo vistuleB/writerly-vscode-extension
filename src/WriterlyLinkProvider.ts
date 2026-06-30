@@ -9,7 +9,10 @@ import {
 } from "./WriterlyFileExtensions";
 import {
   discoverWriterlyDocumentRoots,
+  getHashIslandDepth,
   getDocumentTreeKeys,
+  isInAccessibleHashIsland,
+  isInComparableHashIsland,
   isInSameWriterlyDocumentTree,
 } from "./WriterlyDocumentTrees";
 
@@ -29,7 +32,9 @@ import {
  *   Counts are updated when a file is reprocessed so unused-handle diagnostics
  *   stay scoped to the same assemblable document roots as definitions.
  * - documentRoots: stores extension document roots. A directory is a root when
- *   it contains at least one direct .wly file.
+ *   it contains at least one direct .wly file. Broad document-tree membership
+ *   ignores hash-commented path segments; handle lookup and duplicate
+ *   diagnostics then apply hash-island scoping within that tree.
  * - diagnosticCollection: owns all handle and syntax diagnostics reported by
  *   this provider; diagnostics are replaced per file after reprocessing.
  * - isInitialized/revalidateTimer: prevent premature provider work and debounce
@@ -91,6 +96,12 @@ type HandleAtPosition = {
   handleName: HandleName;
   range: vscode.Range;
 };
+
+type HandleResolution =
+  | { kind: "ok"; definition: HandleDefinition }
+  | { kind: "notFound" }
+  | { kind: "multiple"; definitions: HandleDefinition[] }
+  | { kind: "inaccessible"; definitions: HandleDefinition[] };
 
 const MAX_FILES: number = 1500;
 
@@ -583,12 +594,12 @@ export class WriterlyLinkProvider
         continue; // Skip tree lookup for invalid names
       }
 
-      const validDefinitions = this.findDefinitionsInDocumentTree(
+      const resolution = this.resolveDefinitionForHandle(
         handleName,
         currentFsPath,
       );
 
-      if (validDefinitions.length === 1) {
+      if (resolution.kind === "ok") {
         // exactly one definition found in this logical tree
         link.data.validated = ValidationState.OK;
       } else {
@@ -597,7 +608,7 @@ export class WriterlyLinkProvider
         const diagnostic = this.createDiagnosticForUsage(
           link,
           handleName,
-          validDefinitions,
+          resolution,
         );
 
         if (diagnostic) {
@@ -610,20 +621,25 @@ export class WriterlyLinkProvider
   private createDiagnosticForUsage(
     link: vscode.DocumentLink,
     handleName: string,
-    validDefinitions: HandleDefinition[],
+    resolution: HandleResolution,
   ): vscode.Diagnostic | null {
-    const definitionCount = validDefinitions.length;
-
-    if (definitionCount === 1) {
+    if (resolution.kind === "ok") {
       return null; // No error
     }
 
     let message: string;
-    if (definitionCount === 0) {
+    if (resolution.kind === "notFound") {
       message = `Handle '${handleName}' not found`;
+    } else if (resolution.kind === "inaccessible") {
+      const locationInfo = this.formatDefinitionLocations(
+        resolution.definitions,
+      );
+      message = `Handle '${handleName}' is defined only in inaccessible commented-out fragments: \n ${locationInfo}`;
     } else {
-      const locationInfo = this.formatDefinitionLocations(validDefinitions);
-      message = `Handle '${handleName}' has multiple definitions (${definitionCount} found): \n ${locationInfo}`;
+      const locationInfo = this.formatDefinitionLocations(
+        resolution.definitions,
+      );
+      message = `Handle '${handleName}' has multiple definitions (${resolution.definitions.length} found): \n ${locationInfo}`;
     }
 
     return new vscode.Diagnostic(
@@ -670,6 +686,96 @@ export class WriterlyLinkProvider
     );
   }
 
+  private findDefinitionsInAccessibleIslands(
+    handleName: string,
+    currentFsPath: string,
+  ): HandleDefinition[] {
+    return this.findDefinitionsInDocumentTree(handleName, currentFsPath).filter(
+      (def) => isInAccessibleHashIsland(currentFsPath, def.fsPath),
+    );
+  }
+
+  private findDefinitionsInComparableIslands(
+    handleName: string,
+    currentFsPath: string,
+  ): HandleDefinition[] {
+    return this.findDefinitionsInDocumentTree(handleName, currentFsPath).filter(
+      (def) => isInComparableHashIsland(currentFsPath, def.fsPath),
+    );
+  }
+
+  private findDefinitionsInInaccessibleIslands(
+    handleName: string,
+    currentFsPath: string,
+  ): HandleDefinition[] {
+    return this.findDefinitionsInDocumentTree(handleName, currentFsPath).filter(
+      (def) => !isInAccessibleHashIsland(currentFsPath, def.fsPath),
+    );
+  }
+
+  private resolveDefinitionForHandle(
+    handleName: string,
+    currentFsPath: string,
+  ): HandleResolution {
+    const accessibleDefinitions = this.findDefinitionsInAccessibleIslands(
+      handleName,
+      currentFsPath,
+    );
+    const goodDefinitions = accessibleDefinitions.filter(
+      (def) => !this.isDefinitionAmbiguous(handleName, def),
+    );
+    const nearestGoodDefinitions =
+      this.getNearestIslandDefinitions(goodDefinitions);
+
+    if (nearestGoodDefinitions.length === 1) {
+      return { kind: "ok", definition: nearestGoodDefinitions[0] };
+    }
+
+    if (accessibleDefinitions.length > 0) {
+      return {
+        kind: "multiple",
+        definitions: this.dedupeDefinitions(accessibleDefinitions),
+      };
+    }
+
+    const inaccessibleDefinitions = this.findDefinitionsInInaccessibleIslands(
+      handleName,
+      currentFsPath,
+    );
+    if (inaccessibleDefinitions.length > 0) {
+      return {
+        kind: "inaccessible",
+        definitions: this.dedupeDefinitions(inaccessibleDefinitions),
+      };
+    }
+
+    return { kind: "notFound" };
+  }
+
+  private isDefinitionAmbiguous(
+    handleName: string,
+    definition: HandleDefinition,
+  ): boolean {
+    return (
+      this.dedupeDefinitions(
+        this.findDefinitionsInComparableIslands(handleName, definition.fsPath),
+      ).length > 1
+    );
+  }
+
+  private getNearestIslandDefinitions(
+    definitions: HandleDefinition[],
+  ): HandleDefinition[] {
+    if (definitions.length <= 1) return definitions;
+
+    const maxDepth = Math.max(
+      ...definitions.map((def) => getHashIslandDepth(def.fsPath)),
+    );
+    return definitions.filter(
+      (def) => getHashIslandDepth(def.fsPath) === maxDepth,
+    );
+  }
+
   // VS Code interface implementations
   public provideDocumentLinks(
     document: vscode.TextDocument,
@@ -697,16 +803,16 @@ export class WriterlyLinkProvider
       return undefined;
     }
 
-    const validDefinitions = this.findDefinitionsInDocumentTree(
+    const resolution = this.resolveDefinitionForHandle(
       handleName,
       currentFsPath,
     );
 
-    if (validDefinitions.length !== 1) {
+    if (resolution.kind !== "ok") {
       return undefined;
     }
 
-    const definition = validDefinitions[0];
+    const definition = resolution.definition;
     const uri = vscode.Uri.file(definition.fsPath);
     const range = new vscode.Range(
       definition.range.start,
@@ -737,7 +843,7 @@ export class WriterlyLinkProvider
       if (!handleMatch) continue;
 
       const handleName = handleMatch[1];
-      const validDefinitions = this.findDefinitionsInDocumentTree(
+      const validDefinitions = this.findDefinitionsInComparableIslands(
         handleName,
         document.uri.fsPath,
       );
@@ -866,7 +972,9 @@ export class WriterlyLinkProvider
     const currentFsPath = document.uri.fsPath;
 
     for (const [handleName, defs] of this.definitions) {
-      if (!this.isHandleVisibleFromFile(defs, currentFsPath)) continue;
+      if (!this.isHandleVisibleFromFile(handleName, defs, currentFsPath)) {
+        continue;
+      }
       completionItems.push(this.createHandleCompletionItem(handleName));
     }
 
@@ -900,11 +1008,13 @@ export class WriterlyLinkProvider
   }
 
   private isHandleVisibleFromFile(
+    handleName: HandleName,
     definitions: HandleDefinition[],
     fsPath: string,
   ): boolean {
-    return definitions.some((def) =>
-      this.isInSameDocumentTree(fsPath, def.fsPath),
+    return (
+      definitions.length > 0 &&
+      this.resolveDefinitionForHandle(handleName, fsPath).kind === "ok"
     );
   }
 
@@ -1042,17 +1152,17 @@ export class WriterlyLinkProvider
     handleName: string,
     currentFsPath: string,
   ): vscode.Definition | undefined {
-    const validDefinitions = this.findDefinitionsInDocumentTree(
+    const resolution = this.resolveDefinitionForHandle(
       handleName,
       currentFsPath,
     );
 
     // only provide definition for single, unambiguous handles
-    if (validDefinitions.length !== 1) {
+    if (resolution.kind !== "ok") {
       return undefined;
     }
 
-    const definition = validDefinitions[0];
+    const definition = resolution.definition;
     const uri = vscode.Uri.file(definition.fsPath);
 
     return new vscode.Location(uri, definition.range);
@@ -1112,7 +1222,7 @@ export class WriterlyLinkProvider
         return;
       }
 
-      const treeDefs = this.findDefinitionsInDocumentTree(
+      const treeDefs = this.findDefinitionsInComparableIslands(
         handleName,
         currentFsPath,
       );
