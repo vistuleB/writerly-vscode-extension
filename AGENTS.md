@@ -164,12 +164,8 @@ The most complex provider. It maintains workspace-wide state and implements:
   unused-handle warnings)
 - `documentRoots: FSPath[]` — list of assemblable root directories. A directory
   is an extension document root when it contains at least one direct `.wly` file.
-  The extension intentionally ignores `#` path segments for editor semantics,
-  even though the Writerly assembler treats them as commented out.
-  Handle lookup and duplicate diagnostics still use nested `#` islands within a
-  document tree: lookup sees the current island plus ancestors, duplicate
-  diagnostics compare comparable islands, and rename applies to the whole
-  document tree.
+  Handle lookup, duplicate diagnostics, completion, rename, and usage counts use
+  document-tree-wide scope.
 
 **Lifecycle:** on startup, `initializeAsync()` discovers assemblable root directories
 and processes all Writerly files in the workspace. A `FileSystemWatcher` keeps state current as files are

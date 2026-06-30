@@ -10,8 +10,6 @@ import {
 import {
   discoverWriterlyDocumentRoots,
   getDocumentTreeKeys,
-  isInAccessibleHashIsland,
-  isInComparableHashIsland,
   isInSameWriterlyDocumentTree,
 } from "./WriterlyDocumentTrees";
 
@@ -31,8 +29,7 @@ import {
  *   Counts are updated when a file is reprocessed so unused-handle diagnostics
  *   stay scoped to the same assemblable document roots as definitions.
  * - documentRoots: stores extension document roots. A directory is a root when
- *   it contains at least one direct .wly file; editor semantics intentionally
- *   ignore # path segments.
+ *   it contains at least one direct .wly file.
  * - diagnosticCollection: owns all handle and syntax diagnostics reported by
  *   this provider; diagnostics are replaced per file after reprocessing.
  * - isInitialized/revalidateTimer: prevent premature provider work and debounce
@@ -586,12 +583,10 @@ export class WriterlyLinkProvider
         continue; // Skip tree lookup for invalid names
       }
 
-      const validDefinitions = this.findDefinitionsInAccessibleIslands(
+      const validDefinitions = this.findDefinitionsInDocumentTree(
         handleName,
         currentFsPath,
       );
-      const inaccessibleDefinitions =
-        this.findDefinitionsInInaccessibleIslands(handleName, currentFsPath);
 
       if (validDefinitions.length === 1) {
         // exactly one definition found in this logical tree
@@ -603,7 +598,6 @@ export class WriterlyLinkProvider
           link,
           handleName,
           validDefinitions,
-          inaccessibleDefinitions,
         );
 
         if (diagnostic) {
@@ -617,7 +611,6 @@ export class WriterlyLinkProvider
     link: vscode.DocumentLink,
     handleName: string,
     validDefinitions: HandleDefinition[],
-    inaccessibleDefinitions: HandleDefinition[],
   ): vscode.Diagnostic | null {
     const definitionCount = validDefinitions.length;
 
@@ -627,14 +620,7 @@ export class WriterlyLinkProvider
 
     let message: string;
     if (definitionCount === 0) {
-      if (inaccessibleDefinitions.length > 0) {
-        const locationInfo = this.formatDefinitionLocations(
-          inaccessibleDefinitions,
-        );
-        message = `Handle '${handleName}' is defined only in inaccessible commented-out fragments: \n ${locationInfo}`;
-      } else {
-        message = `Handle '${handleName}' not found`;
-      }
+      message = `Handle '${handleName}' not found`;
     } else {
       const locationInfo = this.formatDefinitionLocations(validDefinitions);
       message = `Handle '${handleName}' has multiple definitions (${definitionCount} found): \n ${locationInfo}`;
@@ -684,33 +670,6 @@ export class WriterlyLinkProvider
     );
   }
 
-  private findDefinitionsInAccessibleIslands(
-    handleName: string,
-    currentFsPath: string,
-  ): HandleDefinition[] {
-    return this.findDefinitionsInDocumentTree(handleName, currentFsPath).filter(
-      (def) => isInAccessibleHashIsland(currentFsPath, def.fsPath),
-    );
-  }
-
-  private findDefinitionsInComparableIslands(
-    handleName: string,
-    currentFsPath: string,
-  ): HandleDefinition[] {
-    return this.findDefinitionsInDocumentTree(handleName, currentFsPath).filter(
-      (def) => isInComparableHashIsland(currentFsPath, def.fsPath),
-    );
-  }
-
-  private findDefinitionsInInaccessibleIslands(
-    handleName: string,
-    currentFsPath: string,
-  ): HandleDefinition[] {
-    return this.findDefinitionsInDocumentTree(handleName, currentFsPath).filter(
-      (def) => !isInAccessibleHashIsland(currentFsPath, def.fsPath),
-    );
-  }
-
   // VS Code interface implementations
   public provideDocumentLinks(
     document: vscode.TextDocument,
@@ -738,7 +697,7 @@ export class WriterlyLinkProvider
       return undefined;
     }
 
-    const validDefinitions = this.findDefinitionsInAccessibleIslands(
+    const validDefinitions = this.findDefinitionsInDocumentTree(
       handleName,
       currentFsPath,
     );
@@ -778,7 +737,7 @@ export class WriterlyLinkProvider
       if (!handleMatch) continue;
 
       const handleName = handleMatch[1];
-      const validDefinitions = this.findDefinitionsInComparableIslands(
+      const validDefinitions = this.findDefinitionsInDocumentTree(
         handleName,
         document.uri.fsPath,
       );
@@ -945,8 +904,7 @@ export class WriterlyLinkProvider
     fsPath: string,
   ): boolean {
     return definitions.some((def) =>
-      this.isInSameDocumentTree(fsPath, def.fsPath) &&
-      isInAccessibleHashIsland(fsPath, def.fsPath),
+      this.isInSameDocumentTree(fsPath, def.fsPath),
     );
   }
 
@@ -1084,7 +1042,7 @@ export class WriterlyLinkProvider
     handleName: string,
     currentFsPath: string,
   ): vscode.Definition | undefined {
-    const validDefinitions = this.findDefinitionsInAccessibleIslands(
+    const validDefinitions = this.findDefinitionsInDocumentTree(
       handleName,
       currentFsPath,
     );
@@ -1154,7 +1112,7 @@ export class WriterlyLinkProvider
         return;
       }
 
-      const treeDefs = this.findDefinitionsInComparableIslands(
+      const treeDefs = this.findDefinitionsInDocumentTree(
         handleName,
         currentFsPath,
       );

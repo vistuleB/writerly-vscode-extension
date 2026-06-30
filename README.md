@@ -61,35 +61,20 @@ invalid names, and optionally unused definitions are reported as diagnostics.
 ## Writerly Document Trees
 
 For editor features, the extension groups `.wly` files into document trees using
-the same directory shape as Writerly assembly, with one deliberate difference:
-the extension ignores `#` path segments so commented-out fragments remain fully
-editable.
+the same directory shape as Writerly assembly.
 
 Two different Writerly files belong to the same extension document tree when
 there is some directory that contains both files as part of its `.wly` subtree:
 
 - The directory must contain at least one direct `.wly` file.
 - Both files must be `.wly` descendants of that directory.
-- A subtree such as `#draft/` may be excluded by the Writerly assembler, but the
-  extension still treats it as editable Writerly material for handles, rename,
-  completion, and diagnostics.
 - `__parent.wly` is not required for document-tree membership. It affects the
   assembled structure by making descendant files appear nested under that parent
   file.
 - A single `.wly` file also has its own document scope.
 
-Within an extension document tree, `#` path segments define nested islands for
-handle diagnostics and lookup:
-
-- Duplicate handle definitions are errors when they occur in comparable islands
-  (the same island, or one island nested inside the other).
-- Duplicate handle definitions in incomparable `#` islands do not conflict.
-- Go to definition and handle usage validation can see definitions in the same
-  island and ancestor islands.
-- Definitions that exist only in descendant or incomparable `#` islands are
-  reported as inaccessible from the usage site.
-- Handle rename applies across the whole extension document tree, ignoring `#`
-  island boundaries.
+Within a document tree, handle lookup, duplicate-definition diagnostics,
+completion, and rename all use the same document-wide scope.
 
 ## Available Commands
 
