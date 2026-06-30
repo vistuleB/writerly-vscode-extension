@@ -52,6 +52,11 @@
           "default": true,
           "description": "Enable or disable warnings for unused handle definitions."
         },
+        "writerly.enableMissingFileWarnings": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable warnings for missing local files in path-bearing Writerly attributes."
+        },
         "writerly.templateFilesDirectory": {
           "type": "string",
           "default": "",

@@ -15,6 +15,7 @@ import {
   isInSameHashIsland,
   isInSameWriterlyDocumentTree,
 } from "./WriterlyDocumentTrees";
+import { fileUtils } from "./utils/file-utils";
 
 /*
  * WriterlyLinkProvider currently owns the handle subsystem end to end.
@@ -124,6 +125,21 @@ const IN_TEXT_DEF_REGEX = new RegExp(
   `(?:^|[ {(\\[])(${HANDLE_REGEX_STRING})(${HANDLE_DECORATORS_REGEX_STRING})##<<`,
   "gu",
 );
+const MISSING_FILE_WARNING_ATTRIBUTE_NAMES = new Set([
+  "original",
+  "poster",
+  "cover",
+  "image",
+  "thumbnail",
+  "preview",
+  "logo",
+  "icon",
+  "favicon",
+  "background",
+  "file",
+  "source",
+]);
+const URI_SCHEME_REGEX = /^[a-z][a-z0-9+.-]*:/i;
 
 export class WriterlyLinkProvider
   implements
@@ -182,11 +198,14 @@ export class WriterlyLinkProvider
       ),
 
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration("writerly.enableUnusedHandleWarnings")) {
+        if (
+          e.affectsConfiguration("writerly.enableUnusedHandleWarnings") ||
+          e.affectsConfiguration("writerly.enableMissingFileWarnings")
+        ) {
           // Re-validate all open documents to add/remove the warnings immediately
           for (const doc of vscode.workspace.textDocuments) {
             if (this.isWriterlyFile(doc.uri.fsPath)) {
-              this.processDocument(doc);
+              void this.processDocument(doc);
             }
           }
         }
@@ -218,7 +237,7 @@ export class WriterlyLinkProvider
 
     for (const doc of vscode.workspace.textDocuments) {
       if (this.isWriterlyFile(doc.uri.fsPath)) {
-        this.processDocument(doc);
+        await this.processDocument(doc);
       }
     }
   }
@@ -232,7 +251,7 @@ export class WriterlyLinkProvider
 
       for (const doc of vscode.workspace.textDocuments) {
         if (this.isWriterlyFile(doc.uri.fsPath)) {
-          this.processDocument(doc);
+          await this.processDocument(doc);
         }
       }
     } catch (error) {
@@ -260,7 +279,7 @@ export class WriterlyLinkProvider
 
   private onDidChange(document: vscode.TextDocument): void {
     if (!this.isWriterlyFile(document.uri.fsPath)) return;
-    this.processDocument(document);
+    void this.processDocument(document);
   }
 
   private async onDidRename(event: vscode.FileRenameEvent): Promise<void> {
@@ -364,23 +383,23 @@ export class WriterlyLinkProvider
 
     try {
       const document = await vscode.workspace.openTextDocument(uri);
-      this.processDocument(document);
+      await this.processDocument(document);
     } catch (error) {
       console.error(`Failed to process document ${uri.fsPath}:`, error);
     }
   }
 
-  private processDocument(
+  private async processDocument(
     document: vscode.TextDocument,
     triggerRevalidation: boolean = true,
-  ): vscode.DocumentLink[] {
+  ): Promise<vscode.DocumentLink[]> {
     const currentFsPath = document.uri.fsPath;
 
     const oldLinks = this.documentLinks.get(currentFsPath) || [];
     this.updateUsageCountsForLinks(oldLinks, -1);
     this.clearDocumentDefinitions(currentFsPath);
     const diagnostics: vscode.Diagnostic[] = [];
-    const documentLinks = this.walkDocument(document, diagnostics);
+    const documentLinks = await this.walkDocument(document, diagnostics);
     this.updateUsageCountsForLinks(documentLinks, 1);
 
     if (this.isInitialized) {
@@ -411,12 +430,14 @@ export class WriterlyLinkProvider
     }
   }
 
-  private walkDocument(
+  private async walkDocument(
     document: vscode.TextDocument,
     diagnostics: vscode.Diagnostic[],
-  ): vscode.DocumentLink[] {
+  ): Promise<vscode.DocumentLink[]> {
     const documentLinks: vscode.DocumentLink[] = [];
     const currentFsPath = document.uri.fsPath;
+    const missingFileDiagnosticTasks: Promise<void>[] = [];
+    const enableMissingFileWarnings = this.isMissingFileWarningEnabled();
 
     let finalState = WriterlyDocumentWalker.walk(
       document,
@@ -445,6 +466,17 @@ export class WriterlyLinkProvider
             indent,
             currentFsPath,
           );
+
+          if (enableMissingFileWarnings) {
+            missingFileDiagnosticTasks.push(
+              this.addMissingFileAttributeDiagnostic(
+                content,
+                lineNumber,
+                indent,
+                diagnostics,
+              ),
+            );
+          }
         }
 
         if (lineType === LineType.Text) {
@@ -473,6 +505,7 @@ export class WriterlyLinkProvider
       finalState,
       diagnostics,
     );
+    await Promise.all(missingFileDiagnosticTasks);
 
     return documentLinks;
   }
@@ -483,6 +516,77 @@ export class WriterlyLinkProvider
       lineType !== LineType.Tag &&
       lineType !== LineType.CodeBlockClosing
     );
+  }
+
+  private async addMissingFileAttributeDiagnostic(
+    content: string,
+    lineNumber: number,
+    indent: number,
+    diagnostics: vscode.Diagnostic[],
+  ): Promise<void> {
+    const attributeMatch = content.match(/^([A-Za-z0-9_.:-]+)=/);
+    if (!attributeMatch) return;
+
+    const attributeName = attributeMatch[1];
+    if (!this.shouldWarnForMissingFileAttribute(attributeName)) return;
+
+    const valueStartInContent =
+      attributeMatch[0].length +
+      this.countLeadingWhitespace(content.slice(attributeMatch[0].length));
+    const value = content.slice(valueStartInContent).trim();
+    if (!this.shouldCheckMissingFileValue(value)) return;
+
+    const exists = await this.localFileReferenceExists(value);
+    if (exists) return;
+
+    const valueStart = indent + valueStartInContent;
+    diagnostics.push(
+      new vscode.Diagnostic(
+        new vscode.Range(
+          lineNumber,
+          valueStart,
+          lineNumber,
+          valueStart + value.length,
+        ),
+        `Local file not found: ${value}`,
+        vscode.DiagnosticSeverity.Warning,
+      ),
+    );
+  }
+
+  private shouldWarnForMissingFileAttribute(attributeName: string): boolean {
+    const normalized = attributeName.toLowerCase();
+    return (
+      normalized.endsWith("src") ||
+      MISSING_FILE_WARNING_ATTRIBUTE_NAMES.has(normalized)
+    );
+  }
+
+  private shouldCheckMissingFileValue(value: string): boolean {
+    return (
+      value.length > 0 &&
+      !/\s/.test(value) &&
+      !value.startsWith("#") &&
+      !URI_SCHEME_REGEX.test(value)
+    );
+  }
+
+  private countLeadingWhitespace(text: string): number {
+    const match = text.match(/^\s*/);
+    return match ? match[0].length : 0;
+  }
+
+  private async localFileReferenceExists(filePath: string): Promise<boolean> {
+    if (path.isAbsolute(filePath)) {
+      try {
+        await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    return fileUtils.fileExists(filePath);
   }
 
   private extractHandleDefinition(
@@ -1324,7 +1428,7 @@ export class WriterlyLinkProvider
           if (openDoc) {
             // Re-process the document to gather all current diagnostics (including indentation)
             // but set triggerRevalidation to false to prevent infinite loops
-            this.processDocument(openDoc, false);
+            void this.processDocument(openDoc, false);
           }
         }
       }
@@ -1412,5 +1516,11 @@ export class WriterlyLinkProvider
     return vscode.workspace
       .getConfiguration("writerly")
       .get<boolean>("enableUnusedHandleWarnings", true);
+  }
+
+  private isMissingFileWarningEnabled(): boolean {
+    return vscode.workspace
+      .getConfiguration("writerly")
+      .get<boolean>("enableMissingFileWarnings", true);
   }
 }
