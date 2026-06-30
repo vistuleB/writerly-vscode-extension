@@ -78,9 +78,9 @@ completion, and rename use document-tree scope. Path segments whose names start
 with `#` define commented-out islands inside that tree for lookup and duplicate
 diagnostics:
 
-- Duplicate handle definitions are errors when their islands are comparable:
-  the same island, an ancestor island, or a descendant island.
-- Duplicate handle definitions in incomparable `#` islands do not conflict.
+- Duplicate handle definitions are errors only when they occur in the same
+  island.
+- Duplicate handle definitions in different `#` islands do not conflict.
 - Go to definition and usage validation use the nearest accessible island with
   a single non-ambiguous definition. Accessible means the current island or one
   of its ancestor islands.
@@ -189,7 +189,7 @@ The extension reports diagnostics for:
 - spaces in code block info annotations
 - invalid handle names
 - undefined handle usages
-- duplicate handle definitions in the same document tree
+- duplicate handle definitions in the same hash island
 - unused handle definitions, when enabled
 
 Language configuration:

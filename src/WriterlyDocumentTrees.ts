@@ -67,15 +67,15 @@ export function isInAccessibleHashIsland(
   );
 }
 
-export function isInComparableHashIsland(
+export function isInSameHashIsland(
   firstFsPath: string,
   secondFsPath: string,
 ): boolean {
   const firstKey = getHashIslandKey(firstFsPath);
   const secondKey = getHashIslandKey(secondFsPath);
   return (
-    isHashIslandPrefix(firstKey, secondKey) ||
-    isHashIslandPrefix(secondKey, firstKey)
+    firstKey.length === secondKey.length &&
+    firstKey.every((part, index) => part === secondKey[index])
   );
 }
 

@@ -166,8 +166,8 @@ The most complex provider. It maintains workspace-wide state and implements:
   is an extension document root when it contains at least one direct `.wly` file.
   Broad document-tree membership ignores `#` path segments. Handle lookup and
   completion use the nearest accessible hash island with a single non-ambiguous
-  definition, duplicate diagnostics compare same/ancestor/descendant islands,
-  and rename applies to the whole document tree.
+  definition, duplicate diagnostics compare only definitions in the same hash
+  island, and rename applies to the whole document tree.
 
 **Lifecycle:** on startup, `initializeAsync()` discovers assemblable root directories
 and processes all Writerly files in the workspace. A `FileSystemWatcher` keeps state current as files are

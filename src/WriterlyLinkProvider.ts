@@ -12,7 +12,7 @@ import {
   getHashIslandDepth,
   getDocumentTreeKeys,
   isInAccessibleHashIsland,
-  isInComparableHashIsland,
+  isInSameHashIsland,
   isInSameWriterlyDocumentTree,
 } from "./WriterlyDocumentTrees";
 
@@ -695,12 +695,12 @@ export class WriterlyLinkProvider
     );
   }
 
-  private findDefinitionsInComparableIslands(
+  private findDefinitionsInSameIsland(
     handleName: string,
     currentFsPath: string,
   ): HandleDefinition[] {
     return this.findDefinitionsInDocumentTree(handleName, currentFsPath).filter(
-      (def) => isInComparableHashIsland(currentFsPath, def.fsPath),
+      (def) => isInSameHashIsland(currentFsPath, def.fsPath),
     );
   }
 
@@ -758,7 +758,7 @@ export class WriterlyLinkProvider
   ): boolean {
     return (
       this.dedupeDefinitions(
-        this.findDefinitionsInComparableIslands(handleName, definition.fsPath),
+        this.findDefinitionsInSameIsland(handleName, definition.fsPath),
       ).length > 1
     );
   }
@@ -843,7 +843,7 @@ export class WriterlyLinkProvider
       if (!handleMatch) continue;
 
       const handleName = handleMatch[1];
-      const validDefinitions = this.findDefinitionsInComparableIslands(
+      const validDefinitions = this.findDefinitionsInSameIsland(
         handleName,
         document.uri.fsPath,
       );
@@ -1222,7 +1222,7 @@ export class WriterlyLinkProvider
         return;
       }
 
-      const treeDefs = this.findDefinitionsInComparableIslands(
+      const treeDefs = this.findDefinitionsInSameIsland(
         handleName,
         currentFsPath,
       );
