@@ -1,9 +1,14 @@
 |> spoken-for-near
     source=img/near-a.svg
     source=img/near-b.svg
+    source=img2/far-diagnostic-only.svg
 
 Select both source paths and run Writerly: Move File Under Cursor.
 Enter img or img2.
+
+For missing-file warning testing, source=img2/far-diagnostic-only.svg should
+warn. The file exists only in far/img2/, while near/img2/ exists but does not
+contain that filename.
 
 Expected result:
 - img/near-a.svg and img/near-b.svg move to near/img/ or near/img2/.

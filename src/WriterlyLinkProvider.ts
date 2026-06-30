@@ -14,6 +14,8 @@ import {
   isInAccessibleHashIsland,
   isInSameHashIsland,
   isInSameWriterlyDocumentTree,
+  isPathUnderDirectory,
+  steinbergerDistance,
 } from "./WriterlyDocumentTrees";
 import { fileUtils } from "./utils/file-utils";
 
@@ -156,6 +158,7 @@ export class WriterlyLinkProvider
   private documentLinks: Map<FSPath, vscode.DocumentLink[]> = new Map();
   private usageCounts: UsageCounts = new Map();
   private revalidateTimer: NodeJS.Timeout | undefined;
+  private missingFileRevalidateTimer: NodeJS.Timeout | undefined;
 
   constructor(context: vscode.ExtensionContext) {
     this.diagnosticCollection =
@@ -163,9 +166,13 @@ export class WriterlyLinkProvider
     const watcher = vscode.workspace.createFileSystemWatcher(
       ALL_WRITERLY_FILE_GLOB,
     );
+    const assetWatcher = vscode.workspace.createFileSystemWatcher("**/*");
     watcher.onDidChange((uri) => this.processUri(uri));
     watcher.onDidCreate((uri) => this.createUri(uri));
     watcher.onDidDelete((uri) => this.deleteUri(uri));
+    assetWatcher.onDidCreate((uri) => this.triggerMissingFileRevalidation(uri));
+    assetWatcher.onDidDelete((uri) => this.triggerMissingFileRevalidation(uri));
+    assetWatcher.onDidChange((uri) => this.triggerMissingFileRevalidation(uri));
     const disposables = [
       this.diagnosticCollection,
       vscode.workspace.onDidChangeTextDocument((event) =>
@@ -211,6 +218,7 @@ export class WriterlyLinkProvider
         }
       }),
       watcher,
+      assetWatcher,
     ];
     disposables.forEach((disp) => context.subscriptions.push(disp));
     this.initializeAsync();
@@ -231,6 +239,10 @@ export class WriterlyLinkProvider
     if (this.revalidateTimer) {
       clearTimeout(this.revalidateTimer);
       this.revalidateTimer = undefined;
+    }
+    if (this.missingFileRevalidateTimer) {
+      clearTimeout(this.missingFileRevalidateTimer);
+      this.missingFileRevalidateTimer = undefined;
     }
 
     await this.initializeAsync();
@@ -470,6 +482,7 @@ export class WriterlyLinkProvider
           if (enableMissingFileWarnings) {
             missingFileDiagnosticTasks.push(
               this.addMissingFileAttributeDiagnostic(
+                document,
                 content,
                 lineNumber,
                 indent,
@@ -519,6 +532,7 @@ export class WriterlyLinkProvider
   }
 
   private async addMissingFileAttributeDiagnostic(
+    document: vscode.TextDocument,
     content: string,
     lineNumber: number,
     indent: number,
@@ -536,8 +550,11 @@ export class WriterlyLinkProvider
     const value = content.slice(valueStartInContent).trim();
     if (!this.shouldCheckMissingFileValue(value)) return;
 
-    const exists = await this.localFileReferenceExists(value);
-    if (exists) return;
+    const message = await this.getMissingFileAttributeDiagnosticMessage(
+      document,
+      value,
+    );
+    if (!message) return;
 
     const valueStart = indent + valueStartInContent;
     diagnostics.push(
@@ -548,7 +565,7 @@ export class WriterlyLinkProvider
           lineNumber,
           valueStart + value.length,
         ),
-        `Local file not found: ${value}`,
+        message,
         vscode.DiagnosticSeverity.Warning,
       ),
     );
@@ -576,6 +593,18 @@ export class WriterlyLinkProvider
     return match ? match[0].length : 0;
   }
 
+  private async getMissingFileAttributeDiagnosticMessage(
+    document: vscode.TextDocument,
+    filePath: string,
+  ): Promise<string | undefined> {
+    const misdirectedWarning =
+      await this.getSpokenForDirectoryReferenceWarning(document, filePath);
+    if (misdirectedWarning) return misdirectedWarning;
+
+    const exists = await this.localFileReferenceExists(filePath);
+    return exists ? undefined : `Local file not found: ${filePath}`;
+  }
+
   private async localFileReferenceExists(filePath: string): Promise<boolean> {
     if (path.isAbsolute(filePath)) {
       try {
@@ -587,6 +616,132 @@ export class WriterlyLinkProvider
     }
 
     return fileUtils.fileExists(filePath);
+  }
+
+  private async getSpokenForDirectoryReferenceWarning(
+    document: vscode.TextDocument,
+    filePath: string,
+  ): Promise<string | undefined> {
+    if (path.isAbsolute(filePath)) return undefined;
+
+    const { dirPath, fileName } = this.splitReferencePath(filePath);
+    if (!dirPath || !fileName) return undefined;
+
+    const matchingFiles = await fileUtils.resolvePossibleFilePaths(filePath);
+    if (matchingFiles.length !== 1) return undefined;
+
+    const resolvedFile = matchingFiles[0];
+    const resolvedDir = path.dirname(resolvedFile);
+    const matchingDirs = await fileUtils.resolvePossibleDirPaths(dirPath, {
+      rootRelativeTo: document.uri.fsPath,
+    });
+    if (matchingDirs.length <= 1) return undefined;
+
+    const topmostRoots = this.getTopmostWriterlyRoots();
+    const originRoot =
+      this.getClosestContainingDirectory(document.uri.fsPath, topmostRoots) ??
+      path.dirname(document.uri.fsPath);
+    if (
+      !this.isDirectoryCloserToAnotherTopmostRoot(
+        resolvedDir,
+        originRoot,
+        topmostRoots,
+      )
+    ) {
+      return undefined;
+    }
+
+    const resolvedDistance = steinbergerDistance(originRoot, resolvedDir);
+    const closerDirs = matchingDirs.filter(
+      (dir) =>
+        path.resolve(dir) !== path.resolve(resolvedDir) &&
+        steinbergerDistance(originRoot, dir) < resolvedDistance,
+    );
+    const closestDirs = this.getClosestDirectoriesBySteinbergerDistance(
+      closerDirs,
+      originRoot,
+    );
+    if (closestDirs.length !== 1) return undefined;
+
+    const closestDir = closestDirs[0];
+    if (await this.localPathExists(path.join(closestDir, fileName))) {
+      return undefined;
+    }
+
+    return `File reference resolves to ${this.getRelativeWorkspacePath(
+      resolvedFile,
+    )}, but ${dirPath} also matches closer directory ${this.getRelativeWorkspacePath(
+      closestDir,
+    )} in this document tree and that directory does not contain ${fileName}.`;
+  }
+
+  private splitReferencePath(filePath: string): {
+    dirPath: string;
+    fileName: string;
+  } {
+    const segments = filePath.split("/");
+    const fileName = segments.pop() || "";
+    return { dirPath: segments.join("/"), fileName };
+  }
+
+  private async localPathExists(fsPath: string): Promise<boolean> {
+    try {
+      await vscode.workspace.fs.stat(vscode.Uri.file(fsPath));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private getTopmostWriterlyRoots(): string[] {
+    return this.writerlyContainers.filter(
+      (container) =>
+        !this.writerlyContainers.some(
+          (candidateParent) =>
+            candidateParent !== container &&
+            isPathUnderDirectory(container, candidateParent),
+        ),
+    );
+  }
+
+  private getClosestContainingDirectory(
+    fsPath: string,
+    directories: readonly string[],
+  ): string | undefined {
+    return directories
+      .filter((directory) => isPathUnderDirectory(fsPath, directory))
+      .sort((a, b) => b.length - a.length)[0];
+  }
+
+  private isDirectoryCloserToAnotherTopmostRoot(
+    directory: string,
+    originRoot: string,
+    topmostRoots: readonly string[],
+  ): boolean {
+    const originDistance = steinbergerDistance(originRoot, directory);
+    return topmostRoots.some(
+      (root) =>
+        root !== originRoot &&
+        steinbergerDistance(root, directory) < originDistance,
+    );
+  }
+
+  private getClosestDirectoriesBySteinbergerDistance(
+    directories: string[],
+    originRoot: string,
+  ): string[] {
+    if (directories.length === 0) return [];
+
+    const ranked = directories.map((directory) => ({
+      directory,
+      distance: steinbergerDistance(originRoot, directory),
+    }));
+    const bestDistance = Math.min(
+      ...ranked.map((candidate) => candidate.distance),
+    );
+    return ranked
+      .filter((candidate) => candidate.distance === bestDistance)
+      .map((candidate) => candidate.directory);
   }
 
   private extractHandleDefinition(
@@ -1433,6 +1588,30 @@ export class WriterlyLinkProvider
         }
       }
     }, 300);
+  }
+
+  private triggerMissingFileRevalidation(uri: vscode.Uri): void {
+    if (this.isWriterlyFile(uri.fsPath)) return;
+    if (this.shouldIgnoreAssetWatcherPath(uri.fsPath)) return;
+
+    if (this.missingFileRevalidateTimer) {
+      clearTimeout(this.missingFileRevalidateTimer);
+    }
+
+    this.missingFileRevalidateTimer = setTimeout(() => {
+      for (const doc of vscode.workspace.textDocuments) {
+        if (this.isWriterlyFile(doc.uri.fsPath)) {
+          void this.processDocument(doc, false);
+        }
+      }
+    }, 300);
+  }
+
+  private shouldIgnoreAssetWatcherPath(fsPath: string): boolean {
+    const parts = path.resolve(fsPath).split(path.sep);
+    return parts.some((part) =>
+      ["node_modules", ".git", "dist", "build", "out"].includes(part),
+    );
   }
 
   private dedupeDefinitions(
