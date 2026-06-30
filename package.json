@@ -107,6 +107,11 @@
         "command": "writerly.createFileUnderCursorFromTemplate",
         "title": "Create File Under Cursor From Template",
         "category": "Writerly"
+      },
+      {
+        "command": "writerly.inspectDocumentTree",
+        "title": "Inspect Document Tree",
+        "category": "Writerly"
       }
     ],
     "keybindings": [

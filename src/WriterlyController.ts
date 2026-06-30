@@ -5,6 +5,7 @@ import { WriterlyFileOpener } from "./WriterlyFileOpener";
 import { WriterlyHoverProvider } from "./WriterlyHoverProvider";
 import { WriterlyCompletionProvider } from "./WriterlyCompletionProvider";
 import { WriterlyFileRenamer } from "./WriterlyFileRenamer";
+import { WriterlyDocumentTreeInspector } from "./WriterlyDocumentTreeInspector";
 
 export class WriterlyController {
   private providers: any[] = [];
@@ -17,6 +18,7 @@ export class WriterlyController {
       new WriterlyCompletionProvider(context),
       new WriterlyLinkProvider(context),
       new WriterlyFileRenamer(context),
+      new WriterlyDocumentTreeInspector(context),
     ];
 
     // Register the master restart command

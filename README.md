@@ -17,6 +17,7 @@ Writerly is a markup language extension for VS Code that makes creating structur
 - Jump to any link with `F12`
 - Rename links everywhere with `F2`
 - See warnings about unused handle definitions
+- Inspect the current file's Writerly document tree from the status bar or the `Writerly: Inspect Document Tree` command
 
 ### Smart Writing Help
 
