@@ -233,7 +233,7 @@ export class WriterlyDocumentTreeInspector
       anchorFsPath: editor.document.uri.fsPath,
       currentOpenFsPath: editor.document.uri.fsPath,
       rootDir,
-      viewMode: "all",
+      viewMode: "active",
       originViewColumn: editor.viewColumn,
       uri,
     };
