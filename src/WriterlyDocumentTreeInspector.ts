@@ -12,6 +12,8 @@ import {
 
 const DOCUMENT_TREE_SCHEME = "writerly-document-tree";
 const OPEN_TREE_FILE_COMMAND = "writerly.openDocumentTreeFile";
+const PARENT_FILE_SUFFIX = "__parent.wly";
+const ASSEMBLY_INDENT_WIDTH = 4;
 
 type RootDisplay = {
   rootDir: string;
@@ -23,13 +25,13 @@ type DirectoryNode = {
   directories: Map<string, DirectoryNode>;
 };
 
-type AssemblyEntry = {
+type DisplayEntry = {
   name: string;
   uri?: vscode.Uri;
   directory?: DirectoryNode;
 };
 
-type AssemblyFile = {
+type DisplayFile = {
   uri: vscode.Uri;
   fileName: string;
   dirPath: string;
@@ -355,15 +357,18 @@ export class WriterlyDocumentTreeInspector
       return;
     }
 
-    const assemblyFiles = this.getAssemblyFiles(tree, root.rootDir);
+    const displayFiles = this.getDisplayFilesInAssemblyOrder(
+      tree,
+      root.rootDir,
+    );
     const fileColumnWidth = Math.max(
-      ...assemblyFiles.map(
+      ...displayFiles.map(
         (file) => file.indentation + file.fileName.length,
       ),
       0,
     );
 
-    for (const file of assemblyFiles) {
+    for (const file of displayFiles) {
       const line = lines.length;
       const indentedFileName = `${" ".repeat(file.indentation)}${file.fileName}`;
       const dirColumn =
@@ -432,18 +437,30 @@ export class WriterlyDocumentTreeInspector
       : "✓";
   }
 
-  private getAssemblyFiles(
+  /*
+   * The inspector display follows the assembly-order rules in
+   * writerly.gleam's input_lines_for_dirtree_at_depth:
+   * - emit files, not directories
+   * - sort directory entries by name after dropping the __parent.wly suffix
+   * - active, non-# <prefix>__parent.wly files add one indentation level to
+   *   matching sibling files/directories, except the parent file itself
+   *
+   * The inspector also displays # paths as inert entries. They sort near their
+   * uncommented counterpart and can receive indentation, but # parent files do
+   * not add indentation to other entries.
+   */
+  private getDisplayFilesInAssemblyOrder(
     directory: DirectoryNode,
     rootDir: string,
     depth = 0,
-  ): AssemblyFile[] {
-    const entries = this.sortEntriesForAssemblyDisplay(
-      this.getAssemblyEntries(directory),
+  ): DisplayFile[] {
+    const entries = this.sortEntriesForDisplay(
+      this.getDisplayEntries(directory),
     );
     const parentPrefixes = directory.files
       .map((uri) => this.getActiveParentFilePrefix(path.basename(uri.fsPath)))
       .filter((prefix): prefix is string => prefix !== undefined);
-    const files: AssemblyFile[] = [];
+    const files: DisplayFile[] = [];
 
     for (const entry of entries) {
       const entryDepth =
@@ -454,7 +471,11 @@ export class WriterlyDocumentTreeInspector
 
       if (entry.directory) {
         files.push(
-          ...this.getAssemblyFiles(entry.directory, rootDir, entryDepth),
+          ...this.getDisplayFilesInAssemblyOrder(
+            entry.directory,
+            rootDir,
+            entryDepth,
+          ),
         );
       } else if (entry.uri) {
         files.push({
@@ -464,7 +485,7 @@ export class WriterlyDocumentTreeInspector
             .relative(rootDir, path.dirname(entry.uri.fsPath))
             .split(path.sep)
             .join("/"),
-          indentation: 4 * entryDepth,
+          indentation: ASSEMBLY_INDENT_WIDTH * entryDepth,
         });
       }
     }
@@ -487,7 +508,7 @@ export class WriterlyDocumentTreeInspector
     return undefined;
   }
 
-  private getAssemblyEntries(directory: DirectoryNode): AssemblyEntry[] {
+  private getDisplayEntries(directory: DirectoryNode): DisplayEntry[] {
     return [
       ...directory.files.map((uri) => ({
         name: path.basename(uri.fsPath),
@@ -500,12 +521,12 @@ export class WriterlyDocumentTreeInspector
     ];
   }
 
-  private sortEntriesForAssemblyDisplay(
-    entries: readonly AssemblyEntry[],
-  ): AssemblyEntry[] {
+  private sortEntriesForDisplay(
+    entries: readonly DisplayEntry[],
+  ): DisplayEntry[] {
     return [...entries].sort((a, b) => {
-      const aOrder = this.getAssemblySortKey(a.name);
-      const bOrder = this.getAssemblySortKey(b.name);
+      const aOrder = this.getDisplaySortKey(a.name);
+      const bOrder = this.getDisplaySortKey(b.name);
       return (
         aOrder.anchor.localeCompare(bOrder.anchor) ||
         aOrder.rank - bOrder.rank ||
@@ -514,7 +535,7 @@ export class WriterlyDocumentTreeInspector
     });
   }
 
-  private getAssemblySortKey(fileNameOrDirName: string): {
+  private getDisplaySortKey(fileNameOrDirName: string): {
     anchor: string;
     rank: number;
     name: string;
@@ -523,7 +544,7 @@ export class WriterlyDocumentTreeInspector
       const uncommentedName = fileNameOrDirName.slice(1);
       return {
         anchor: this.dropParentSuffix(uncommentedName),
-        rank: fileNameOrDirName.endsWith("__parent.wly") ? -1 : 0,
+        rank: fileNameOrDirName.endsWith(PARENT_FILE_SUFFIX) ? -1 : 0,
         name: fileNameOrDirName,
       };
     }
@@ -536,17 +557,15 @@ export class WriterlyDocumentTreeInspector
   }
 
   private dropParentSuffix(name: string): string {
-    const parentSuffix = "__parent.wly";
-    return name.endsWith(parentSuffix)
-      ? name.slice(0, -parentSuffix.length)
+    return name.endsWith(PARENT_FILE_SUFFIX)
+      ? name.slice(0, -PARENT_FILE_SUFFIX.length)
       : name;
   }
 
   private getActiveParentFilePrefix(fileName: string): string | undefined {
-    const parentSuffix = "__parent.wly";
     if (fileName.startsWith("#")) return undefined;
-    if (!fileName.endsWith(parentSuffix)) return undefined;
-    return fileName.slice(0, -parentSuffix.length);
+    if (!fileName.endsWith(PARENT_FILE_SUFFIX)) return undefined;
+    return fileName.slice(0, -PARENT_FILE_SUFFIX.length);
   }
 
   private activeParentPrefixApplies(
@@ -567,16 +586,15 @@ export class WriterlyDocumentTreeInspector
 
     return (
       effectiveName.startsWith(activePrefix) &&
-      entryName !== `${activePrefix}__parent.wly`
+      entryName !== `${activePrefix}${PARENT_FILE_SUFFIX}`
     );
   }
 
   private getInertParentFilePrefix(fileName: string): string | undefined {
-    const parentSuffix = "__parent.wly";
-    if (!fileName.startsWith("#") || !fileName.endsWith(parentSuffix)) {
+    if (!fileName.startsWith("#") || !fileName.endsWith(PARENT_FILE_SUFFIX)) {
       return undefined;
     }
-    return fileName.slice(1, -parentSuffix.length);
+    return fileName.slice(1, -PARENT_FILE_SUFFIX.length);
   }
 
   private getDocumentTreeRoot(
