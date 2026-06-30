@@ -1,0 +1,4 @@
+|> spoken-for-far
+    source=img2/far-only.svg
+
+This file makes far/ a separate topmost Writerly root.

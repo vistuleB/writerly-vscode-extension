@@ -125,14 +125,15 @@ resolve path text against files or directories in the workspace.
   the workspace.
 - If exactly one file matches, that file is used.
 - If multiple files match, Writerly resolves the target by choosing the unique
-  closest match relative to the active document's nearest assemblable document
-  root.
+  closest match relative to the active document's nearest Writerly container.
 - If multiple matches tie as closest, the operation aborts and reports the
   matching paths.
 - Hover requires one unique matching file. If the path is missing or ambiguous,
   no hover is shown.
-- Directory prompts for move/create-from-template use the same document-root
+- Directory prompts for create-from-template use the same container-distance
   disambiguation rule.
+- Move destination directories also ignore same-named directories that are
+  closer to another topmost Writerly root.
 - Bare directory paths are suffix-matched anywhere in the workspace.
 - Directory paths beginning with `./` are resolved relative to the workspace
   folder containing the active Writerly document.

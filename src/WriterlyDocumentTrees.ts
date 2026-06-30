@@ -5,34 +5,48 @@ import {
   isWriterlyFilePath,
 } from "./WriterlyFileExtensions";
 
-export async function discoverWriterlyDocumentRoots(
+// A Writerly container is any directory that directly contains at least one
+// Writerly file. Containers are not necessarily topmost document roots.
+export async function discoverWriterlyContainers(
   maxFiles?: number,
 ): Promise<string[]> {
   const fileGlob = getWriterlyFileGlob();
   if (!fileGlob) return [];
 
   const uris = await vscode.workspace.findFiles(fileGlob, null, maxFiles);
-  const roots = new Set<string>();
+  const containers = new Set<string>();
 
   for (const uri of uris) {
     if (isWriterlyFilePath(uri.fsPath)) {
-      roots.add(path.dirname(uri.fsPath));
+      containers.add(path.dirname(uri.fsPath));
     }
   }
 
-  return [...roots];
+  return [...containers];
+}
+
+export async function discoverTopmostWriterlyDocumentRoots(): Promise<string[]> {
+  const containers = await discoverWriterlyContainers();
+  return containers.filter(
+    (container) =>
+      !containers.some(
+        (candidateParent) =>
+          candidateParent !== container &&
+          isPathUnderDirectory(container, candidateParent),
+      ),
+  );
 }
 
 export function getDocumentTreeKeys(
   fsPath: string,
-  documentRoots: readonly string[],
+  writerlyContainers: readonly string[],
 ): string[] {
   if (!isWriterlyFilePath(fsPath)) return [];
 
   return [
     fsPath,
-    ...documentRoots.filter((rootPath) =>
-      isPathUnderDirectory(fsPath, rootPath),
+    ...writerlyContainers.filter((containerPath) =>
+      isPathUnderDirectory(fsPath, containerPath),
     ),
   ];
 }
@@ -40,7 +54,7 @@ export function getDocumentTreeKeys(
 export function isInSameWriterlyDocumentTree(
   firstFsPath: string,
   secondFsPath: string,
-  documentRoots: readonly string[],
+  writerlyContainers: readonly string[],
 ): boolean {
   if (
     !isWriterlyFilePath(firstFsPath) ||
@@ -50,10 +64,10 @@ export function isInSameWriterlyDocumentTree(
   }
   if (firstFsPath === secondFsPath) return true;
 
-  return documentRoots.some(
-    (rootPath) =>
-      isPathUnderDirectory(firstFsPath, rootPath) &&
-      isPathUnderDirectory(secondFsPath, rootPath),
+  return writerlyContainers.some(
+    (containerPath) =>
+      isPathUnderDirectory(firstFsPath, containerPath) &&
+      isPathUnderDirectory(secondFsPath, containerPath),
   );
 }
 
@@ -83,14 +97,14 @@ export function getHashIslandDepth(fsPath: string): number {
   return getHashIslandKey(fsPath).length;
 }
 
-export async function getNearestWriterlyDocumentRoot(
+export async function getNearestWriterlyContainer(
   fsPath: string,
 ): Promise<string | undefined> {
   if (!isWriterlyFilePath(fsPath)) return undefined;
 
-  const roots = await discoverWriterlyDocumentRoots();
-  return roots
-    .filter((rootPath) => isPathUnderDirectory(fsPath, rootPath))
+  const containers = await discoverWriterlyContainers();
+  return containers
+    .filter((containerPath) => isPathUnderDirectory(fsPath, containerPath))
     .sort((a, b) => b.length - a.length)[0];
 }
 
@@ -100,6 +114,20 @@ export function isPathUnderDirectory(fsPath: string, dirPath: string): boolean {
     relativePath === "" ||
     (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
   );
+}
+
+export function steinbergerDistance(rootDir: string, targetDir: string): number {
+  const relativePath = path.relative(rootDir, targetDir);
+  if (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  ) {
+    return 0;
+  }
+
+  return relativePath
+    .split(path.sep)
+    .filter((segment) => segment === "..").length;
 }
 
 function getHashIslandKey(fsPath: string): string[] {

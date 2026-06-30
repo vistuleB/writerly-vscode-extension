@@ -1,0 +1,13 @@
+|> spoken-for-near
+    source=img/near-a.svg
+    source=img/near-b.svg
+
+Select both source paths and run Writerly: Move File Under Cursor.
+Enter img or img2.
+
+Expected result:
+- img/near-a.svg and img/near-b.svg move to near/img/ or near/img2/.
+- The two source attributes change to img/near-a.svg and img/near-b.svg, or
+img2/near-a.svg and img2/near-b.svg.
+- far/img/ or far/img2/ is ignored because it is closer to the far topmost
+Writerly root.

@@ -10,8 +10,10 @@ import {
   isWriterlyFilePath,
 } from "./WriterlyFileExtensions";
 import {
-  getNearestWriterlyDocumentRoot,
+  discoverTopmostWriterlyDocumentRoots,
+  getNearestWriterlyContainer,
   isPathUnderDirectory,
+  steinbergerDistance,
 } from "./WriterlyDocumentTrees";
 
 type FileCommandTarget = {
@@ -80,12 +82,14 @@ class UserReportedFileOperationError extends Error {}
  * Behaviors:
  * - Path resolution:
  *   - file references are resolved across the active Writerly workspace
- *   - each active document resolves paths relative to its nearest assemblable
- *     document root, falling back to the closest containing workspace folder
- *     when no such root contains it
+ *   - each active document resolves paths relative to its nearest Writerly
+ *     container, falling back to the closest containing workspace folder
+ *     when no such container contains it
  *   - ambiguous matches are resolved only when exactly one match has the
  *     shortest distance from that root to the candidate file directory
  *   - unresolved ambiguity stops the command and reports all tied matches
+ *   - move destination directories ignore matches that are closer to another
+ *     topmost Writerly root than to the origin document's topmost root
  * - Reference rewriting:
  *   - reference updates scan all active Writerly files in the workspace
  *   - candidate text matches are literal matches of the old reference string
@@ -196,7 +200,7 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
     }
 
     if (resolution.kind === "ambiguous") {
-      const message = `Multiple matching files found for "${filePath}" and document-root distance could not choose one. Matches: ${formatPathList(resolution.fsPaths)}`;
+      const message = `Multiple matching files found for "${filePath}" and container distance could not choose one. Matches: ${formatPathList(resolution.fsPaths)}`;
       if (options.throwOnAmbiguousPath) throw new Error(message);
       reportFileCommandIssue(message, options);
       return;
@@ -496,15 +500,9 @@ async function buildMoveFilesEdit(
   }
 
   const firstTarget = uniqueTargets[0];
-  const dirResolution = await fileUtils.resolveDirectoryPath(newDirPath, {
-    rootRelativeTo: firstTarget.document.uri.fsPath,
-    resolutionRoot: firstTarget.resolutionRoot,
-  });
-  const targetDir = getResolvedDirectoryPath(
+  const targetDir = await resolveMoveDestinationDirectory(
     newDirPath,
-    dirResolution,
-    "No matching directory found in workspace for the provided path",
-    undefined,
+    firstTarget,
     firstTarget.ambiguityNotes,
   );
   if (!targetDir) return undefined;
@@ -824,8 +822,8 @@ class WriterlyTemplateFileCreator {
 }
 
 async function getDocumentResolutionRoot(fsPath: string): Promise<string> {
-  const documentRoot = await getNearestWriterlyDocumentRoot(fsPath);
-  if (documentRoot) return documentRoot;
+  const writerlyContainer = await getNearestWriterlyContainer(fsPath);
+  if (writerlyContainer) return writerlyContainer;
 
   const workspaceFolder = getClosestWorkspaceFolder(fsPath);
   return workspaceFolder?.uri.fsPath ?? path.dirname(fsPath);
@@ -983,6 +981,119 @@ function getFileReferenceRenameTarget(
   return undefined;
 }
 
+async function resolveMoveDestinationDirectory(
+  referencePath: string,
+  target: FileCommandTarget,
+  ambiguityNotes: string[],
+): Promise<string | undefined> {
+  const candidates = await fileUtils.resolvePossibleDirPaths(referencePath, {
+    rootRelativeTo: target.document.uri.fsPath,
+    resolutionRoot: target.resolutionRoot,
+  });
+
+  if (candidates.length === 0) {
+    reportFileCommandError(
+      "No matching directory found in workspace for the provided path",
+    );
+    return undefined;
+  }
+
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  const topmostRoots = await discoverTopmostWriterlyDocumentRoots();
+  const originRoot =
+    getClosestContainingDirectory(target.document.uri.fsPath, topmostRoots) ??
+    target.resolutionRoot;
+
+  const closestCandidates = getClosestDirectoriesBySteinbergerDistance(
+    candidates,
+    originRoot,
+  );
+  if (closestCandidates.length > 1) {
+    reportFileCommandError(
+      `Multiple matching directories found for "${referencePath}" and topmost document-root distance could not choose one. Matches: ${formatPathList(
+        closestCandidates,
+      )}`,
+    );
+    return undefined;
+  }
+
+  const unclaimedCandidates = candidates.filter(
+    (candidate) =>
+      !isDirectoryCloserToAnotherTopmostRoot(
+        candidate,
+        originRoot,
+        topmostRoots,
+      ),
+  );
+
+  if (unclaimedCandidates.length === 0) {
+    reportFileCommandError(
+      `All matching directories for "${referencePath}" are closer to another topmost Writerly root. Matches: ${formatPathList(
+        candidates,
+      )}`,
+    );
+    return undefined;
+  }
+
+  const closestUnclaimedCandidates =
+    getClosestDirectoriesBySteinbergerDistance(unclaimedCandidates, originRoot);
+  if (closestUnclaimedCandidates.length > 1) {
+    reportFileCommandError(
+      `Multiple unclaimed matching directories found for "${referencePath}" and topmost document-root distance could not choose one. Matches: ${formatPathList(
+        closestUnclaimedCandidates,
+      )}`,
+    );
+    return undefined;
+  }
+
+  const selectedDirectory = closestUnclaimedCandidates[0];
+  ambiguityNotes.push(
+    `Note: Ambiguous directory "${referencePath}" matched multiple locations. Resolved to "${selectedDirectory}" by topmost document-root distance and ignored directories that are closer to another topmost Writerly root. Other matches: ${formatPathList(
+      candidates.filter((candidate) => candidate !== selectedDirectory),
+    )}.`,
+  );
+  return selectedDirectory;
+}
+
+function getClosestDirectoriesBySteinbergerDistance(
+  directories: string[],
+  originRoot: string,
+): string[] {
+  const ranked = directories.map((directory) => ({
+    directory,
+    distance: steinbergerDistance(originRoot, directory),
+  }));
+  const bestDistance = Math.min(...ranked.map((candidate) => candidate.distance));
+  return ranked
+    .filter((candidate) => candidate.distance === bestDistance)
+    .map((candidate) => candidate.directory);
+}
+
+function isDirectoryCloserToAnotherTopmostRoot(
+  directory: string,
+  originRoot: string,
+  topmostRoots: readonly string[],
+): boolean {
+  const originDistance = steinbergerDistance(originRoot, directory);
+  return topmostRoots.some(
+    (root) =>
+      root !== originRoot &&
+      steinbergerDistance(root, directory) < originDistance,
+  );
+}
+
+function getClosestContainingDirectory(
+  fsPath: string,
+  directories: readonly string[],
+): string | undefined {
+  return directories
+    .filter((directory) => isPathUnderDirectory(fsPath, directory))
+    .sort((a, b) => b.length - a.length)[0];
+}
+
 function getResolvedDirectoryPath(
   referencePath: string,
   resolution: DirectoryResolution,
@@ -1003,7 +1114,7 @@ function getResolvedDirectoryPath(
     reportFileCommandError(
       `${
         ambiguousMessage ??
-        `Multiple matching directories found for "${referencePath}" and document-root distance could not choose one.`
+        `Multiple matching directories found for "${referencePath}" and container distance could not choose one.`
       } Matches: ${formatPathList(resolution.fsPaths)}`,
     );
     return undefined;
@@ -1080,8 +1191,8 @@ function getResolvedAmbiguousPathNote(
   if (resolution.kind !== "resolvedAmbiguous") return undefined;
 
   const reason =
-    resolution.reason === "documentRootDistance"
-      ? "document-root distance"
+    resolution.reason === "containerDistance"
+      ? "container distance"
       : "closest ancestor directory tie-breaking";
   return `Note: Ambiguous path "${referencePath}" matched multiple locations. Resolved to "${resolution.fsPath}" by ${reason}. Other matches: ${formatPathList(resolution.alternatives)}.`;
 }

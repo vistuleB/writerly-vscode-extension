@@ -8,7 +8,7 @@ import {
   isWriterlyFilePath,
 } from "./WriterlyFileExtensions";
 import {
-  discoverWriterlyDocumentRoots,
+  discoverWriterlyContainers,
   getHashIslandDepth,
   getDocumentTreeKeys,
   isInAccessibleHashIsland,
@@ -30,25 +30,25 @@ import {
  *   counts all work from the same extracted usage data.
  * - usageCounts: maps each handle name to usage counts per document tree.
  *   Counts are updated when a file is reprocessed so unused-handle diagnostics
- *   stay scoped to the same assemblable document roots as definitions.
- * - documentRoots: stores extension document roots. A directory is a root when
- *   it contains at least one direct .wly file. Broad document-tree membership
+ *   stay scoped to the same assemblable containers as definitions.
+ * - writerlyContainers: stores directories that directly contain .wly files.
+ *   Broad document-tree membership
  *   ignores hash-commented path segments; handle lookup and duplicate
  *   diagnostics then apply hash-island scoping within that tree.
  * - diagnosticCollection: owns all handle and syntax diagnostics reported by
  *   this provider; diagnostics are replaced per file after reprocessing.
  * - isInitialized/revalidateTimer: prevent premature provider work and debounce
  *   tree-wide revalidation after file creates/deletes/renames that can change
- *   assemblable roots.
+ *   Writerly containers.
  *
  * Features provided:
  * - Workspace indexing:
- *   - discovers active Writerly files and assemblable root directories
+ *   - discovers active Writerly files and Writerly containers
  *   - walks documents to extract handle definitions and usages
  *   - updates caches from file-system events and open-document changes
  * - Document-tree scoping:
  *   - resolves whether files can be assembled into the same document
- *   - filters definitions and usage counts to those document roots
+ *   - filters definitions and usage counts to those document containers
  * - Editor navigation:
  *   - DocumentLinkProvider renders >>handle usages as clickable editor links
  *   - DefinitionProvider resolves F12 targets for visible, unambiguous handles
@@ -134,7 +134,7 @@ export class WriterlyLinkProvider
     vscode.CompletionItemProvider
 {
   private definitions: Map<HandleName, HandleDefinition[]> = new Map();
-  private documentRoots: FSPath[] = [];
+  private writerlyContainers: FSPath[] = [];
   private diagnosticCollection: vscode.DiagnosticCollection;
   private isInitialized = false;
   private documentLinks: Map<FSPath, vscode.DocumentLink[]> = new Map();
@@ -205,7 +205,7 @@ export class WriterlyLinkProvider
     this.definitions.clear();
     this.documentLinks.clear();
     this.usageCounts.clear();
-    this.documentRoots = [];
+    this.writerlyContainers = [];
     this.isInitialized = false;
     this.diagnosticCollection.clear();
 
@@ -225,7 +225,7 @@ export class WriterlyLinkProvider
 
   private async initializeAsync(): Promise<void> {
     try {
-      await this.discoverDocumentRoots();
+      await this.refreshWriterlyContainers();
       await this.processAllDocuments();
 
       this.isInitialized = true;
@@ -254,8 +254,8 @@ export class WriterlyLinkProvider
     await Promise.all(uris.map((uri) => this.processUri(uri)));
   }
 
-  private async discoverDocumentRoots(): Promise<void> {
-    this.documentRoots = await discoverWriterlyDocumentRoots(MAX_FILES);
+  private async refreshWriterlyContainers(): Promise<void> {
+    this.writerlyContainers = await discoverWriterlyContainers(MAX_FILES);
   }
 
   private onDidChange(document: vscode.TextDocument): void {
@@ -316,7 +316,7 @@ export class WriterlyLinkProvider
       }
     }
 
-    await this.discoverDocumentRoots();
+    await this.refreshWriterlyContainers();
     this.rebuildUsageCounts();
   }
 
@@ -345,7 +345,7 @@ export class WriterlyLinkProvider
 
     this.documentLinks.delete(targetPath);
 
-    await this.discoverDocumentRoots();
+    await this.refreshWriterlyContainers();
     this.rebuildUsageCounts();
 
     if (this.isInitialized) {
@@ -354,7 +354,7 @@ export class WriterlyLinkProvider
   }
 
   private async createUri(uri: vscode.Uri): Promise<void> {
-    await this.discoverDocumentRoots();
+    await this.refreshWriterlyContainers();
     await this.processUri(uri);
     this.rebuildUsageCounts();
   }
@@ -1186,7 +1186,7 @@ export class WriterlyLinkProvider
     return isInSameWriterlyDocumentTree(
       currentFsPath,
       definitionFsPath,
-      this.documentRoots,
+      this.writerlyContainers,
     );
   }
 
@@ -1355,7 +1355,7 @@ export class WriterlyLinkProvider
   }
 
   private getDocumentTreeKeys(fsPath: string): DocumentTreeKey[] {
-    return getDocumentTreeKeys(fsPath, this.documentRoots);
+    return getDocumentTreeKeys(fsPath, this.writerlyContainers);
   }
 
   private getUsageCountInDocumentTree(

@@ -26,7 +26,7 @@ export type FileResolution =
       kind: "resolvedAmbiguous";
       fsPath: string;
       alternatives: string[];
-      reason: "closestAncestor" | "documentRootDistance";
+      reason: "closestAncestor" | "containerDistance";
     }
   | { kind: "ambiguous"; fsPaths: string[] };
 
@@ -263,7 +263,7 @@ function resolveBestPath(
     fsPath: best.fsPath,
     alternatives: paths.filter((fsPath) => fsPath !== best.fsPath),
     reason: options.resolutionRoot
-      ? "documentRootDistance"
+      ? "containerDistance"
       : "closestAncestor",
   };
 }

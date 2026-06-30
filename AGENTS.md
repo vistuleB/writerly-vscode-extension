@@ -162,14 +162,14 @@ The most complex provider. It maintains workspace-wide state and implements:
 - `documentLinks: Map<FSPath, vscode.DocumentLink[]>` — cached usage links per file
 - `usageCounts: Map<HandleName, number>` — total usage count across all files (used for
   unused-handle warnings)
-- `documentRoots: FSPath[]` — list of assemblable root directories. A directory
-  is an extension document root when it contains at least one direct `.wly` file.
+- `writerlyContainers: FSPath[]` — list of directories that directly contain at
+  least one `.wly` file. Containers are not necessarily topmost document roots.
   Broad document-tree membership ignores `#` path segments. Handle lookup and
   completion use the nearest accessible hash island with a single non-ambiguous
   definition, duplicate diagnostics compare only definitions in the same hash
   island, and rename applies to the whole document tree.
 
-**Lifecycle:** on startup, `initializeAsync()` discovers assemblable root directories
+**Lifecycle:** on startup, `initializeAsync()` discovers Writerly containers
 and processes all Writerly files in the workspace. A `FileSystemWatcher` keeps state current as files are
 created, changed, deleted, or renamed. Changes are debounced via `triggerTreeRevalidation`.
 
