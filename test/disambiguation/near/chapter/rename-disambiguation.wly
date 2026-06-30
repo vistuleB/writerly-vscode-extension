@@ -1,7 +1,7 @@
 |> disambiguation-test
-    source=near/chapter/assets/ambiguous-note-target3.txt
     source=near/chapter/assets/ambiguous-note-target.txt
     handle=qq'
+    source=assets/ambiguous-note-target3.txt
 
 
 Place the cursor on near/chapter/assets/ambiguous-note-target.txt and run
