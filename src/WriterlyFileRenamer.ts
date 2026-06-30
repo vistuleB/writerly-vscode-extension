@@ -28,6 +28,7 @@ type FileCommandOptions = {
   requireExistingFile: boolean;
   reportErrors?: boolean;
   throwOnAmbiguousPath?: boolean;
+  throwOnMissingFile?: boolean;
 };
 
 type ReferencePathParts = {
@@ -196,7 +197,9 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
     }
 
     if (resolution.kind === "notFound" && options.requireExistingFile) {
-      reportFileCommandIssue(`File not found: ${filePath}`, options);
+      const message = `File not found: ${filePath}`;
+      if (options.throwOnMissingFile) throw new Error(message);
+      reportFileCommandIssue(message, options);
       return;
     }
 
@@ -223,6 +226,7 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
       requireExistingFile: true,
       reportErrors: false,
       throwOnAmbiguousPath: true,
+      throwOnMissingFile: true,
     });
     if (!target) return undefined;
 
@@ -247,6 +251,7 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
       requireExistingFile: true,
       reportErrors: false,
       throwOnAmbiguousPath: true,
+      throwOnMissingFile: true,
     });
     if (!target) return undefined;
 
