@@ -99,14 +99,13 @@ resolve path text against files or directories in the workspace.
 - File operations use the path text under the cursor to find matching files in
   the workspace.
 - If exactly one file matches, that file is used.
-- If multiple files match, Writerly compares each match's parent directory with
-  the active Writerly document's directory. If exactly one match has the closest
-  common ancestor, that match is used and the command reports the disambiguation.
-- If multiple matches tie for closest common ancestor, the operation aborts and
-  reports the matching paths.
+- If multiple files match, Writerly resolves the target by choosing the unique
+  closest match relative to the active document's document-tree root.
+- If multiple matches tie as closest, the operation aborts and reports the
+  matching paths.
 - Hover requires one unique matching file. If the path is missing or ambiguous,
   no hover is shown.
-- Directory prompts for move/create-from-template use the same closest-ancestor
+- Directory prompts for move/create-from-template use the same document-root
   disambiguation rule.
 - Bare directory paths are suffix-matched anywhere in the workspace.
 - Directory paths beginning with `./` are resolved relative to the workspace
@@ -116,9 +115,12 @@ Reference updates after file rename/move use matching text replacement in
 Writerly files:
 
 - all active Writerly files in the workspace are scanned
-- updates are not limited to a document tree
-- matches are literal matches of the old reference string, not resolved absolute
-  paths
+- candidate matches are literal matches of the old reference string
+- if a candidate's closest resolved file is different from the original target,
+  that candidate is left unchanged
+- if a candidate ties between multiple closest matches, the whole rename/move
+  operation aborts before applying edits
+- if a candidate resolves closest to the same original target, it is rewritten
 - each changed document is updated with a full-document text edit
 - replacements are not parser-aware and are not limited to specific attributes
 

@@ -32,7 +32,7 @@ export type FileResolution =
       kind: "resolvedAmbiguous";
       fsPath: string;
       alternatives: string[];
-      reason: "closestAncestor";
+      reason: "closestAncestor" | "documentRootDistance";
     }
   | { kind: "ambiguous"; fsPaths: string[] };
 
@@ -40,6 +40,7 @@ export type DirectoryResolution = FileResolution;
 
 type DirectoryResolutionOptions = {
   rootRelativeTo?: string;
+  resolutionRoot?: string;
 };
 
 export const fileUtils = {
@@ -218,7 +219,7 @@ async function resolveUniqueFilePath(
 ): Promise<FileResolution> {
   const files = await findMatchingFilePaths(
     filePath,
-    options.rootRelativeTo ? undefined : 2
+    options.rootRelativeTo || options.resolutionRoot ? undefined : 2
   );
   return resolveBestPath(files, options, true);
 }
@@ -238,17 +239,26 @@ function resolveBestPath(
 ): FileResolution {
   if (paths.length === 0) return { kind: "notFound" };
   if (paths.length === 1) return { kind: "unique", fsPath: paths[0] };
-  if (!options.rootRelativeTo) return { kind: "ambiguous", fsPaths: paths };
+  if (!options.rootRelativeTo && !options.resolutionRoot) {
+    return { kind: "ambiguous", fsPaths: paths };
+  }
 
   const ranked = paths
     .map((fsPath) => ({
       fsPath,
-      score: commonAncestorDepth(
-        compareParentDirectories ? path.dirname(fsPath) : fsPath,
-        path.dirname(options.rootRelativeTo!)
-      ),
+      score: options.resolutionRoot
+        ? steinbergerDistance(
+            options.resolutionRoot,
+            compareParentDirectories ? path.dirname(fsPath) : fsPath
+          )
+        : commonAncestorDepth(
+            compareParentDirectories ? path.dirname(fsPath) : fsPath,
+            path.dirname(options.rootRelativeTo!)
+          ),
     }))
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) =>
+      options.resolutionRoot ? a.score - b.score : b.score - a.score
+    );
   const best = ranked[0];
   const tiedBest = ranked.filter((candidate) => candidate.score === best.score);
 
@@ -258,7 +268,9 @@ function resolveBestPath(
     kind: "resolvedAmbiguous",
     fsPath: best.fsPath,
     alternatives: paths.filter((fsPath) => fsPath !== best.fsPath),
-    reason: "closestAncestor",
+    reason: options.resolutionRoot
+      ? "documentRootDistance"
+      : "closestAncestor",
   };
 }
 
@@ -316,4 +328,18 @@ function commonAncestorDepth(a: string, b: string): number {
   }
 
   return depth;
+}
+
+function steinbergerDistance(rootDir: string, targetDir: string): number {
+  const relativePath = path.relative(rootDir, targetDir);
+  if (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  ) {
+    return 0;
+  }
+
+  return relativePath
+    .split(path.sep)
+    .filter((segment) => segment === "..").length;
 }

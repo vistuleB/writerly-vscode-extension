@@ -7,6 +7,8 @@ import {
 } from "./utils/file-utils";
 import {
   getWriterlyFileGlob,
+  getWriterlyParentDir,
+  getWriterlyParentFileGlob,
   isWriterlyFilePath,
 } from "./WriterlyFileExtensions";
 
@@ -14,6 +16,7 @@ type FileCommandTarget = {
   filePath: string;
   resolution: FileResolution;
   pathRange: vscode.Range;
+  resolutionRoot: string;
   document: vscode.TextDocument;
   position: vscode.Position;
   ambiguityNotes: string[];
@@ -22,6 +25,7 @@ type FileCommandTarget = {
 type FileCommandOptions = {
   requireExistingFile: boolean;
   reportErrors?: boolean;
+  throwOnAmbiguousPath?: boolean;
 };
 
 type ReferencePathParts = {
@@ -42,6 +46,10 @@ type FileOperationEdit = {
   successMessage: string;
 };
 
+const PATH_TOKEN_FORBIDDEN_CHARS = /[\s'"=\[\]\{\}\(\);!<>|]/;
+
+class UserReportedFileOperationError extends Error {}
+
 /*
  * WriterlyFileRenamer owns file-reference mutation workflows. It is mostly
  * stateless: each command or RenameProvider call resolves the path under the
@@ -61,14 +69,18 @@ type FileOperationEdit = {
  * Behaviors:
  * - Path resolution:
  *   - file references are resolved across the active Writerly workspace
- *   - ambiguous matches are resolved only when exactly one match has the closest
- *     common ancestor to the active Writerly document
+ *   - each active document resolves paths relative to its document-tree root,
+ *     falling back to the closest containing workspace folder when it has no
+ *     Writerly parent file
+ *   - ambiguous matches are resolved only when exactly one match has the
+ *     shortest distance from that root to the candidate file directory
  *   - unresolved ambiguity stops the command and reports all tied matches
  * - Reference rewriting:
  *   - reference updates scan all active Writerly files in the workspace
- *   - updates are not limited to a document tree
- *   - matching is literal against the old reference string, not against resolved
- *     absolute paths
+ *   - candidate text matches are literal matches of the old reference string
+ *   - each candidate's full path token is resolved from that document's root
+ *   - only candidates resolving to the original physical file are rewritten
+ *   - unresolved ambiguity in any candidate token aborts the whole operation
  *   - each changed document is replaced with a full-document text edit
  * - File operations:
  *   - rename/move edits use WorkspaceEdit.renameFile
@@ -141,6 +153,7 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
     try {
       await handler(target);
     } catch (error) {
+      if (error instanceof UserReportedFileOperationError) return;
       reportFileCommandError("Writerly file command failed unexpectedly", error);
     }
   }
@@ -150,11 +163,12 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
     position: vscode.Position,
     options: FileCommandOptions,
   ): Promise<FileCommandTarget | undefined> {
+    const resolutionRoot = await getDocumentResolutionRoot(document.uri.fsPath);
     const { result: fileResolution, error: resolutionError } = await tryCatch(
       fileUtils.getFileResolutionAtPosition(
         document,
         position,
-        { rootRelativeTo: document.uri.fsPath },
+        { rootRelativeTo: document.uri.fsPath, resolutionRoot },
       ),
     );
     if (!fileResolution || resolutionError) {
@@ -173,10 +187,9 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
     }
 
     if (resolution.kind === "ambiguous") {
-      reportFileCommandIssue(
-        `Multiple matching files found for "${filePath}" and closest ancestor directory tie-breaking could not choose one. Matches: ${formatPathList(resolution.fsPaths)}`,
-        options,
-      );
+      const message = `Multiple matching files found for "${filePath}" and document-root distance could not choose one. Matches: ${formatPathList(resolution.fsPaths)}`;
+      if (options.throwOnAmbiguousPath) throw new Error(message);
+      reportFileCommandIssue(message, options);
       return;
     }
 
@@ -191,6 +204,7 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
       filePath,
       resolution,
       pathRange,
+      resolutionRoot,
       document,
       position,
       ambiguityNotes: ambiguityNotes ? [ambiguityNotes] : [],
@@ -206,6 +220,7 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
     const target = await this.getFileCommandTarget(document, position, {
       requireExistingFile: true,
       reportErrors: false,
+      throwOnAmbiguousPath: true,
     });
     if (!target) return undefined;
 
@@ -229,6 +244,7 @@ export class WriterlyFileRenamer implements vscode.RenameProvider {
     const target = await this.getFileCommandTarget(document, position, {
       requireExistingFile: true,
       reportErrors: false,
+      throwOnAmbiguousPath: true,
     });
     if (!target) return undefined;
 
@@ -361,6 +377,7 @@ async function buildMoveFileEdit(
   const { fileName } = splitReferencePath(target.filePath);
   const dirResolution = await fileUtils.resolveDirectoryPath(newDirPath, {
     rootRelativeTo: target.document.uri.fsPath,
+    resolutionRoot: target.resolutionRoot,
   });
   const targetDir = getResolvedDirectoryPath(
     newDirPath,
@@ -407,6 +424,7 @@ async function buildFileReferenceOperationEdit(
   );
   await WriterlyPathReferenceUpdater.addPathReplacementEdits(
     edit,
+    oldResolvedPath,
     oldReferencePath,
     newReferencePath,
   );
@@ -418,6 +436,7 @@ async function buildFileReferenceOperationEdit(
 class WriterlyPathReferenceUpdater {
   static async addPathReplacementEdits(
     workspaceEdit: vscode.WorkspaceEdit,
+    oldResolvedPath: string,
     oldPath: string,
     newPath: string,
   ): Promise<void> {
@@ -444,7 +463,14 @@ class WriterlyPathReferenceUpdater {
       }
 
       const text = document.getText();
-      const newText = text.replace(pathRegex, `$1${newPath}`);
+      const newText = await this.replaceMatchingPathReferences(
+        document,
+        text,
+        pathRegex,
+        oldPath,
+        newPath,
+        oldResolvedPath,
+      );
       if (newText === text) continue;
 
       const fullRange = new vscode.Range(
@@ -453,6 +479,56 @@ class WriterlyPathReferenceUpdater {
       );
       workspaceEdit.replace(uri, fullRange, newText);
     }
+  }
+
+  private static async replaceMatchingPathReferences(
+    document: vscode.TextDocument,
+    text: string,
+    pathRegex: RegExp,
+    oldPath: string,
+    newPath: string,
+    oldResolvedPath: string,
+  ): Promise<string> {
+    const resolutionRoot = await getDocumentResolutionRoot(document.uri.fsPath);
+    let nextText = "";
+    let lastIndex = 0;
+    let changed = false;
+
+    for (const match of text.matchAll(pathRegex)) {
+      const prefix = match[1];
+      const oldPathStart = match.index! + prefix.length;
+      const oldPathEnd = oldPathStart + oldPath.length;
+      const tokenText = getPathTokenAtOffset(text, oldPathStart);
+      if (!tokenText) continue;
+
+      const resolution = await fileUtils.resolveUniqueFilePath(tokenText, {
+        rootRelativeTo: document.uri.fsPath,
+        resolutionRoot,
+      });
+
+      if (resolution.kind === "ambiguous") {
+        reportFileCommandError(
+          `Ambiguous path "${tokenText}" in "${document.uri.fsPath}" could not be resolved during reference updates. Matches: ${formatPathList(resolution.fsPaths)}`,
+        );
+        throw new UserReportedFileOperationError(
+          "Ambiguous path during reference updates",
+        );
+      }
+
+      if (
+        (resolution.kind === "unique" ||
+          resolution.kind === "resolvedAmbiguous") &&
+        path.resolve(resolution.fsPath) === path.resolve(oldResolvedPath)
+      ) {
+        nextText += text.slice(lastIndex, oldPathStart);
+        nextText += newPath;
+        lastIndex = oldPathEnd;
+        changed = true;
+      }
+    }
+
+    if (!changed) return text;
+    return nextText + text.slice(lastIndex);
   }
 }
 
@@ -466,6 +542,7 @@ class WriterlyTemplateFileCreator {
     const targetDir = await this.resolveUniqueDirectory(
       dirPath,
       target.document.uri.fsPath,
+      target.resolutionRoot,
       `No matching directory found in workspace for "${dirPath}"`,
       `Multiple matching directories found in workspace for "${dirPath}". Cannot determine where to create the file.`,
       target.ambiguityNotes,
@@ -494,6 +571,7 @@ class WriterlyTemplateFileCreator {
     const templateDir = await this.resolveUniqueDirectory(
       templateDirSetting,
       target.document.uri.fsPath,
+      target.resolutionRoot,
       `Template files directory "${templateDirSetting}" matches no directory in the workspace`,
       `Template files directory "${templateDirSetting}" matches multiple directories in the workspace. Please make it more specific.`,
       target.ambiguityNotes,
@@ -529,12 +607,14 @@ class WriterlyTemplateFileCreator {
   private async resolveUniqueDirectory(
     dirPath: string,
     rootRelativeTo: string,
+    resolutionRoot: string,
     notFoundMessage: string,
     ambiguousMessage: string,
     ambiguityNotes: string[],
   ): Promise<string | undefined> {
     const resolution = await fileUtils.resolveDirectoryPath(dirPath, {
       rootRelativeTo,
+      resolutionRoot,
     });
     return getResolvedDirectoryPath(
       dirPath,
@@ -575,6 +655,59 @@ class WriterlyTemplateFileCreator {
       return candidateLength > bestLength ? candidate : best;
     });
   }
+}
+
+async function getDocumentResolutionRoot(fsPath: string): Promise<string> {
+  const parentGlob = getWriterlyParentFileGlob();
+  if (parentGlob) {
+    const parentFiles = await vscode.workspace.findFiles(parentGlob);
+    const containingParentDirs = parentFiles
+      .map((uri) => getWriterlyParentDir(uri.fsPath))
+      .filter((parentDir): parentDir is string => !!parentDir)
+      .filter((parentDir) => isPathUnderDirectory(fsPath, parentDir))
+      .sort((a, b) => b.length - a.length);
+
+    if (containingParentDirs.length > 0) {
+      return containingParentDirs[0];
+    }
+  }
+
+  const workspaceFolder = getClosestWorkspaceFolder(fsPath);
+  return workspaceFolder?.uri.fsPath ?? path.dirname(fsPath);
+}
+
+function getClosestWorkspaceFolder(
+  fsPath: string,
+): vscode.WorkspaceFolder | undefined {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  return folders
+    .filter((folder) => isPathUnderDirectory(fsPath, folder.uri.fsPath))
+    .sort((a, b) => b.uri.fsPath.length - a.uri.fsPath.length)[0];
+}
+
+function isPathUnderDirectory(fsPath: string, dirPath: string): boolean {
+  const relativePath = path.relative(dirPath, fsPath);
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  );
+}
+
+function getPathTokenAtOffset(text: string, offset: number): string | undefined {
+  if (offset < 0 || offset >= text.length) return undefined;
+
+  let start = offset;
+  while (start > 0 && !PATH_TOKEN_FORBIDDEN_CHARS.test(text[start - 1])) {
+    start--;
+  }
+
+  let end = offset;
+  while (end < text.length && !PATH_TOKEN_FORBIDDEN_CHARS.test(text[end])) {
+    end++;
+  }
+
+  if (start === end) return undefined;
+  return text.slice(start, end);
 }
 
 function getExistingResolvedPath(
@@ -660,7 +793,7 @@ function getResolvedDirectoryPath(
     reportFileCommandError(
       `${
         ambiguousMessage ??
-        `Multiple matching directories found for "${referencePath}" and closest ancestor directory tie-breaking could not choose one.`
+        `Multiple matching directories found for "${referencePath}" and document-root distance could not choose one.`
       } Matches: ${formatPathList(resolution.fsPaths)}`,
     );
     return undefined;
@@ -722,7 +855,11 @@ function getResolvedAmbiguousPathNote(
 ): string | undefined {
   if (resolution.kind !== "resolvedAmbiguous") return undefined;
 
-  return `Note: Ambiguous path "${referencePath}" matched multiple locations. Resolved to "${resolution.fsPath}" by closest ancestor directory tie-breaking. Other matches: ${formatPathList(resolution.alternatives)}.`;
+  const reason =
+    resolution.reason === "documentRootDistance"
+      ? "document-root distance"
+      : "closest ancestor directory tie-breaking";
+  return `Note: Ambiguous path "${referencePath}" matched multiple locations. Resolved to "${resolution.fsPath}" by ${reason}. Other matches: ${formatPathList(resolution.alternatives)}.`;
 }
 
 async function reportFileCommandSuccess(
