@@ -4,12 +4,14 @@ import { WriterlyDocumentWalker, LineType } from "./WriterlyDocumentWalker";
 import WriterlyStaticValidator from "./WriterlyStaticValidator";
 import {
   ALL_WRITERLY_FILE_GLOB,
-  getWriterlyParentDir,
   getWriterlyFileGlob,
-  getWriterlyParentFileGlob,
   isWriterlyFilePath,
-  isWriterlyParentPath,
 } from "./WriterlyFileExtensions";
+import {
+  discoverWriterlyDocumentRoots,
+  getDocumentTreeKeys,
+  isInSameWriterlyDocumentTree,
+} from "./WriterlyDocumentTrees";
 
 /*
  * WriterlyLinkProvider currently owns the handle subsystem end to end.
@@ -25,22 +27,23 @@ import {
  *   counts all work from the same extracted usage data.
  * - usageCounts: maps each handle name to usage counts per document tree.
  *   Counts are updated when a file is reprocessed so unused-handle diagnostics
- *   stay scoped to the same parent-file tree as definitions.
- * - parents: stores directories containing configured Writerly parent files.
- *   This scope index decides which definitions are visible from a given file.
+ *   stay scoped to the same assemblable document roots as definitions.
+ * - documentRoots: stores assemblable root directories. A directory is a root
+ *   when it contains at least one direct uncommented .wly file.
  * - diagnosticCollection: owns all handle and syntax diagnostics reported by
  *   this provider; diagnostics are replaced per file after reprocessing.
  * - isInitialized/revalidateTimer: prevent premature provider work and debounce
- *   tree-wide revalidation after parent-file changes.
+ *   tree-wide revalidation after file creates/deletes/renames that can change
+ *   assemblable roots.
  *
  * Features provided:
  * - Workspace indexing:
- *   - discovers active Writerly files and parent files
+ *   - discovers active Writerly files and assemblable root directories
  *   - walks documents to extract handle definitions and usages
  *   - updates caches from file-system events and open-document changes
  * - Document-tree scoping:
- *   - resolves the parent-file tree containing a file
- *   - filters definitions and usage counts to that tree
+ *   - resolves whether files can be assembled into the same document
+ *   - filters definitions and usage counts to those document roots
  * - Editor navigation:
  *   - DocumentLinkProvider renders >>handle usages as clickable editor links
  *   - DefinitionProvider resolves F12 targets for visible, unambiguous handles
@@ -120,7 +123,7 @@ export class WriterlyLinkProvider
     vscode.CompletionItemProvider
 {
   private definitions: Map<HandleName, HandleDefinition[]> = new Map();
-  private parents: FSPath[] = [];
+  private documentRoots: FSPath[] = [];
   private diagnosticCollection: vscode.DiagnosticCollection;
   private isInitialized = false;
   private documentLinks: Map<FSPath, vscode.DocumentLink[]> = new Map();
@@ -191,7 +194,7 @@ export class WriterlyLinkProvider
     this.definitions.clear();
     this.documentLinks.clear();
     this.usageCounts.clear();
-    this.parents = [];
+    this.documentRoots = [];
     this.isInitialized = false;
     this.diagnosticCollection.clear();
 
@@ -211,7 +214,7 @@ export class WriterlyLinkProvider
 
   private async initializeAsync(): Promise<void> {
     try {
-      await this.discoverParentDirectories();
+      await this.discoverDocumentRoots();
       await this.processAllDocuments();
 
       this.isInitialized = true;
@@ -240,28 +243,8 @@ export class WriterlyLinkProvider
     await Promise.all(uris.map((uri) => this.processUri(uri)));
   }
 
-  private parentPath(path: FSPath): string {
-    const parentDir = getWriterlyParentDir(path);
-    if (parentDir) return parentDir;
-
-    console.error("non-parent given to parentPath");
-    return path;
-  }
-
-  private async discoverParentDirectories(): Promise<void> {
-    const parentGlob = getWriterlyParentFileGlob();
-    if (!parentGlob) {
-      this.parents = [];
-      return;
-    }
-
-    const parentFiles = await vscode.workspace.findFiles(
-      parentGlob,
-      null,
-      MAX_FILES,
-    );
-
-    this.parents = parentFiles.map((uri) => this.parentPath(uri.fsPath));
+  private async discoverDocumentRoots(): Promise<void> {
+    this.documentRoots = await discoverWriterlyDocumentRoots(MAX_FILES);
   }
 
   private onDidChange(document: vscode.TextDocument): void {
@@ -269,25 +252,25 @@ export class WriterlyLinkProvider
     this.processDocument(document);
   }
 
-  private onDidRename(event: vscode.FileRenameEvent): void {
+  private async onDidRename(event: vscode.FileRenameEvent): Promise<void> {
     for (const file of event.files) {
       if (
         this.isWriterlyFile(file.oldUri.fsPath) &&
         this.isWriterlyFile(file.newUri.fsPath)
       ) {
-        this.renameUri(file.oldUri, file.newUri);
+        await this.renameUri(file.oldUri, file.newUri);
       } else if (this.isWriterlyFile(file.oldUri.fsPath)) {
-        this.deleteUri(file.oldUri);
+        await this.deleteUri(file.oldUri);
       } else if (this.isWriterlyFile(file.newUri.fsPath)) {
-        this.createUri(file.newUri);
+        await this.createUri(file.newUri);
       }
     }
   }
 
-  private onDidDelete(event: vscode.FileDeleteEvent): void {
+  private async onDidDelete(event: vscode.FileDeleteEvent): Promise<void> {
     for (const uri of event.files) {
       if (this.isWriterlyFile(uri.fsPath)) {
-        this.deleteUri(uri);
+        await this.deleteUri(uri);
       }
     }
   }
@@ -305,38 +288,12 @@ export class WriterlyLinkProvider
     return isWriterlyFilePath(fsPath);
   }
 
-  private isWriterlyParent(fsPath: string): boolean {
-    return isWriterlyParentPath(fsPath);
-  }
-
-  private getParentDirFromFilePath(filePath: string): string {
-    return getWriterlyParentDir(filePath) ?? filePath;
-  }
-
-  // parent directory management methods
-  private handleParentFileCreate(uri: vscode.Uri): void {
-    const parentDir = this.getParentDirFromFilePath(uri.fsPath);
-    if (!this.parents.includes(parentDir)) {
-      this.parents.push(parentDir);
-    }
-  }
-
-  private handleParentFileDelete(uri: vscode.Uri): void {
-    const parentDir = this.getParentDirFromFilePath(uri.fsPath);
-    this.parents = this.parents.filter((dir) => dir !== parentDir);
-  }
-
   private async renameUri(
     oldUri: vscode.Uri,
     newUri: vscode.Uri,
   ): Promise<void> {
     const oldPath = oldUri.fsPath;
     const newPath = newUri.fsPath;
-
-    const parentChanged =
-      this.isWriterlyParent(oldPath) || this.isWriterlyParent(newPath);
-    if (this.isWriterlyParent(oldPath)) this.handleParentFileDelete(oldUri);
-    if (this.isWriterlyParent(newPath)) this.handleParentFileCreate(newUri);
 
     for (const [handleName, definitions] of this.definitions) {
       const hasChanges = definitions.some((def) => def.fsPath === oldPath);
@@ -348,22 +305,18 @@ export class WriterlyLinkProvider
       }
     }
 
-    if (parentChanged) {
-      this.rebuildUsageCounts();
-    }
+    await this.discoverDocumentRoots();
+    this.rebuildUsageCounts();
   }
 
-  private deleteUri(uri: vscode.Uri): void {
+  private async deleteUri(uri: vscode.Uri): Promise<void> {
     const targetPath = uri.fsPath;
-    const parentChanged = this.isWriterlyParent(uri.fsPath);
 
     // Subtract usages before cached links are removed.
     const cachedLinks = this.documentLinks.get(targetPath);
     if (cachedLinks) {
       this.updateUsageCountsForLinks(cachedLinks, -1);
     }
-
-    if (parentChanged) this.handleParentFileDelete(uri);
 
     for (const [handleName, definitions] of this.definitions) {
       const filteredDefinitions = definitions.filter(
@@ -381,9 +334,8 @@ export class WriterlyLinkProvider
 
     this.documentLinks.delete(targetPath);
 
-    if (parentChanged) {
-      this.rebuildUsageCounts();
-    }
+    await this.discoverDocumentRoots();
+    this.rebuildUsageCounts();
 
     if (this.isInitialized) {
       this.triggerTreeRevalidation(targetPath);
@@ -391,12 +343,9 @@ export class WriterlyLinkProvider
   }
 
   private async createUri(uri: vscode.Uri): Promise<void> {
-    const parentChanged = this.isWriterlyParent(uri.fsPath);
-    if (parentChanged) this.handleParentFileCreate(uri);
+    await this.discoverDocumentRoots();
     await this.processUri(uri);
-    if (parentChanged) {
-      this.rebuildUsageCounts();
-    }
+    this.rebuildUsageCounts();
   }
 
   private async processUri(uri: vscode.Uri): Promise<void> {
@@ -1121,17 +1070,11 @@ export class WriterlyLinkProvider
       return true;
     }
 
-    return this.parents.some((parentPath) => {
-      const currentUnderParent = this.isPathUnderParent(
-        currentFsPath,
-        parentPath,
-      );
-      const definitionUnderParent = this.isPathUnderParent(
-        definitionFsPath,
-        parentPath,
-      );
-      return currentUnderParent && definitionUnderParent;
-    });
+    return isInSameWriterlyDocumentTree(
+      currentFsPath,
+      definitionFsPath,
+      this.documentRoots,
+    );
   }
 
   private isPathUnderParent(filePath: string, parentPath: string): boolean {
@@ -1296,12 +1239,7 @@ export class WriterlyLinkProvider
   }
 
   private getDocumentTreeKeys(fsPath: string): DocumentTreeKey[] {
-    return [
-      fsPath,
-      ...this.parents.filter((parentPath) =>
-        this.isPathUnderParent(fsPath, parentPath),
-      ),
-    ];
+    return getDocumentTreeKeys(fsPath, this.documentRoots);
   }
 
   private getUsageCountInDocumentTree(

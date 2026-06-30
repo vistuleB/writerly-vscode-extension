@@ -60,21 +60,22 @@ invalid names, and optionally unused definitions are reported as diagnostics.
 
 ## Writerly Document Trees
 
-Writerly document-tree membership is based on parent marker files.
+Writerly documents can be assembled from a single `.wly` file or from a
+directory tree of `.wly` files.
 
-- A file named `__parent.wly` marks its containing directory as a Writerly
-  document-tree root.
-- A Writerly file belongs to a document tree when it is inside that root
-  directory or one of its subdirectories.
-- The parent marker file itself is also a Writerly file in that tree.
-- Without a shared parent marker, two different Writerly files are not in the
-  same handle scope. Handles still work inside each individual file.
-- Nested parent markers are allowed. For handle lookup and diagnostics, files
-  can share any containing parent root. For file-path disambiguation, Writerly
-  uses the nearest containing parent root for the active file.
-- If a file has no containing parent marker, file-path disambiguation falls back
-  to the containing workspace folder. That fallback does not create shared
-  handle scope between unrelated files.
+Two different Writerly files are considered able to belong to the same document
+tree when there is some directory that could be assembled as one Writerly
+document and that directory would include both files:
+
+- The directory must contain at least one direct uncommented `.wly` file.
+- Both files must be uncommented `.wly` descendants of that directory.
+- Commented files and subtrees are ignored. A path is commented when the file
+  name or any directory segment starts with `#`, such as `#draft.wly` or
+  `chapter/#old-scene/scene.wly`.
+- `__parent.wly` is not required for document-tree membership. It affects the
+  assembled structure by making descendant files appear nested under that parent
+  file.
+- A single `.wly` file can also be assembled by itself.
 
 ## Available Commands
 
@@ -118,7 +119,8 @@ resolve path text against files or directories in the workspace.
   the workspace.
 - If exactly one file matches, that file is used.
 - If multiple files match, Writerly resolves the target by choosing the unique
-  closest match relative to the active document's document-tree root.
+  closest match relative to the active document's nearest assemblable document
+  root.
 - If multiple matches tie as closest, the operation aborts and reports the
   matching paths.
 - Hover requires one unique matching file. If the path is missing or ambiguous,

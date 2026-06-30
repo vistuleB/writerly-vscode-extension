@@ -7,10 +7,12 @@ import {
 } from "./utils/file-utils";
 import {
   getWriterlyFileGlob,
-  getWriterlyParentDir,
-  getWriterlyParentFileGlob,
   isWriterlyFilePath,
 } from "./WriterlyFileExtensions";
+import {
+  getNearestWriterlyDocumentRoot,
+  isPathUnderDirectory,
+} from "./WriterlyDocumentTrees";
 
 type FileCommandTarget = {
   filePath: string;
@@ -69,9 +71,9 @@ class UserReportedFileOperationError extends Error {}
  * Behaviors:
  * - Path resolution:
  *   - file references are resolved across the active Writerly workspace
- *   - each active document resolves paths relative to its document-tree root,
- *     falling back to the closest containing workspace folder when it has no
- *     Writerly parent file
+ *   - each active document resolves paths relative to its nearest assemblable
+ *     document root, falling back to the closest containing workspace folder
+ *     when no such root contains it
  *   - ambiguous matches are resolved only when exactly one match has the
  *     shortest distance from that root to the candidate file directory
  *   - unresolved ambiguity stops the command and reports all tied matches
@@ -658,19 +660,8 @@ class WriterlyTemplateFileCreator {
 }
 
 async function getDocumentResolutionRoot(fsPath: string): Promise<string> {
-  const parentGlob = getWriterlyParentFileGlob();
-  if (parentGlob) {
-    const parentFiles = await vscode.workspace.findFiles(parentGlob);
-    const containingParentDirs = parentFiles
-      .map((uri) => getWriterlyParentDir(uri.fsPath))
-      .filter((parentDir): parentDir is string => !!parentDir)
-      .filter((parentDir) => isPathUnderDirectory(fsPath, parentDir))
-      .sort((a, b) => b.length - a.length);
-
-    if (containingParentDirs.length > 0) {
-      return containingParentDirs[0];
-    }
-  }
+  const documentRoot = await getNearestWriterlyDocumentRoot(fsPath);
+  if (documentRoot) return documentRoot;
 
   const workspaceFolder = getClosestWorkspaceFolder(fsPath);
   return workspaceFolder?.uri.fsPath ?? path.dirname(fsPath);
@@ -683,14 +674,6 @@ function getClosestWorkspaceFolder(
   return folders
     .filter((folder) => isPathUnderDirectory(fsPath, folder.uri.fsPath))
     .sort((a, b) => b.uri.fsPath.length - a.uri.fsPath.length)[0];
-}
-
-function isPathUnderDirectory(fsPath: string, dirPath: string): boolean {
-  const relativePath = path.relative(dirPath, fsPath);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
 }
 
 function getPathTokenAtOffset(text: string, offset: number): string | undefined {
