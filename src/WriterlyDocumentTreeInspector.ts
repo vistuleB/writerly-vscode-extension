@@ -58,6 +58,7 @@ type TreeDocument = {
 type InspectorSession = {
   anchorFsPath: string;
   currentOpenFsPath: string;
+  rootDir: string | undefined;
   viewMode: TreeViewMode;
   originViewColumn: vscode.ViewColumn | undefined;
   uri: vscode.Uri;
@@ -189,6 +190,17 @@ export class WriterlyDocumentTreeInspector
       return;
     }
 
+    const containers = await discoverWriterlyContainers();
+    const rootDir = this.getDocumentTreeRoot(
+      editor.document.uri.fsPath,
+      containers,
+    );
+    const existingSession = this.findSessionForRoot(rootDir);
+    if (existingSession) {
+      await this.showExistingInspector(existingSession, editor);
+      return;
+    }
+
     this.documentVersion++;
     const uri = vscode.Uri.from({
       scheme: DOCUMENT_TREE_SCHEME,
@@ -197,6 +209,7 @@ export class WriterlyDocumentTreeInspector
     const session: InspectorSession = {
       anchorFsPath: editor.document.uri.fsPath,
       currentOpenFsPath: editor.document.uri.fsPath,
+      rootDir,
       viewMode: "all",
       originViewColumn: editor.viewColumn,
       uri,
@@ -208,6 +221,38 @@ export class WriterlyDocumentTreeInspector
     );
 
     const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document, {
+      preview: false,
+      viewColumn: vscode.ViewColumn.Beside,
+    });
+    await vscode.window.showTextDocument(editor.document, {
+      viewColumn: session.originViewColumn,
+      preview: false,
+    });
+  }
+
+  private findSessionForRoot(
+    rootDir: string | undefined,
+  ): InspectorSession | undefined {
+    if (!rootDir) return undefined;
+    for (const session of this.sessions.values()) {
+      if (session.rootDir === rootDir) {
+        return session;
+      }
+    }
+    return undefined;
+  }
+
+  private async showExistingInspector(
+    session: InspectorSession,
+    editor: vscode.TextEditor,
+  ): Promise<void> {
+    const uriString = this.getUriKey(session.uri);
+    session.currentOpenFsPath = editor.document.uri.fsPath;
+    session.originViewColumn = editor.viewColumn;
+    await this.refreshSession(uriString, session);
+
+    const document = await vscode.workspace.openTextDocument(session.uri);
     await vscode.window.showTextDocument(document, {
       preview: false,
       viewColumn: vscode.ViewColumn.Beside,
@@ -302,6 +347,7 @@ export class WriterlyDocumentTreeInspector
     const containers = await discoverWriterlyContainers();
     const files = await this.getDocumentTreeFiles(anchorFsPath, containers);
     const root = this.getDocumentTreeRoot(anchorFsPath, containers);
+    session.rootDir = root;
     const rootDisplay = root ? { rootDir: root } : undefined;
 
     return this.createTreeDocument(
