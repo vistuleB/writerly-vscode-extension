@@ -57,6 +57,28 @@ export function isInSameWriterlyDocumentTree(
   );
 }
 
+export function isInAccessibleHashIsland(
+  usageFsPath: string,
+  definitionFsPath: string,
+): boolean {
+  return isHashIslandPrefix(
+    getHashIslandKey(definitionFsPath),
+    getHashIslandKey(usageFsPath),
+  );
+}
+
+export function isInComparableHashIsland(
+  firstFsPath: string,
+  secondFsPath: string,
+): boolean {
+  const firstKey = getHashIslandKey(firstFsPath);
+  const secondKey = getHashIslandKey(secondFsPath);
+  return (
+    isHashIslandPrefix(firstKey, secondKey) ||
+    isHashIslandPrefix(secondKey, firstKey)
+  );
+}
+
 export async function getNearestWriterlyDocumentRoot(
   fsPath: string,
 ): Promise<string | undefined> {
@@ -73,5 +95,36 @@ export function isPathUnderDirectory(fsPath: string, dirPath: string): boolean {
   return (
     relativePath === "" ||
     (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  );
+}
+
+function getHashIslandKey(fsPath: string): string[] {
+  const resolvedPath = path.resolve(fsPath);
+  const parsedPath = path.parse(resolvedPath);
+  const relativeParts = path
+    .relative(parsedPath.root, resolvedPath)
+    .split(path.sep)
+    .filter((part) => part.length > 0);
+
+  const hashSegments: string[] = [];
+  let currentPath = parsedPath.root;
+
+  for (const part of relativeParts) {
+    currentPath = path.join(currentPath, part);
+    if (part.startsWith("#")) {
+      hashSegments.push(currentPath);
+    }
+  }
+
+  return hashSegments;
+}
+
+function isHashIslandPrefix(
+  possiblePrefix: readonly string[],
+  fullKey: readonly string[],
+): boolean {
+  return (
+    possiblePrefix.length <= fullKey.length &&
+    possiblePrefix.every((part, index) => part === fullKey[index])
   );
 }

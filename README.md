@@ -78,6 +78,19 @@ there is some directory that contains both files as part of its `.wly` subtree:
   file.
 - A single `.wly` file also has its own document scope.
 
+Within an extension document tree, `#` path segments define nested islands for
+handle diagnostics and lookup:
+
+- Duplicate handle definitions are errors when they occur in comparable islands
+  (the same island, or one island nested inside the other).
+- Duplicate handle definitions in incomparable `#` islands do not conflict.
+- Go to definition and handle usage validation can see definitions in the same
+  island and ancestor islands.
+- Definitions that exist only in descendant or incomparable `#` islands are
+  reported as inaccessible from the usage site.
+- Handle rename applies across the whole extension document tree, ignoring `#`
+  island boundaries.
+
 ## Available Commands
 
 - `writerly.openUnderCursorWithDefault` - Open file under cursor with system default

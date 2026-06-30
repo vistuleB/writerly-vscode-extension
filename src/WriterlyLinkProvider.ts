@@ -10,6 +10,8 @@ import {
 import {
   discoverWriterlyDocumentRoots,
   getDocumentTreeKeys,
+  isInAccessibleHashIsland,
+  isInComparableHashIsland,
   isInSameWriterlyDocumentTree,
 } from "./WriterlyDocumentTrees";
 
@@ -584,10 +586,12 @@ export class WriterlyLinkProvider
         continue; // Skip tree lookup for invalid names
       }
 
-      const validDefinitions = this.findValidDefinitions(
+      const validDefinitions = this.findDefinitionsInAccessibleIslands(
         handleName,
         currentFsPath,
       );
+      const inaccessibleDefinitions =
+        this.findDefinitionsInInaccessibleIslands(handleName, currentFsPath);
 
       if (validDefinitions.length === 1) {
         // exactly one definition found in this logical tree
@@ -599,6 +603,7 @@ export class WriterlyLinkProvider
           link,
           handleName,
           validDefinitions,
+          inaccessibleDefinitions,
         );
 
         if (diagnostic) {
@@ -612,6 +617,7 @@ export class WriterlyLinkProvider
     link: vscode.DocumentLink,
     handleName: string,
     validDefinitions: HandleDefinition[],
+    inaccessibleDefinitions: HandleDefinition[],
   ): vscode.Diagnostic | null {
     const definitionCount = validDefinitions.length;
 
@@ -621,15 +627,16 @@ export class WriterlyLinkProvider
 
     let message: string;
     if (definitionCount === 0) {
-      message = `Handle '${handleName}' not found`;
+      if (inaccessibleDefinitions.length > 0) {
+        const locationInfo = this.formatDefinitionLocations(
+          inaccessibleDefinitions,
+        );
+        message = `Handle '${handleName}' is defined only in inaccessible commented-out fragments: \n ${locationInfo}`;
+      } else {
+        message = `Handle '${handleName}' not found`;
+      }
     } else {
-      const locationInfo = validDefinitions
-        .map((def) => {
-          const relativePath = this.getRelativeWorkspacePath(def.fsPath);
-          const lineNumber = def.range.start.line + 1;
-          return `${relativePath}:${lineNumber}`;
-        })
-        .join("\n ");
+      const locationInfo = this.formatDefinitionLocations(validDefinitions);
       message = `Handle '${handleName}' has multiple definitions (${definitionCount} found): \n ${locationInfo}`;
     }
 
@@ -638,6 +645,16 @@ export class WriterlyLinkProvider
       message,
       vscode.DiagnosticSeverity.Error,
     );
+  }
+
+  private formatDefinitionLocations(definitions: HandleDefinition[]): string {
+    return definitions
+      .map((def) => {
+        const relativePath = this.getRelativeWorkspacePath(def.fsPath);
+        const lineNumber = def.range.start.line + 1;
+        return `${relativePath}:${lineNumber}`;
+      })
+      .join("\n ");
   }
 
   private getRelativeWorkspacePath(fullPath: string): string {
@@ -654,17 +671,43 @@ export class WriterlyLinkProvider
     return fullPath.split(/[/\\]/).pop() || fullPath;
   }
 
-  private findValidDefinitions(
+  private getDefinitions(handleName: string): HandleDefinition[] {
+    return this.definitions.get(handleName) || [];
+  }
+
+  private findDefinitionsInDocumentTree(
     handleName: string,
     currentFsPath: string,
   ): HandleDefinition[] {
-    const definitions = this.definitions.get(handleName);
-    if (!definitions || definitions.length === 0) {
-      return [];
-    }
-
-    return definitions.filter((def) =>
+    return this.getDefinitions(handleName).filter((def) =>
       this.isInSameDocumentTree(currentFsPath, def.fsPath),
+    );
+  }
+
+  private findDefinitionsInAccessibleIslands(
+    handleName: string,
+    currentFsPath: string,
+  ): HandleDefinition[] {
+    return this.findDefinitionsInDocumentTree(handleName, currentFsPath).filter(
+      (def) => isInAccessibleHashIsland(currentFsPath, def.fsPath),
+    );
+  }
+
+  private findDefinitionsInComparableIslands(
+    handleName: string,
+    currentFsPath: string,
+  ): HandleDefinition[] {
+    return this.findDefinitionsInDocumentTree(handleName, currentFsPath).filter(
+      (def) => isInComparableHashIsland(currentFsPath, def.fsPath),
+    );
+  }
+
+  private findDefinitionsInInaccessibleIslands(
+    handleName: string,
+    currentFsPath: string,
+  ): HandleDefinition[] {
+    return this.findDefinitionsInDocumentTree(handleName, currentFsPath).filter(
+      (def) => !isInAccessibleHashIsland(currentFsPath, def.fsPath),
     );
   }
 
@@ -695,7 +738,7 @@ export class WriterlyLinkProvider
       return undefined;
     }
 
-    const validDefinitions = this.findValidDefinitions(
+    const validDefinitions = this.findDefinitionsInAccessibleIslands(
       handleName,
       currentFsPath,
     );
@@ -735,7 +778,7 @@ export class WriterlyLinkProvider
       if (!handleMatch) continue;
 
       const handleName = handleMatch[1];
-      const validDefinitions = this.findValidDefinitions(
+      const validDefinitions = this.findDefinitionsInComparableIslands(
         handleName,
         document.uri.fsPath,
       );
@@ -902,7 +945,8 @@ export class WriterlyLinkProvider
     fsPath: string,
   ): boolean {
     return definitions.some((def) =>
-      this.isInSameDocumentTree(fsPath, def.fsPath),
+      this.isInSameDocumentTree(fsPath, def.fsPath) &&
+      isInAccessibleHashIsland(fsPath, def.fsPath),
     );
   }
 
@@ -1040,7 +1084,7 @@ export class WriterlyLinkProvider
     handleName: string,
     currentFsPath: string,
   ): vscode.Definition | undefined {
-    const validDefinitions = this.findValidDefinitions(
+    const validDefinitions = this.findDefinitionsInAccessibleIslands(
       handleName,
       currentFsPath,
     );
@@ -1110,7 +1154,10 @@ export class WriterlyLinkProvider
         return;
       }
 
-      const treeDefs = this.findValidDefinitions(handleName, currentFsPath);
+      const treeDefs = this.findDefinitionsInComparableIslands(
+        handleName,
+        currentFsPath,
+      );
       const uniqueTreeDefs = this.dedupeDefinitions(treeDefs);
       if (uniqueTreeDefs.length > 1) {
         this.addDuplicateHandleDefinitionDiagnostics(
