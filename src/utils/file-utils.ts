@@ -13,13 +13,7 @@ export const SUPPORTED_IMAGE_FILE_EXTENSIONS = [
   "svg",
   "webp",
   "avif",
-  "heic",
-  "heif",
   "bmp",
-  "ipe",
-  "psd",
-  "tif",
-  "tiff",
 ] as const;
 const supportedImageFileExtensions = new Set(
   SUPPORTED_IMAGE_FILE_EXTENSIONS.map((ext) => `.${ext}`),

@@ -186,11 +186,11 @@ resolves to an existing file, it shows:
 
 ### `WriterlyCompletionProvider` — Path Autocomplete
 
-Triggered on `=`, ` `, `/` in Writerly files. Offers completions only when the cursor is in
-`src=<path>` or `original=<path>` position. Builds an in-memory file tree of all image files
-in the workspace (PNG, JPG, JPEG, GIF, SVG, WebP, BMP, IPE, PSD, TIFF — both cases).
-Directory completions re-trigger suggest automatically. File completions show an inline image
-preview in the documentation popup.
+Triggered on `=`, ` `, `/` in Writerly files. Offers completions in supported
+path-bearing attributes and Markdown image paths. Builds an in-memory file tree
+of workspace files, excluding hidden folders, `node_modules`, and build output.
+Directory completions re-trigger suggest automatically. Supported image file
+completions show an inline image preview in the documentation popup.
 
 ### `WriterlyFileOpener` — Open Under Cursor
 

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { isWriterlyFilePath } from "./WriterlyFileExtensions";
 import { LineType, WriterlyDocumentWalker } from "./WriterlyDocumentWalker";
-import { SUPPORTED_IMAGE_FILE_EXTENSIONS } from "./utils/file-utils";
+import { fileUtils } from "./utils/file-utils";
 
 interface FileNode {
   name: string;
@@ -12,7 +12,7 @@ interface FileNode {
   children: FileNode[];
 }
 
-type ImagePath = {
+type IndexedPath = {
   relativePath: string;
   uri: vscode.Uri;
 };
@@ -74,10 +74,6 @@ export class WriterlyCompletionProvider
   private fileTree: FileNode[] = [];
   private nameToNodesMap: Map<string, FileNode[]> = new Map();
   private loadFilesTimeout: NodeJS.Timeout | undefined;
-  private readonly imgExtensions: string[] = [
-    ...SUPPORTED_IMAGE_FILE_EXTENSIONS,
-    ...SUPPORTED_IMAGE_FILE_EXTENSIONS.map((ext) => ext.toUpperCase()),
-  ];
 
   constructor(context: vscode.ExtensionContext) {
     this.loadFiles();
@@ -90,7 +86,7 @@ export class WriterlyCompletionProvider
       );
 
     const watcher = vscode.workspace.createFileSystemWatcher(
-      `**/*.{${this.imgExtensions.join(",")}}`,
+      "**/*",
     );
 
     // Debounce watcher events to avoid jitter during bulk operations
@@ -112,7 +108,7 @@ export class WriterlyCompletionProvider
   }
 
   /**
-   * Clears the image cache and rebuilds the file tree immediately.
+   * Clears the file cache and rebuilds the file tree immediately.
    * Called by the WriterlyController.
    */
   public async reset(): Promise<void> {
@@ -127,8 +123,8 @@ export class WriterlyCompletionProvider
     this.nameToNodesMap.clear();
 
     // 3. Re-index immediately (without the 300ms delay)
-    const imagePaths = await this.getAllImagePaths();
-    this.fileTree = this.buildFileTree(imagePaths);
+    const indexedPaths = await this.getAllIndexedPaths();
+    this.fileTree = this.buildFileTree(indexedPaths);
     this.rebuildLookupMap();
   }
 
@@ -139,16 +135,16 @@ export class WriterlyCompletionProvider
     if (this.loadFilesTimeout) clearTimeout(this.loadFilesTimeout);
 
     this.loadFilesTimeout = setTimeout(async () => {
-      const imagePaths = await this.getAllImagePaths();
-      this.fileTree = this.buildFileTree(imagePaths);
+      const indexedPaths = await this.getAllIndexedPaths();
+      this.fileTree = this.buildFileTree(indexedPaths);
       this.rebuildLookupMap();
     }, 300);
   }
 
-  private buildFileTree(paths: ImagePath[]): FileNode[] {
+  private buildFileTree(paths: IndexedPath[]): FileNode[] {
     const root: FileNode[] = [];
-    for (const imagePath of paths) {
-      const parts = imagePath.relativePath.split("/");
+    for (const indexedPath of paths) {
+      const parts = indexedPath.relativePath.split("/");
       let currentLevel = root;
       let accumulatedPath = "";
 
@@ -165,7 +161,7 @@ export class WriterlyCompletionProvider
             name: part,
             type: isFile ? "file" : "directory",
             fullPath: accumulatedPath,
-            uri: isFile ? imagePath.uri : undefined,
+            uri: isFile ? indexedPath.uri : undefined,
             children: [],
           };
           currentLevel.push(existingNode);
@@ -190,10 +186,11 @@ export class WriterlyCompletionProvider
     }
   }
 
-  private async getAllImagePaths(): Promise<ImagePath[]> {
-    const excludePattern = "{**/node_modules/**,**/build/**,**/.*/**,**/.*}";
+  private async getAllIndexedPaths(): Promise<IndexedPath[]> {
+    const excludePattern =
+      "{**/node_modules/**,**/dist/**,**/build/**,**/.*/**,**/.*}";
     const files = await vscode.workspace.findFiles(
-      `**/*.{${this.imgExtensions.join(",")}}`,
+      "**/*",
       excludePattern,
     );
     return files.map((file) => ({
@@ -428,7 +425,7 @@ export class WriterlyCompletionProvider
       return item;
     }
 
-    if (item.uri) {
+    if (item.uri && fileUtils.isImageFile(item.uri.fsPath)) {
       const docs = new vscode.MarkdownString();
       docs.supportHtml = true;
       docs.appendMarkdown(`![Preview](${item.uri.toString()})`);

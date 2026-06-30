@@ -7,8 +7,8 @@ Writerly is a markup language extension for VS Code that makes creating structur
 ### Open and Preview Files & Images
 
 - Open any file under your cursor with the default application by using `Ctrl+Shift+O` (or `Cmd+Shift+O` on Mac)
-- Hover over resolved image filenames to preview supported image-like files
-- Get image-like file suggestions in supported path-bearing attributes and Markdown image links
+- Hover over resolved image filenames to preview supported image files
+- Get file path suggestions in supported path-bearing attributes and Markdown image links
 
 ### Navigate Your Documents
 
@@ -22,7 +22,7 @@ Writerly is a markup language extension for VS Code that makes creating structur
 
 - Get diagnostics for indentation, tabs in initial whitespace, tag syntax, empty tags, and code block structure
 - See diagnostics for undefined handles, duplicate handle definitions, and invalid handle names
-- Auto-complete image-like file paths in supported path contexts
+- Auto-complete file paths in supported path contexts
 
 ### Manage Files From the Editor
 
@@ -161,13 +161,9 @@ Path completion is offered in:
 
 Ordinary Markdown links are not completion contexts.
 
-Indexed image-like file extensions are:
-
-```text
-png, jpg, jpeg, gif, svg, webp, avif, heic, heif, bmp, ipe, psd, tif, tiff
-```
-
-Uppercase variants are also indexed.
+All workspace files are indexed, excluding hidden folders, `node_modules`, and
+build output folders. Supported image files show a preview in the completion
+documentation popup.
 
 ## Diagnostics And Language Behavior
 
