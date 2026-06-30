@@ -3,7 +3,6 @@ import * as path from "path";
 import {
   getWriterlyFileGlob,
   isWriterlyFilePath,
-  WRITERLY_FILE_EXTENSION,
 } from "./WriterlyFileExtensions";
 import {
   discoverWriterlyContainers,
@@ -11,19 +10,62 @@ import {
   isPathUnderDirectory,
 } from "./WriterlyDocumentTrees";
 
-type DocumentTreeItem = vscode.QuickPickItem & {
-  uri?: vscode.Uri;
-};
+const DOCUMENT_TREE_SCHEME = "writerly-document-tree";
+const OPEN_TREE_FILE_COMMAND = "writerly.openDocumentTreeFile";
 
 type RootDisplay = {
-  fsPath: string;
-  description: string;
   rootDir: string;
-  uri?: vscode.Uri;
 };
 
-export class WriterlyDocumentTreeInspector {
+type DirectoryNode = {
+  name: string;
+  files: vscode.Uri[];
+  directories: Map<string, DirectoryNode>;
+};
+
+type AssemblyEntry = {
+  name: string;
+  uri?: vscode.Uri;
+  directory?: DirectoryNode;
+};
+
+type AssemblyFile = {
+  uri: vscode.Uri;
+  fileName: string;
+  dirPath: string;
+  indentation: number;
+};
+
+type LinkTarget = {
+  line: number;
+  startCharacter: number;
+  endCharacter: number;
+  uri: vscode.Uri;
+};
+
+type TreeDocument = {
+  text: string;
+  links: LinkTarget[];
+};
+
+type InspectorSession = {
+  anchorFsPath: string;
+  currentOpenFsPath: string;
+  uri: vscode.Uri;
+};
+
+export class WriterlyDocumentTreeInspector
+  implements vscode.TextDocumentContentProvider, vscode.DocumentLinkProvider
+{
   private readonly statusBarItem: vscode.StatusBarItem;
+  private readonly onDidChangeEmitter =
+    new vscode.EventEmitter<vscode.Uri>();
+  public readonly onDidChange = this.onDidChangeEmitter.event;
+  private currentDocument: TreeDocument | undefined;
+  private currentSession: InspectorSession | undefined;
+  private documentVersion = 0;
+  private originViewColumn: vscode.ViewColumn | undefined;
+  private refreshTimeout: NodeJS.Timeout | undefined;
 
   constructor(context: vscode.ExtensionContext) {
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -34,24 +76,66 @@ export class WriterlyDocumentTreeInspector {
     this.statusBarItem.text = "$(list-tree) Writerly Tree";
     this.statusBarItem.tooltip = "Inspect Writerly document tree";
 
+    const watcher = vscode.workspace.createFileSystemWatcher("**/*");
+    const refresh = () => this.scheduleRefresh();
+
     context.subscriptions.push(
       this.statusBarItem,
+      this.onDidChangeEmitter,
+      watcher,
+      vscode.workspace.registerTextDocumentContentProvider(
+        DOCUMENT_TREE_SCHEME,
+        this,
+      ),
+      vscode.languages.registerDocumentLinkProvider(
+        { scheme: DOCUMENT_TREE_SCHEME },
+        this,
+      ),
       vscode.commands.registerCommand("writerly.inspectDocumentTree", () =>
         this.inspectActiveDocumentTree(),
       ),
-      vscode.window.onDidChangeActiveTextEditor(() =>
-        this.updateStatusBarVisibility(),
+      vscode.commands.registerCommand(
+        OPEN_TREE_FILE_COMMAND,
+        (fsPath: string) => this.openDocumentTreeFile(fsPath),
+      ),
+      vscode.window.onDidChangeActiveTextEditor((editor) =>
+        this.handleActiveTextEditorChange(editor),
       ),
       vscode.workspace.onDidOpenTextDocument(() =>
         this.updateStatusBarVisibility(),
       ),
     );
+    watcher.onDidCreate(refresh, undefined, context.subscriptions);
+    watcher.onDidChange(refresh, undefined, context.subscriptions);
+    watcher.onDidDelete(refresh, undefined, context.subscriptions);
 
     this.updateStatusBarVisibility();
   }
 
   public reset(): void {
     this.updateStatusBarVisibility();
+    this.scheduleRefresh();
+  }
+
+  public provideTextDocumentContent(_uri: vscode.Uri): string {
+    return this.currentDocument?.text ?? "";
+  }
+
+  public provideDocumentLinks(
+    document: vscode.TextDocument,
+    _token: vscode.CancellationToken,
+  ): vscode.ProviderResult<vscode.DocumentLink[]> {
+    if (!this.currentDocument) return [];
+
+    return this.currentDocument.links.map((link) => {
+      const range = new vscode.Range(
+        link.line,
+        link.startCharacter,
+        link.line,
+        link.endCharacter,
+      );
+      return new vscode.DocumentLink(range, this.createOpenFileCommandUri(link.uri));
+    });
   }
 
   private updateStatusBarVisibility(): void {
@@ -60,6 +144,20 @@ export class WriterlyDocumentTreeInspector {
       this.statusBarItem.show();
     } else {
       this.statusBarItem.hide();
+    }
+  }
+
+  private handleActiveTextEditorChange(
+    editor: vscode.TextEditor | undefined,
+  ): void {
+    this.updateStatusBarVisibility();
+    if (
+      editor &&
+      this.currentSession &&
+      isWriterlyFilePath(editor.document.uri.fsPath)
+    ) {
+      this.currentSession.currentOpenFsPath = editor.document.uri.fsPath;
+      this.scheduleRefresh();
     }
   }
 
@@ -72,31 +170,100 @@ export class WriterlyDocumentTreeInspector {
       return;
     }
 
-    const currentFsPath = editor.document.uri.fsPath;
-    const containers = await discoverWriterlyContainers();
-    const files = await this.getDocumentTreeFiles(currentFsPath, containers);
-    const root = this.getDocumentTreeRoot(currentFsPath, containers);
-    const rootDisplay = root
-      ? await this.getRootDisplay(root)
-      : undefined;
+    this.originViewColumn = editor.viewColumn;
+    this.documentVersion++;
+    const uri = vscode.Uri.from({
+      scheme: DOCUMENT_TREE_SCHEME,
+      path: `/tree-${this.documentVersion}.txt`,
+    });
+    this.currentSession = {
+      anchorFsPath: editor.document.uri.fsPath,
+      currentOpenFsPath: editor.document.uri.fsPath,
+      uri,
+    };
+    this.currentDocument = await this.createTreeDocumentForAnchor(
+      this.currentSession,
+    );
 
-    const items = this.createQuickPickItems(
-      currentFsPath,
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document, {
+      preview: false,
+      viewColumn: vscode.ViewColumn.Beside,
+    });
+    await vscode.window.showTextDocument(editor.document, {
+      viewColumn: this.originViewColumn,
+      preview: false,
+    });
+  }
+
+  private async openDocumentTreeFile(fsPath: string): Promise<void> {
+    const document = await vscode.workspace.openTextDocument(
+      vscode.Uri.file(fsPath),
+    );
+    await vscode.window.showTextDocument(document, {
+      viewColumn: this.originViewColumn,
+      preview: false,
+    });
+    if (this.currentSession) {
+      this.currentSession.currentOpenFsPath = fsPath;
+      await this.refreshCurrentDocument();
+    }
+  }
+
+  private createOpenFileCommandUri(uri: vscode.Uri): vscode.Uri {
+    const args = encodeURIComponent(JSON.stringify([uri.fsPath]));
+    return vscode.Uri.parse(`command:${OPEN_TREE_FILE_COMMAND}?${args}`);
+  }
+
+  private scheduleRefresh(): void {
+    if (!this.currentSession) return;
+    if (this.refreshTimeout) {
+      clearTimeout(this.refreshTimeout);
+    }
+    this.refreshTimeout = setTimeout(() => {
+      void this.refreshCurrentDocument();
+    }, 150);
+  }
+
+  private async refreshCurrentDocument(): Promise<void> {
+    if (!this.currentSession) return;
+
+    this.currentDocument = await this.createTreeDocumentForAnchor(
+      this.currentSession,
+    );
+    this.onDidChangeEmitter.fire(this.currentSession.uri);
+  }
+
+  private async createTreeDocumentForAnchor(
+    session: InspectorSession,
+  ): Promise<TreeDocument> {
+    const anchorFsPath = session.anchorFsPath;
+    const exists = await this.fileExists(anchorFsPath);
+    if (!exists) {
+      return {
+        text: `Inspector abandoned: anchor file no longer exists.\n\n${anchorFsPath}`,
+        links: [],
+      };
+    }
+
+    const containers = await discoverWriterlyContainers();
+    const files = await this.getDocumentTreeFiles(anchorFsPath, containers);
+    const root = this.getDocumentTreeRoot(anchorFsPath, containers);
+    const rootDisplay = root ? { rootDir: root } : undefined;
+
+    return this.createTreeDocument(
+      session.currentOpenFsPath,
       files,
       rootDisplay,
     );
-    const picked = await vscode.window.showQuickPick(items, {
-      title: `Writerly Document Tree: ${files.length} file${
-        files.length === 1 ? "" : "s"
-      }`,
-      placeHolder: "Select a file to open",
-      matchOnDescription: true,
-      matchOnDetail: true,
-    });
+  }
 
-    if (picked?.uri) {
-      const document = await vscode.workspace.openTextDocument(picked.uri);
-      await vscode.window.showTextDocument(document);
+  private async fileExists(fsPath: string): Promise<boolean> {
+    try {
+      const stat = await vscode.workspace.fs.stat(vscode.Uri.file(fsPath));
+      return stat.type === vscode.FileType.File;
+    } catch {
+      return false;
     }
   }
 
@@ -125,83 +292,291 @@ export class WriterlyDocumentTreeInspector {
       );
   }
 
-  private createQuickPickItems(
+  private createTreeDocument(
     currentFsPath: string,
     files: readonly vscode.Uri[],
     root: RootDisplay | undefined,
-  ): DocumentTreeItem[] {
-    const items: DocumentTreeItem[] = [];
-
-    items.push({
-      label: "Root",
-      kind: vscode.QuickPickItemKind.Separator,
-    });
+  ): TreeDocument {
+    const lines: string[] = [];
+    const links: LinkTarget[] = [];
 
     if (!root) {
-      items.push({
-        label: "Current file only",
-        description: "No containing Writerly root was found",
-      });
+      lines.push(
+        `Containing directory: ${this.getRelativeWorkspacePath(
+          path.dirname(currentFsPath),
+        )}`,
+      );
     } else {
-      items.push({
-        label: this.getRelativeWorkspacePath(root.fsPath),
-        description: root.description,
-        detail: root.fsPath,
-        uri: root.uri,
-      });
+      lines.push(
+        `Containing directory: ${this.getRelativeWorkspacePath(root.rootDir)}`,
+      );
     }
 
-    items.push({
-      label: "Files",
-      kind: vscode.QuickPickItemKind.Separator,
-    });
+    lines.push("");
+    this.appendOrderedFileLines(lines, files, currentFsPath, root, links);
 
-    for (const uri of files) {
-      items.push(...this.createTreeFileItems(uri, currentFsPath, root));
-    }
-
-    return items;
+    return {
+      text: lines.join("\n"),
+      links,
+    };
   }
 
-  private createTreeFileItems(
-    uri: vscode.Uri,
+  private appendOrderedFileLines(
+    lines: string[],
+    files: readonly vscode.Uri[],
     currentFsPath: string,
     root: RootDisplay | undefined,
-  ): DocumentTreeItem[] {
-    const isCurrentFile = uri.fsPath === currentFsPath;
+    links: LinkTarget[],
+  ): void {
     if (!root) {
-      return [
-        {
-          label: path.basename(uri.fsPath),
-          description: isCurrentFile ? "current file" : undefined,
-          detail: uri.fsPath,
+      for (const uri of files) {
+        const line = lines.length;
+        const fileName = path.basename(uri.fsPath);
+        const currentMarker = uri.fsPath === currentFsPath ? "■" : " ";
+        lines.push(
+          `${fileName}  ${currentMarker} ${this.getCommentStatusMarker(uri.fsPath)} .`,
+        );
+        links.push({
+          line,
+          startCharacter: 0,
+          endCharacter: fileName.length,
           uri,
-        },
-      ];
+        });
+      }
+      return;
     }
 
-    const relativePath = path.relative(root.rootDir, uri.fsPath);
-    const parts = relativePath.split(path.sep).filter((part) => part.length > 0);
-    const fileName = parts[parts.length - 1] || path.basename(uri.fsPath);
-    const dirParts = parts.slice(0, -1);
-    const items: DocumentTreeItem[] = [];
+    const tree = this.buildDirectoryTree(files, root.rootDir);
+    const dirNameEndingInWriterly = this.findDirNameEndingInWriterly(tree);
+    if (dirNameEndingInWriterly) {
+      lines.push(
+        `Error: directory name ends in .wly: ${dirNameEndingInWriterly}`,
+      );
+      return;
+    }
 
-    if (dirParts.length > 0) {
-      items.push({
-        label: `${this.getIndent(dirParts.length - 1)}${dirParts[dirParts.length - 1]}/`,
-        description: dirParts.join("/"),
-        kind: vscode.QuickPickItemKind.Separator,
+    const assemblyFiles = this.getAssemblyFiles(tree, root.rootDir);
+    const fileColumnWidth = Math.max(
+      ...assemblyFiles.map(
+        (file) => file.indentation + file.fileName.length,
+      ),
+      0,
+    );
+
+    for (const file of assemblyFiles) {
+      const line = lines.length;
+      const indentedFileName = `${" ".repeat(file.indentation)}${file.fileName}`;
+      const dirColumn =
+        file.dirPath.length > 0 ? file.dirPath : ".";
+      const currentMarker = file.uri.fsPath === currentFsPath ? "■" : " ";
+      lines.push(
+        `${indentedFileName.padEnd(fileColumnWidth)}  ${currentMarker} ${this.getCommentStatusMarker(file.uri.fsPath)} ${dirColumn}`,
+      );
+      links.push({
+        line,
+        startCharacter: file.indentation,
+        endCharacter: file.indentation + file.fileName.length,
+        uri: file.uri,
       });
     }
+  }
 
-    items.push({
-      label: `${this.getIndent(dirParts.length)}${fileName}`,
-      description: isCurrentFile ? "current file" : undefined,
-      detail: uri.fsPath,
-      uri,
+  private buildDirectoryTree(
+    files: readonly vscode.Uri[],
+    rootDir: string,
+  ): DirectoryNode {
+    const root: DirectoryNode = {
+      name: "",
+      files: [],
+      directories: new Map(),
+    };
+
+    for (const uri of files) {
+      const relativePath = path.relative(rootDir, uri.fsPath);
+      const parts = relativePath
+        .split(path.sep)
+        .filter((part) => part.length > 0);
+      let current = root;
+
+      for (let index = 0; index < parts.length; index++) {
+        const name = parts[index];
+        const isFile = index === parts.length - 1;
+        if (isFile) {
+          current.files.push(uri);
+          break;
+        }
+
+        let child = current.directories.get(name);
+
+        if (!child) {
+          child = {
+            name,
+            files: [],
+            directories: new Map(),
+          };
+          current.directories.set(name, child);
+        }
+
+        current = child;
+      }
+    }
+
+    return root;
+  }
+
+  private getCommentStatusMarker(fsPath: string): string {
+    return fsPath
+      .split(path.sep)
+      .some((part) => part.startsWith("#"))
+      ? "#"
+      : "✓";
+  }
+
+  private getAssemblyFiles(
+    directory: DirectoryNode,
+    rootDir: string,
+    depth = 0,
+  ): AssemblyFile[] {
+    const entries = this.sortEntriesForAssemblyDisplay(
+      this.getAssemblyEntries(directory),
+    );
+    const parentPrefixes = directory.files
+      .map((uri) => this.getActiveParentFilePrefix(path.basename(uri.fsPath)))
+      .filter((prefix): prefix is string => prefix !== undefined);
+    const files: AssemblyFile[] = [];
+
+    for (const entry of entries) {
+      const entryDepth =
+        depth +
+        parentPrefixes.filter(
+          (prefix) => this.activeParentPrefixApplies(prefix, entry.name),
+        ).length;
+
+      if (entry.directory) {
+        files.push(
+          ...this.getAssemblyFiles(entry.directory, rootDir, entryDepth),
+        );
+      } else if (entry.uri) {
+        files.push({
+          uri: entry.uri,
+          fileName: entry.name,
+          dirPath: path
+            .relative(rootDir, path.dirname(entry.uri.fsPath))
+            .split(path.sep)
+            .join("/"),
+          indentation: 4 * entryDepth,
+        });
+      }
+    }
+
+    return files;
+  }
+
+  private findDirNameEndingInWriterly(
+    directory: DirectoryNode,
+    prefix = "",
+  ): string | undefined {
+    for (const child of directory.directories.values()) {
+      const childPath = prefix ? `${prefix}/${child.name}` : child.name;
+      if (child.name.endsWith(".wly")) {
+        return childPath;
+      }
+      const nested = this.findDirNameEndingInWriterly(child, childPath);
+      if (nested) return nested;
+    }
+    return undefined;
+  }
+
+  private getAssemblyEntries(directory: DirectoryNode): AssemblyEntry[] {
+    return [
+      ...directory.files.map((uri) => ({
+        name: path.basename(uri.fsPath),
+        uri,
+      })),
+      ...[...directory.directories.values()].map((childDirectory) => ({
+        name: childDirectory.name,
+        directory: childDirectory,
+      })),
+    ];
+  }
+
+  private sortEntriesForAssemblyDisplay(
+    entries: readonly AssemblyEntry[],
+  ): AssemblyEntry[] {
+    return [...entries].sort((a, b) => {
+      const aOrder = this.getAssemblySortKey(a.name);
+      const bOrder = this.getAssemblySortKey(b.name);
+      return (
+        aOrder.anchor.localeCompare(bOrder.anchor) ||
+        aOrder.rank - bOrder.rank ||
+        aOrder.name.localeCompare(bOrder.name)
+      );
     });
+  }
 
-    return items;
+  private getAssemblySortKey(fileNameOrDirName: string): {
+    anchor: string;
+    rank: number;
+    name: string;
+  } {
+    if (fileNameOrDirName.startsWith("#")) {
+      const uncommentedName = fileNameOrDirName.slice(1);
+      return {
+        anchor: this.dropParentSuffix(uncommentedName),
+        rank: fileNameOrDirName.endsWith("__parent.wly") ? -1 : 0,
+        name: fileNameOrDirName,
+      };
+    }
+
+    return {
+      anchor: this.dropParentSuffix(fileNameOrDirName),
+      rank: 1,
+      name: fileNameOrDirName,
+    };
+  }
+
+  private dropParentSuffix(name: string): string {
+    const parentSuffix = "__parent.wly";
+    return name.endsWith(parentSuffix)
+      ? name.slice(0, -parentSuffix.length)
+      : name;
+  }
+
+  private getActiveParentFilePrefix(fileName: string): string | undefined {
+    const parentSuffix = "__parent.wly";
+    if (fileName.startsWith("#")) return undefined;
+    if (!fileName.endsWith(parentSuffix)) return undefined;
+    return fileName.slice(0, -parentSuffix.length);
+  }
+
+  private activeParentPrefixApplies(
+    activePrefix: string,
+    entryName: string,
+  ): boolean {
+    const inertParentPrefix = this.getInertParentFilePrefix(entryName);
+    if (inertParentPrefix !== undefined) {
+      return (
+        activePrefix.length < inertParentPrefix.length &&
+        inertParentPrefix.startsWith(activePrefix)
+      );
+    }
+
+    const effectiveName = entryName.startsWith("#")
+      ? entryName.slice(1)
+      : entryName;
+
+    return (
+      effectiveName.startsWith(activePrefix) &&
+      entryName !== `${activePrefix}__parent.wly`
+    );
+  }
+
+  private getInertParentFilePrefix(fileName: string): string | undefined {
+    const parentSuffix = "__parent.wly";
+    if (!fileName.startsWith("#") || !fileName.endsWith(parentSuffix)) {
+      return undefined;
+    }
+    return fileName.slice(1, -parentSuffix.length);
   }
 
   private getDocumentTreeRoot(
@@ -211,67 +586,6 @@ export class WriterlyDocumentTreeInspector {
     return containers
       .filter((containerPath) => isPathUnderDirectory(currentFsPath, containerPath))
       .sort((a, b) => a.length - b.length)[0];
-  }
-
-  private async getRootDisplay(rootDir: string): Promise<RootDisplay> {
-    const parentFile = await this.findRootParentFile(rootDir);
-    if (parentFile) {
-      return {
-        fsPath: parentFile,
-        description: "Root",
-        rootDir,
-        uri: vscode.Uri.file(parentFile),
-      };
-    }
-
-    return {
-      fsPath: rootDir,
-      description: "Root dir",
-      rootDir,
-    };
-  }
-
-  private async findRootParentFile(
-    rootDir: string,
-  ): Promise<string | undefined> {
-    const entries = await vscode.workspace.fs.readDirectory(
-      vscode.Uri.file(rootDir),
-    );
-    const rootWriterlyFiles = entries
-      .filter(
-        ([name, fileType]) =>
-          fileType === vscode.FileType.File && isWriterlyFilePath(name),
-      )
-      .map(([name]) => name);
-    const parentFiles: { name: string; prefix: string }[] = [];
-    for (const name of rootWriterlyFiles) {
-      const prefix = this.getParentFilePrefix(name);
-      if (
-        prefix !== undefined &&
-        rootWriterlyFiles.every((fileName) => fileName.startsWith(prefix))
-      ) {
-        parentFiles.push({ name, prefix });
-      }
-    }
-
-    parentFiles.sort(
-      (a, b) =>
-        a.prefix.length - b.prefix.length || a.name.localeCompare(b.name),
-    );
-
-    return parentFiles[0]
-      ? path.join(rootDir, parentFiles[0].name)
-      : undefined;
-  }
-
-  private getParentFilePrefix(fileName: string): string | undefined {
-    const suffix = `__parent${WRITERLY_FILE_EXTENSION}`;
-    if (!fileName.endsWith(suffix)) return undefined;
-    return fileName.slice(0, -suffix.length);
-  }
-
-  private getIndent(depth: number): string {
-    return "  ".repeat(Math.max(depth, 0));
   }
 
   private getRelativeWorkspacePath(fullPath: string): string {
