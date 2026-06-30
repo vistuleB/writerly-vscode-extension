@@ -430,7 +430,7 @@ class WriterlyPathReferenceUpdater {
 
     const writerlyFiles = await vscode.workspace.findFiles(fileGlob);
     const pathRegex = new RegExp(
-      `${escapeRegExp(oldPath)}(?=\\s|[})\\]]|$)`,
+      `(^|[=\\(\\[\\{/ ])(${escapeRegExp(oldPath)})(?=\\s|[})\\]]|$)`,
       "g",
     );
 
@@ -444,7 +444,7 @@ class WriterlyPathReferenceUpdater {
       }
 
       const text = document.getText();
-      const newText = text.replace(pathRegex, newPath);
+      const newText = text.replace(pathRegex, `$1${newPath}`);
       if (newText === text) continue;
 
       const fullRange = new vscode.Range(
