@@ -1,8 +1,8 @@
 |> disambiguation-test
-    source=near/chapter/ambiguous-note-target3.txt
-    source=near/chapter/ambiguous-note-target.txt
+    source=near/chapter/assets/ambiguous-note-target3.txt
+    source=near/chapter/assets/ambiguous-note-target.txt
     handle=qq'
 
 
-Place the cursor on near/chapter/ambiguous-note-target.txt and run
+Place the cursor on near/chapter/assets/ambiguous-note-target.txt and run
 Writerly: Rename File Under Cursor.
