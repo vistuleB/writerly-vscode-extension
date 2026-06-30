@@ -63,6 +63,7 @@ type LinkTarget = {
 type TreeDocument = {
   text: string;
   links: LinkTarget[];
+  currentLine: number | undefined;
 };
 
 type InspectorSession = {
@@ -78,6 +79,7 @@ export class WriterlyDocumentTreeInspector
   implements vscode.TextDocumentContentProvider, vscode.DocumentLinkProvider
 {
   private readonly statusBarItem: vscode.StatusBarItem;
+  private readonly currentFileLineDecoration: vscode.TextEditorDecorationType;
   private readonly onDidChangeEmitter =
     new vscode.EventEmitter<vscode.Uri>();
   public readonly onDidChange = this.onDidChangeEmitter.event;
@@ -94,12 +96,20 @@ export class WriterlyDocumentTreeInspector
     this.statusBarItem.command = "writerly.inspectDocumentTree";
     this.statusBarItem.text = "$(list-tree) Writerly Tree";
     this.statusBarItem.tooltip = "Inspect Writerly document tree";
+    this.currentFileLineDecoration =
+      vscode.window.createTextEditorDecorationType({
+        isWholeLine: true,
+        backgroundColor: new vscode.ThemeColor(
+          "editor.findMatchHighlightBackground",
+        ),
+      });
 
     const watcher = vscode.workspace.createFileSystemWatcher("**/*");
     const refresh = () => this.scheduleRefresh();
 
     context.subscriptions.push(
       this.statusBarItem,
+      this.currentFileLineDecoration,
       this.onDidChangeEmitter,
       watcher,
       vscode.workspace.registerTextDocumentContentProvider(
@@ -125,6 +135,9 @@ export class WriterlyDocumentTreeInspector
       ),
       vscode.window.onDidChangeActiveTextEditor((editor) =>
         this.handleActiveTextEditorChange(editor),
+      ),
+      vscode.window.onDidChangeVisibleTextEditors(() =>
+        this.applyCurrentFileLineDecorations(),
       ),
       vscode.workspace.onDidOpenTextDocument(() =>
         this.updateStatusBarVisibility(),
@@ -235,6 +248,7 @@ export class WriterlyDocumentTreeInspector
       preview: false,
       viewColumn: vscode.ViewColumn.Beside,
     });
+    this.applyCurrentFileLineDecorations();
     await vscode.window.showTextDocument(editor.document, {
       viewColumn: session.originViewColumn,
       preview: false,
@@ -267,6 +281,7 @@ export class WriterlyDocumentTreeInspector
       preview: false,
       viewColumn: vscode.ViewColumn.Beside,
     });
+    this.applyCurrentFileLineDecorations();
     await vscode.window.showTextDocument(editor.document, {
       viewColumn: session.originViewColumn,
       preview: false,
@@ -340,6 +355,30 @@ export class WriterlyDocumentTreeInspector
       await this.createTreeDocumentForAnchor(session),
     );
     this.onDidChangeEmitter.fire(session.uri);
+    this.applyCurrentFileLineDecorations();
+  }
+
+  private applyCurrentFileLineDecorations(): void {
+    for (const editor of vscode.window.visibleTextEditors) {
+      if (editor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) continue;
+
+      const treeDocument = this.documents.get(
+        this.getUriKey(editor.document.uri),
+      );
+      const currentLine = treeDocument?.currentLine;
+      const ranges =
+        currentLine === undefined
+          ? []
+          : [
+              new vscode.Range(
+                currentLine,
+                0,
+                currentLine,
+                Number.MAX_SAFE_INTEGER,
+              ),
+            ];
+      editor.setDecorations(this.currentFileLineDecoration, ranges);
+    }
   }
 
   private async createTreeDocumentForAnchor(
@@ -351,6 +390,7 @@ export class WriterlyDocumentTreeInspector
       return {
         text: `Inspector abandoned: anchor file no longer exists.\n\n${anchorFsPath}`,
         links: [],
+        currentLine: undefined,
       };
     }
 
@@ -412,6 +452,7 @@ export class WriterlyDocumentTreeInspector
   ): TreeDocument {
     const lines: string[] = [];
     const links: LinkTarget[] = [];
+    let currentLine: number | undefined;
 
     if (!root) {
       lines.push(
@@ -430,7 +471,7 @@ export class WriterlyDocumentTreeInspector
       this.appendViewModeControl(lines, links, viewMode, sourceUri);
     }
     lines.push("");
-    this.appendOrderedFileLines(
+    currentLine = this.appendOrderedFileLines(
       lines,
       files,
       currentFsPath,
@@ -443,6 +484,7 @@ export class WriterlyDocumentTreeInspector
     return {
       text: lines.join("\n"),
       links,
+      currentLine,
     };
   }
 
@@ -454,11 +496,14 @@ export class WriterlyDocumentTreeInspector
     viewMode: TreeViewMode,
     links: LinkTarget[],
     sourceUri: vscode.Uri,
-  ): void {
+  ): number | undefined {
+    let currentLine: number | undefined;
+
     if (!root) {
       for (const uri of files) {
         const line = lines.length;
         const fileName = path.basename(uri.fsPath);
+        if (uri.fsPath === currentFsPath) currentLine = line;
         const currentMarker = uri.fsPath === currentFsPath ? "■" : " ";
         lines.push(
           `${fileName}  ${currentMarker} ${this.getCommentStatusMarker(uri.fsPath)} .`,
@@ -471,7 +516,7 @@ export class WriterlyDocumentTreeInspector
           sourceUri,
         });
       }
-      return;
+      return currentLine;
     }
 
     const tree = this.fromTerminals(
@@ -486,7 +531,7 @@ export class WriterlyDocumentTreeInspector
       lines.push(
         `Error: directory name ends in .wly: ${dirNameEndingInWriterly}`,
       );
-      return;
+      return undefined;
     }
 
     const displayFiles = this.inputLinesForDirtreeDisplayAtDepth(
@@ -507,6 +552,7 @@ export class WriterlyDocumentTreeInspector
       const indentedFileName = `${" ".repeat(file.indentation)}${file.fileName}`;
       const dirColumn =
         file.dirPath.length > 0 ? file.dirPath : ".";
+      if (file.uri.fsPath === currentFsPath) currentLine = line;
       const currentMarker = file.uri.fsPath === currentFsPath ? "■" : " ";
       lines.push(
         `${indentedFileName.padEnd(fileColumnWidth)}  ${currentMarker} ${this.getCommentStatusMarker(file.uri.fsPath)} ${dirColumn}`,
@@ -519,6 +565,8 @@ export class WriterlyDocumentTreeInspector
         sourceUri,
       });
     }
+
+    return currentLine;
   }
 
   /*
