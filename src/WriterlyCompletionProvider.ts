@@ -265,14 +265,14 @@ export class WriterlyCompletionProvider
         : undefined;
     }
 
-    const markdownImageMatch = linePrefix.match(/!\[[^\]]*\]\(([^)\s]*)$/);
-    if (markdownImageMatch) {
+    const markdownLinkMatch = linePrefix.match(/!?\[[^\]]*\]\(([^)\s]*)$/);
+    if (markdownLinkMatch) {
       const lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
         document,
         position,
       );
       return lineType === LineType.Text
-        ? { fullTypedPath: markdownImageMatch[1] }
+        ? { fullTypedPath: markdownLinkMatch[1] }
         : undefined;
     }
 
