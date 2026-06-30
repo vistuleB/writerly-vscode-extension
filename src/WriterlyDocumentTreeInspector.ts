@@ -22,15 +22,25 @@ type RootDisplay = {
   rootDir: string;
 };
 
+type RelativeWriterlyPath = {
+  uri: vscode.Uri;
+  relativePath: string;
+};
+
+type DirectoryFile = {
+  name: string;
+  uri: vscode.Uri;
+};
+
 type DirectoryNode = {
   name: string;
-  files: vscode.Uri[];
+  files: DirectoryFile[];
   directories: Map<string, DirectoryNode>;
 };
 
 type DisplayEntry = {
   name: string;
-  uri?: vscode.Uri;
+  file?: DirectoryFile;
   directory?: DirectoryNode;
 };
 
@@ -422,9 +432,10 @@ export class WriterlyDocumentTreeInspector
     lines.push("");
     this.appendOrderedFileLines(
       lines,
-      this.filterFilesForViewMode(files, viewMode),
+      files,
       currentFsPath,
       root,
+      viewMode,
       links,
       sourceUri,
     );
@@ -435,19 +446,12 @@ export class WriterlyDocumentTreeInspector
     };
   }
 
-  private filterFilesForViewMode(
-    files: readonly vscode.Uri[],
-    viewMode: TreeViewMode,
-  ): vscode.Uri[] {
-    if (viewMode === "all") return [...files];
-    return files.filter((uri) => !this.isCommentedPath(uri.fsPath));
-  }
-
   private appendOrderedFileLines(
     lines: string[],
     files: readonly vscode.Uri[],
     currentFsPath: string,
     root: RootDisplay | undefined,
+    viewMode: TreeViewMode,
     links: LinkTarget[],
     sourceUri: vscode.Uri,
   ): void {
@@ -470,7 +474,13 @@ export class WriterlyDocumentTreeInspector
       return;
     }
 
-    const tree = this.buildDirectoryTree(files, root.rootDir);
+    const tree = this.fromTerminals(
+      this.getDirnameAndRelativePathsForInspector(
+        files,
+        root.rootDir,
+        viewMode,
+      ),
+    );
     const dirNameEndingInWriterly = this.findDirNameEndingInWriterly(tree);
     if (dirNameEndingInWriterly) {
       lines.push(
@@ -479,9 +489,11 @@ export class WriterlyDocumentTreeInspector
       return;
     }
 
-    const displayFiles = this.getDisplayFilesInAssemblyOrder(
-      tree,
+    const displayFiles = this.inputLinesForDirtreeDisplayAtDepth(
       root.rootDir,
+      "",
+      tree,
+      0,
     );
     const fileColumnWidth = Math.max(
       ...displayFiles.map(
@@ -509,9 +521,40 @@ export class WriterlyDocumentTreeInspector
     }
   }
 
-  private buildDirectoryTree(
+  /*
+   * Inspector analogue of writerly.gleam PART 1:
+   *
+   * get_dirname_and_relative_paths_of_uncommented_wly_in_dir
+   *   -> represented here by getDirnameAndRelativePathsForInspector. The
+   *      inspector can use a broader policy that retains # paths for display.
+   *
+   * dt.from_terminals(dirname, paths)
+   *   -> represented here by fromTerminals.
+   *
+   * dt.sort(fn(t1, t2) { compare(drop_suffix(t1.name), drop_suffix(t2.name)) })
+   *   -> represented here by sortDirTreeEntriesLikeGleam. The inspector adds a
+   *      total ordering for # entries so inactive paths are shown near the
+   *      active entry they would shadow or complement.
+   *
+   * input_lines_for_dirtree_at_depth(dirname, "", tree, 0)
+   *   -> represented here by inputLinesForDirtreeDisplayAtDepth. The inspector
+   *      emits display rows instead of reading file contents into InputLine.
+   */
+  private getDirnameAndRelativePathsForInspector(
     files: readonly vscode.Uri[],
     rootDir: string,
+    viewMode: TreeViewMode,
+  ): RelativeWriterlyPath[] {
+    return files
+      .filter((uri) => viewMode === "all" || !this.isCommentedPath(uri.fsPath))
+      .map((uri) => ({
+        uri,
+        relativePath: path.relative(rootDir, uri.fsPath),
+      }));
+  }
+
+  private fromTerminals(
+    terminals: readonly RelativeWriterlyPath[],
   ): DirectoryNode {
     const root: DirectoryNode = {
       name: "",
@@ -519,9 +562,8 @@ export class WriterlyDocumentTreeInspector
       directories: new Map(),
     };
 
-    for (const uri of files) {
-      const relativePath = path.relative(rootDir, uri.fsPath);
-      const parts = relativePath
+    for (const terminal of terminals) {
+      const parts = terminal.relativePath
         .split(path.sep)
         .filter((part) => part.length > 0);
       let current = root;
@@ -530,7 +572,7 @@ export class WriterlyDocumentTreeInspector
         const name = parts[index];
         const isFile = index === parts.length - 1;
         if (isFile) {
-          current.files.push(uri);
+          current.files.push({ name, uri: terminal.uri });
           break;
         }
 
@@ -607,53 +649,45 @@ export class WriterlyDocumentTreeInspector
   }
 
   /*
-   * The inspector display follows the assembly-order rules in
-   * writerly.gleam's input_lines_for_dirtree_at_depth:
-   * - emit files, not directories
-   * - sort directory entries by name after dropping the __parent.wly suffix
-   * - active, non-# <prefix>__parent.wly files add one indentation level to
-   *   matching sibling files/directories, except the parent file itself
-   *
-   * The inspector also displays # paths as inert entries. They sort near their
-   * uncommented counterpart and can receive indentation, but # parent files do
-   * not add indentation to other entries.
+   * Mirrors writerly.gleam's input_lines_for_dirtree_at_depth. The Gleam
+   * function reads each emitted file into InputLine values; this version emits
+   * the file metadata needed by the read-only inspector document.
    */
-  private getDisplayFilesInAssemblyOrder(
+  private inputLinesForDirtreeDisplayAtDepth(
+    originalDirname: string,
+    acc: string,
     directory: DirectoryNode,
-    rootDir: string,
-    depth = 0,
+    depth: number,
   ): DisplayFile[] {
-    const entries = this.sortEntriesForDisplay(
-      this.getDisplayEntries(directory),
+    const entries = this.sortDirTreeEntriesLikeGleam(
+      this.getDirTreeEntries(directory),
     );
     const parentPrefixes = directory.files
-      .map((uri) => this.getActiveParentFilePrefix(path.basename(uri.fsPath)))
+      .map((file) => this.getParentPrefix(file.name))
       .filter((prefix): prefix is string => prefix !== undefined);
     const files: DisplayFile[] = [];
 
     for (const entry of entries) {
       const entryDepth =
         depth +
-        parentPrefixes.filter(
-          (prefix) => this.activeParentPrefixApplies(prefix, entry.name),
+        parentPrefixes.filter((prefix) =>
+          this.addedDepthApplies(prefix, entry.name),
         ).length;
 
       if (entry.directory) {
         files.push(
-          ...this.getDisplayFilesInAssemblyOrder(
+          ...this.inputLinesForDirtreeDisplayAtDepth(
+            originalDirname,
+            this.dirAndFilenameToPath(acc, entry.name),
             entry.directory,
-            rootDir,
             entryDepth,
           ),
         );
-      } else if (entry.uri) {
+      } else if (entry.file) {
         files.push({
-          uri: entry.uri,
+          uri: entry.file.uri,
           fileName: entry.name,
-          dirPath: path
-            .relative(rootDir, path.dirname(entry.uri.fsPath))
-            .split(path.sep)
-            .join("/"),
+          dirPath: acc,
           indentation: ASSEMBLY_INDENT_WIDTH * entryDepth,
         });
       }
@@ -677,11 +711,11 @@ export class WriterlyDocumentTreeInspector
     return undefined;
   }
 
-  private getDisplayEntries(directory: DirectoryNode): DisplayEntry[] {
+  private getDirTreeEntries(directory: DirectoryNode): DisplayEntry[] {
     return [
-      ...directory.files.map((uri) => ({
-        name: path.basename(uri.fsPath),
-        uri,
+      ...directory.files.map((file) => ({
+        name: file.name,
+        file,
       })),
       ...[...directory.directories.values()].map((childDirectory) => ({
         name: childDirectory.name,
@@ -690,12 +724,12 @@ export class WriterlyDocumentTreeInspector
     ];
   }
 
-  private sortEntriesForDisplay(
+  private sortDirTreeEntriesLikeGleam(
     entries: readonly DisplayEntry[],
   ): DisplayEntry[] {
     return [...entries].sort((a, b) => {
-      const aOrder = this.getDisplaySortKey(a.name);
-      const bOrder = this.getDisplaySortKey(b.name);
+      const aOrder = this.getDirTreeSortKey(a.name);
+      const bOrder = this.getDirTreeSortKey(b.name);
       return (
         aOrder.anchor.localeCompare(bOrder.anchor) ||
         aOrder.rank - bOrder.rank ||
@@ -704,7 +738,7 @@ export class WriterlyDocumentTreeInspector
     });
   }
 
-  private getDisplaySortKey(fileNameOrDirName: string): {
+  private getDirTreeSortKey(fileNameOrDirName: string): {
     anchor: string;
     rank: number;
     name: string;
@@ -731,13 +765,13 @@ export class WriterlyDocumentTreeInspector
       : name;
   }
 
-  private getActiveParentFilePrefix(fileName: string): string | undefined {
+  private getParentPrefix(fileName: string): string | undefined {
     if (fileName.startsWith("#")) return undefined;
     if (!fileName.endsWith(PARENT_FILE_SUFFIX)) return undefined;
     return fileName.slice(0, -PARENT_FILE_SUFFIX.length);
   }
 
-  private activeParentPrefixApplies(
+  private addedDepthApplies(
     activePrefix: string,
     entryName: string,
   ): boolean {
@@ -757,6 +791,10 @@ export class WriterlyDocumentTreeInspector
       effectiveName.startsWith(activePrefix) &&
       entryName !== `${activePrefix}${PARENT_FILE_SUFFIX}`
     );
+  }
+
+  private dirAndFilenameToPath(dir: string, fileName: string): string {
+    return dir ? `${dir}/${fileName}` : fileName;
   }
 
   private getInertParentFilePrefix(fileName: string): string | undefined {
