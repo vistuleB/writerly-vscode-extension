@@ -12,8 +12,11 @@ import {
 
 const DOCUMENT_TREE_SCHEME = "writerly-document-tree";
 const OPEN_TREE_FILE_COMMAND = "writerly.openDocumentTreeFile";
+const SET_TREE_VIEW_MODE_COMMAND = "writerly.setDocumentTreeViewMode";
 const PARENT_FILE_SUFFIX = "__parent.wly";
 const ASSEMBLY_INDENT_WIDTH = 4;
+
+type TreeViewMode = "active" | "all";
 
 type RootDisplay = {
   rootDir: string;
@@ -43,6 +46,7 @@ type LinkTarget = {
   startCharacter: number;
   endCharacter: number;
   uri: vscode.Uri;
+  isCommand?: boolean;
 };
 
 type TreeDocument = {
@@ -53,6 +57,7 @@ type TreeDocument = {
 type InspectorSession = {
   anchorFsPath: string;
   currentOpenFsPath: string;
+  viewMode: TreeViewMode;
   uri: vscode.Uri;
 };
 
@@ -100,6 +105,10 @@ export class WriterlyDocumentTreeInspector
         OPEN_TREE_FILE_COMMAND,
         (fsPath: string) => this.openDocumentTreeFile(fsPath),
       ),
+      vscode.commands.registerCommand(
+        SET_TREE_VIEW_MODE_COMMAND,
+        (mode: TreeViewMode) => this.setDocumentTreeViewMode(mode),
+      ),
       vscode.window.onDidChangeActiveTextEditor((editor) =>
         this.handleActiveTextEditorChange(editor),
       ),
@@ -136,7 +145,10 @@ export class WriterlyDocumentTreeInspector
         link.line,
         link.endCharacter,
       );
-      return new vscode.DocumentLink(range, this.createOpenFileCommandUri(link.uri));
+      const target = link.isCommand
+        ? link.uri
+        : this.createOpenFileCommandUri(link.uri);
+      return new vscode.DocumentLink(range, target);
     });
   }
 
@@ -181,6 +193,7 @@ export class WriterlyDocumentTreeInspector
     this.currentSession = {
       anchorFsPath: editor.document.uri.fsPath,
       currentOpenFsPath: editor.document.uri.fsPath,
+      viewMode: "all",
       uri,
     };
     this.currentDocument = await this.createTreeDocumentForAnchor(
@@ -215,6 +228,12 @@ export class WriterlyDocumentTreeInspector
   private createOpenFileCommandUri(uri: vscode.Uri): vscode.Uri {
     const args = encodeURIComponent(JSON.stringify([uri.fsPath]));
     return vscode.Uri.parse(`command:${OPEN_TREE_FILE_COMMAND}?${args}`);
+  }
+
+  private async setDocumentTreeViewMode(mode: TreeViewMode): Promise<void> {
+    if (!this.currentSession) return;
+    this.currentSession.viewMode = mode;
+    await this.refreshCurrentDocument();
   }
 
   private scheduleRefresh(): void {
@@ -257,6 +276,7 @@ export class WriterlyDocumentTreeInspector
       session.currentOpenFsPath,
       files,
       rootDisplay,
+      session.viewMode,
     );
   }
 
@@ -298,6 +318,7 @@ export class WriterlyDocumentTreeInspector
     currentFsPath: string,
     files: readonly vscode.Uri[],
     root: RootDisplay | undefined,
+    viewMode: TreeViewMode,
   ): TreeDocument {
     const lines: string[] = [];
     const links: LinkTarget[] = [];
@@ -314,13 +335,31 @@ export class WriterlyDocumentTreeInspector
       );
     }
 
+    if (files.some((uri) => this.isCommentedPath(uri.fsPath))) {
+      lines.push("");
+      this.appendViewModeControl(lines, links, viewMode);
+    }
     lines.push("");
-    this.appendOrderedFileLines(lines, files, currentFsPath, root, links);
+    this.appendOrderedFileLines(
+      lines,
+      this.filterFilesForViewMode(files, viewMode),
+      currentFsPath,
+      root,
+      links,
+    );
 
     return {
       text: lines.join("\n"),
       links,
     };
+  }
+
+  private filterFilesForViewMode(
+    files: readonly vscode.Uri[],
+    viewMode: TreeViewMode,
+  ): vscode.Uri[] {
+    if (viewMode === "all") return [...files];
+    return files.filter((uri) => !this.isCommentedPath(uri.fsPath));
   }
 
   private appendOrderedFileLines(
@@ -430,11 +469,51 @@ export class WriterlyDocumentTreeInspector
   }
 
   private getCommentStatusMarker(fsPath: string): string {
-    return fsPath
-      .split(path.sep)
-      .some((part) => part.startsWith("#"))
-      ? "#"
-      : "✓";
+    return this.isCommentedPath(fsPath) ? "#" : "✓";
+  }
+
+  private isCommentedPath(fsPath: string): boolean {
+    return fsPath.split(path.sep).some((part) => part.startsWith("#"));
+  }
+
+  private appendViewModeControl(
+    lines: string[],
+    links: LinkTarget[],
+    viewMode: TreeViewMode,
+  ): void {
+    const line = lines.length;
+    const activeLabel = `${viewMode === "active" ? "✓ " : ""}active only`;
+    const allLabel = `${viewMode === "all" ? "✓ " : ""}all`;
+    const prefix = "View: ";
+    lines.push(`${prefix}${activeLabel} | ${allLabel}`);
+
+    const activeStart =
+      prefix.length + (viewMode === "active" ? "✓ ".length : 0);
+    const activeLinkText = "active only";
+    const allStart = prefix.length + activeLabel.length + 3;
+    const allLinkStart = allStart + (viewMode === "all" ? "✓ ".length : 0);
+    const allLinkText = "all";
+    links.push(
+      {
+        line,
+        startCharacter: activeStart,
+        endCharacter: activeStart + activeLinkText.length,
+        uri: this.createSetViewModeCommandUri("active"),
+        isCommand: true,
+      },
+      {
+        line,
+        startCharacter: allLinkStart,
+        endCharacter: allLinkStart + allLinkText.length,
+        uri: this.createSetViewModeCommandUri("all"),
+        isCommand: true,
+      },
+    );
+  }
+
+  private createSetViewModeCommandUri(mode: TreeViewMode): vscode.Uri {
+    const args = encodeURIComponent(JSON.stringify([mode]));
+    return vscode.Uri.parse(`command:${SET_TREE_VIEW_MODE_COMMAND}?${args}`);
   }
 
   /*
