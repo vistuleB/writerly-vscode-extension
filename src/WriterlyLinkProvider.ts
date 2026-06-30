@@ -45,8 +45,10 @@ import {
  *   - DocumentLinkProvider renders >>handle usages as clickable editor links
  *   - DefinitionProvider resolves F12 targets for visible, unambiguous handles
  * - Rename support:
- *   - RenameProvider renames attribute definitions, in-text definitions, and
- *     usages across the current document tree
+ *   - RenameProvider renames handle attribute definitions, in-text definitions,
+ *     and usages across the current document tree
+ *   - non-handle rename positions return undefined so other RenameProviders can
+ *     handle other Writerly rename targets, such as file paths
  * - Completion support:
  *   - CompletionItemProvider offers visible handle names after >>
  * - Diagnostics and quick fixes:
@@ -830,9 +832,7 @@ export class WriterlyLinkProvider
       return { range: handle.range, placeholder: handle.handleName };
     }
 
-    throw new Error(
-      "Please place cursor on a handle definition or usage to rename.",
-    );
+    return undefined;
   }
 
   public async provideRenameEdits(

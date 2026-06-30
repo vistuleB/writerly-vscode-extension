@@ -13,6 +13,7 @@ import {
 type FileCommandTarget = {
   filePath: string;
   resolution: FileResolution;
+  pathRange: vscode.Range;
   document: vscode.TextDocument;
   position: vscode.Position;
   ambiguityNotes: string[];
@@ -20,6 +21,7 @@ type FileCommandTarget = {
 
 type FileCommandOptions = {
   requireExistingFile: boolean;
+  reportErrors?: boolean;
 };
 
 type ReferencePathParts = {
@@ -27,9 +29,56 @@ type ReferencePathParts = {
   fileName: string;
 };
 
-// VS Code command adapter. It handles editor/cursor preflight and delegates the
-// command workflows to focused helpers below.
-export class WriterlyFileRenamer {
+type FileReferenceRenameMode = "fileName" | "directoryPath";
+
+type FileReferenceRenameTarget = {
+  mode: FileReferenceRenameMode;
+  range: vscode.Range;
+  placeholder: string;
+};
+
+type FileOperationEdit = {
+  edit: vscode.WorkspaceEdit;
+  successMessage: string;
+};
+
+/*
+ * WriterlyFileRenamer owns file-reference mutation workflows. It is mostly
+ * stateless: each command or RenameProvider call resolves the path under the
+ * active cursor, builds a one-shot WorkspaceEdit, applies or returns that edit,
+ * and then discards all per-call data.
+ *
+ * Entry points:
+ * - Commands:
+ *   - writerly.renameFileUnderCursor prompts for a new basename.
+ *   - writerly.moveFileUnderCursor prompts for a new directory path.
+ *   - writerly.createFileUnderCursorFromTemplate creates a missing file path
+ *     from the configured template directory.
+ * - RenameProvider:
+ *   - F2 over a filename builds the same file-rename edit as the command route.
+ *   - F2 over a directory path builds the same file-move edit as the command route.
+ *
+ * Behaviors:
+ * - Path resolution:
+ *   - file references are resolved across the active Writerly workspace
+ *   - ambiguous matches are resolved only when exactly one match has the closest
+ *     common ancestor to the active Writerly document
+ *   - unresolved ambiguity stops the command and reports all tied matches
+ * - Reference rewriting:
+ *   - reference updates scan all active Writerly files in the workspace
+ *   - updates are not limited to a document tree
+ *   - matching is literal against the old reference string, not against resolved
+ *     absolute paths
+ *   - each changed document is replaced with a full-document text edit
+ * - File operations:
+ *   - rename/move edits use WorkspaceEdit.renameFile
+ *   - command routes apply the WorkspaceEdit directly
+ *   - RenameProvider routes return the WorkspaceEdit to VS Code
+ * - User reporting:
+ *   - command routes show success/error messages and modal disambiguation notes
+ *   - RenameProvider routes rely on VS Code's rename UI for applying/reporting
+ */
+export class WriterlyFileRenamer implements vscode.RenameProvider {
   private readonly templateCreator = new WriterlyTemplateFileCreator();
 
   constructor(context: vscode.ExtensionContext) {
@@ -53,6 +102,10 @@ export class WriterlyFileRenamer {
               this.templateCreator.createFileUnderCursorFromTemplate(target),
             { requireExistingFile: false },
           ),
+      ),
+      vscode.languages.registerRenameProvider(
+        { scheme: "file", language: "writerly" },
+        this,
       ),
     ];
 
@@ -78,52 +131,116 @@ export class WriterlyFileRenamer {
       return;
     }
 
+    const target = await this.getFileCommandTarget(
+      editor.document,
+      editor.selection.active,
+      { ...options, reportErrors: true },
+    );
+    if (!target) return;
+
+    try {
+      await handler(target);
+    } catch (error) {
+      reportFileCommandError("Writerly file command failed unexpectedly", error);
+    }
+  }
+
+  private async getFileCommandTarget(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    options: FileCommandOptions,
+  ): Promise<FileCommandTarget | undefined> {
     const { result: fileResolution, error: resolutionError } = await tryCatch(
       fileUtils.getFileResolutionAtPosition(
-        editor.document,
-        editor.selection.active,
-        { rootRelativeTo: editor.document.uri.fsPath },
+        document,
+        position,
+        { rootRelativeTo: document.uri.fsPath },
       ),
     );
     if (!fileResolution || resolutionError) {
-      reportFileCommandError(
+      reportFileCommandIssue(
         "Failed to resolve file path under cursor",
+        options,
         resolutionError,
       );
       return;
     }
 
-    const [_, filePath, resolution] = fileResolution;
+    const [pathRange, filePath, resolution] = fileResolution;
     if (!filePath) {
-      reportFileCommandError("No file path found under cursor");
+      reportFileCommandIssue("No file path found under cursor", options);
       return;
     }
 
     if (resolution.kind === "ambiguous") {
-      reportFileCommandError(
+      reportFileCommandIssue(
         `Multiple matching files found for "${filePath}" and closest ancestor directory tie-breaking could not choose one. Matches: ${formatPathList(resolution.fsPaths)}`,
+        options,
       );
       return;
     }
 
     if (resolution.kind === "notFound" && options.requireExistingFile) {
-      reportFileCommandError(`File not found: ${filePath}`);
+      reportFileCommandIssue(`File not found: ${filePath}`, options);
       return;
     }
 
     const ambiguityNotes = getResolvedAmbiguousPathNote(filePath, resolution);
 
-    try {
-      await handler({
-        filePath,
-        resolution,
-        document: editor.document,
-        position: editor.selection.active,
-        ambiguityNotes: ambiguityNotes ? [ambiguityNotes] : [],
-      });
-    } catch (error) {
-      reportFileCommandError("Writerly file command failed unexpectedly", error);
-    }
+    return {
+      filePath,
+      resolution,
+      pathRange,
+      document,
+      position,
+      ambiguityNotes: ambiguityNotes ? [ambiguityNotes] : [],
+    };
+  }
+
+  public async prepareRename(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): Promise<{ range: vscode.Range; placeholder: string } | undefined> {
+    if (!isWriterlyFilePath(document.uri.fsPath)) return undefined;
+
+    const target = await this.getFileCommandTarget(document, position, {
+      requireExistingFile: true,
+      reportErrors: false,
+    });
+    if (!target) return undefined;
+
+    const renameTarget = getFileReferenceRenameTarget(target);
+    if (!renameTarget) return undefined;
+
+    return {
+      range: renameTarget.range,
+      placeholder: renameTarget.placeholder,
+    };
+  }
+
+  public async provideRenameEdits(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    newName: string,
+    _token: vscode.CancellationToken,
+  ): Promise<vscode.WorkspaceEdit | undefined> {
+    if (!isWriterlyFilePath(document.uri.fsPath)) return undefined;
+
+    const target = await this.getFileCommandTarget(document, position, {
+      requireExistingFile: true,
+      reportErrors: false,
+    });
+    if (!target) return undefined;
+
+    const renameTarget = getFileReferenceRenameTarget(target);
+    if (!renameTarget) return undefined;
+
+    const operation =
+      renameTarget.mode === "fileName"
+        ? await buildRenameFileEdit(target, newName)
+        : await buildMoveFileEdit(target, newName);
+
+    return operation?.edit;
   }
 
   private async renameFileUnderCursor(
@@ -131,8 +248,6 @@ export class WriterlyFileRenamer {
   ): Promise<void> {
     const resolvedPath = getExistingResolvedPath(target);
     if (!resolvedPath) return;
-
-    const { filePath } = target;
     const { result: newFileName, error } = await tryCatch(
       vscode.window.showInputBox({
         prompt: "Enter new file name",
@@ -159,46 +274,13 @@ export class WriterlyFileRenamer {
       return;
     }
 
-    const newResolvedFilePath = path.join(
-      path.dirname(resolvedPath),
-      newFileName,
-    );
-    if (await pathExists(newResolvedFilePath)) {
-      vscode.window.showErrorMessage(
-        "A file with the new name already exists in the same directory",
-      );
-      return;
-    }
+    const operation = await buildRenameFileEdit(target, newFileName);
+    if (!operation) return;
 
-    const { error: renameError } = await tryCatch(
-      vscode.workspace.fs.rename(
-        vscode.Uri.file(resolvedPath),
-        vscode.Uri.file(newResolvedFilePath),
-      ),
-    );
-
-    if (renameError) {
-      vscode.window.showErrorMessage("Failed to rename file");
-      console.error("Rename error:", renameError);
-      return;
-    }
-
-    const newFilePath = replaceReferenceFileName(filePath, newFileName);
-    await WriterlyPathReferenceUpdater.replacePathInWriterlyFiles(
-      filePath,
-      newFilePath,
-    );
-
-    await reportFileCommandSuccess(
-      `Renamed file to "${newFileName}" and updated references in Writerly files accordingly.`,
-      target.ambiguityNotes,
-    );
+    await applyFileOperationEdit(operation, target.ambiguityNotes);
   }
 
   private async moveFileUnderCursor(target: FileCommandTarget): Promise<void> {
-    const resolvedPath = getExistingResolvedPath(target);
-    if (!resolvedPath) return;
-
     const { filePath } = target;
     const { fileName, dirPath } = splitReferencePath(filePath);
 
@@ -222,57 +304,120 @@ export class WriterlyFileRenamer {
       return;
     }
 
-    const dirResolution = await fileUtils.resolveDirectoryPath(newDirPath, {
-      rootRelativeTo: target.document.uri.fsPath,
-    });
-    const targetDir = getResolvedDirectoryPath(
-      newDirPath,
-      dirResolution,
-      "No matching directory found in workspace for the provided path",
-      undefined,
-      target.ambiguityNotes,
-    );
-    if (!targetDir) {
-      return;
-    }
+    const operation = await buildMoveFileEdit(target, newDirPath);
+    if (!operation) return;
 
-    const newResolvedFilePath = path.join(targetDir, fileName);
-    if (await pathExists(newResolvedFilePath)) {
-      vscode.window.showErrorMessage(
-        "A file with the same name already exists in the target directory",
-      );
-      return;
-    }
-
-    const { error: moveError } = await tryCatch(
-      vscode.workspace.fs.rename(
-        vscode.Uri.file(resolvedPath),
-        vscode.Uri.file(newResolvedFilePath),
-      ),
-    );
-    if (moveError) {
-      vscode.window.showErrorMessage("Failed to move file");
-      console.error("Move error:", moveError);
-      return;
-    }
-
-    const newFilePath = joinReferencePath(newDirPath, fileName);
-    await WriterlyPathReferenceUpdater.replacePathInWriterlyFiles(
-      filePath,
-      newFilePath,
-    );
-
-    await reportFileCommandSuccess(
-      `Moved file to "${newFilePath}" and updated references in Writerly files accordingly.`,
-      target.ambiguityNotes,
-    );
+    await applyFileOperationEdit(operation, target.ambiguityNotes);
   }
+}
+
+async function buildRenameFileEdit(
+  target: FileCommandTarget,
+  newFileName: string,
+): Promise<FileOperationEdit | undefined> {
+  const resolvedPath = getExistingResolvedPath(target);
+  if (!resolvedPath) return undefined;
+
+  const validationError = validateNewFileName(newFileName);
+  if (validationError) {
+    reportFileCommandError(validationError);
+    return undefined;
+  }
+
+  const newResolvedFilePath = path.join(path.dirname(resolvedPath), newFileName);
+  if (await pathExists(newResolvedFilePath)) {
+    reportFileCommandError(
+      "A file with the new name already exists in the same directory",
+    );
+    return undefined;
+  }
+
+  const newFilePath = replaceReferenceFileName(target.filePath, newFileName);
+  const edit = await buildFileReferenceOperationEdit(
+    resolvedPath,
+    newResolvedFilePath,
+    target.filePath,
+    newFilePath,
+  );
+
+  return {
+    edit,
+    successMessage: `Renamed file to "${newFileName}" and updated references in Writerly files accordingly.`,
+  };
+}
+
+async function buildMoveFileEdit(
+  target: FileCommandTarget,
+  newDirPath: string,
+): Promise<FileOperationEdit | undefined> {
+  const resolvedPath = getExistingResolvedPath(target);
+  if (!resolvedPath) return undefined;
+
+  if (newDirPath.trim() === "") {
+    reportFileCommandError("Directory path cannot be empty");
+    return undefined;
+  }
+
+  const { fileName } = splitReferencePath(target.filePath);
+  const dirResolution = await fileUtils.resolveDirectoryPath(newDirPath, {
+    rootRelativeTo: target.document.uri.fsPath,
+  });
+  const targetDir = getResolvedDirectoryPath(
+    newDirPath,
+    dirResolution,
+    "No matching directory found in workspace for the provided path",
+    undefined,
+    target.ambiguityNotes,
+  );
+  if (!targetDir) return undefined;
+
+  const newResolvedFilePath = path.join(targetDir, fileName);
+  if (await pathExists(newResolvedFilePath)) {
+    reportFileCommandError(
+      "A file with the same name already exists in the target directory",
+    );
+    return undefined;
+  }
+
+  const newFilePath = joinReferencePath(newDirPath, fileName);
+  const edit = await buildFileReferenceOperationEdit(
+    resolvedPath,
+    newResolvedFilePath,
+    target.filePath,
+    newFilePath,
+  );
+
+  return {
+    edit,
+    successMessage: `Moved file to "${newFilePath}" and updated references in Writerly files accordingly.`,
+  };
+}
+
+async function buildFileReferenceOperationEdit(
+  oldResolvedPath: string,
+  newResolvedPath: string,
+  oldReferencePath: string,
+  newReferencePath: string,
+): Promise<vscode.WorkspaceEdit> {
+  const edit = new vscode.WorkspaceEdit();
+  edit.renameFile(
+    vscode.Uri.file(oldResolvedPath),
+    vscode.Uri.file(newResolvedPath),
+    { overwrite: false },
+  );
+  await WriterlyPathReferenceUpdater.addPathReplacementEdits(
+    edit,
+    oldReferencePath,
+    newReferencePath,
+  );
+  return edit;
 }
 
 // One-shot text rewrite used after filesystem rename/move. This intentionally
 // scans current workspace files instead of depending on cached link-provider state.
 class WriterlyPathReferenceUpdater {
-  static async replacePathInWriterlyFiles(
+  static async addPathReplacementEdits(
+    workspaceEdit: vscode.WorkspaceEdit,
     oldPath: string,
     newPath: string,
   ): Promise<void> {
@@ -284,7 +429,6 @@ class WriterlyPathReferenceUpdater {
     if (!fileGlob) return;
 
     const writerlyFiles = await vscode.workspace.findFiles(fileGlob);
-    const workspaceEdit = new vscode.WorkspaceEdit();
     const pathRegex = new RegExp(
       `${escapeRegExp(oldPath)}(?=\\s|[})\\]]|$)`,
       "g",
@@ -308,15 +452,6 @@ class WriterlyPathReferenceUpdater {
         document.positionAt(text.length),
       );
       workspaceEdit.replace(uri, fullRange, newText);
-    }
-
-    if (workspaceEdit.size === 0) return;
-
-    const { error: applyError } = await tryCatch(
-      vscode.workspace.applyEdit(workspaceEdit),
-    );
-    if (applyError) {
-      console.error("Error applying workspace edit:", applyError);
     }
   }
 }
@@ -456,6 +591,55 @@ function getExistingResolvedPath(
   return undefined;
 }
 
+function getFileReferenceRenameTarget(
+  target: FileCommandTarget,
+): FileReferenceRenameTarget | undefined {
+  const { dirPath, fileName } = splitReferencePath(target.filePath);
+  const pathStart = target.pathRange.start.character;
+  const cursor = target.position.character;
+
+  if (!dirPath) {
+    return {
+      mode: "fileName",
+      range: target.pathRange,
+      placeholder: fileName,
+    };
+  }
+
+  const dirStart = pathStart;
+  const dirEnd = pathStart + dirPath.length;
+  const fileStart = dirEnd + 1;
+  const fileEnd = fileStart + fileName.length;
+
+  if (cursor >= dirStart && cursor <= dirEnd) {
+    return {
+      mode: "directoryPath",
+      range: new vscode.Range(
+        target.pathRange.start.line,
+        dirStart,
+        target.pathRange.start.line,
+        dirEnd,
+      ),
+      placeholder: dirPath.includes("/") ? dirPath : "<dirpath>",
+    };
+  }
+
+  if (cursor >= fileStart && cursor <= fileEnd) {
+    return {
+      mode: "fileName",
+      range: new vscode.Range(
+        target.pathRange.start.line,
+        fileStart,
+        target.pathRange.start.line,
+        fileEnd,
+      ),
+      placeholder: fileName,
+    };
+  }
+
+  return undefined;
+}
+
 function getResolvedDirectoryPath(
   referencePath: string,
   resolution: DirectoryResolution,
@@ -508,6 +692,14 @@ async function pathExists(filePath: string): Promise<boolean> {
   return !error;
 }
 
+function validateNewFileName(fileName: string): string | undefined {
+  if (fileName.trim() === "") return "File name cannot be empty";
+  if (fileName.includes("/") || fileName.includes("\\")) {
+    return "File name cannot contain slashes";
+  }
+  return undefined;
+}
+
 function longestCommonSuffixLength(a: string, b: string): number {
   let i = 0;
   while (
@@ -545,9 +737,36 @@ async function reportFileCommandSuccess(
   }
 }
 
+async function applyFileOperationEdit(
+  operation: FileOperationEdit,
+  ambiguityNotes: string[],
+): Promise<void> {
+  const { result: applied, error } = await tryCatch(
+    vscode.workspace.applyEdit(operation.edit),
+  );
+  if (error || !applied) {
+    reportFileCommandError("Failed to apply file operation", error);
+    return;
+  }
+
+  await reportFileCommandSuccess(operation.successMessage, ambiguityNotes);
+}
+
 function reportFileCommandError(message: string, error?: unknown): void {
   vscode.window.showErrorMessage(message);
   if (error) {
+    console.error(message, error);
+  }
+}
+
+function reportFileCommandIssue(
+  message: string,
+  options: FileCommandOptions,
+  error?: unknown,
+): void {
+  if (options.reportErrors) {
+    reportFileCommandError(message, error);
+  } else if (error) {
     console.error(message, error);
   }
 }
