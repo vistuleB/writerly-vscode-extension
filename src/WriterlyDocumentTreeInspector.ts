@@ -94,6 +94,12 @@ type ViewModeControlTarget = {
   enabled: boolean;
 };
 
+type DiagnosticFilenameRange = {
+  line: number;
+  startCharacter: number;
+  endCharacter: number;
+};
+
 type TreeDocument = {
   text: string;
   links: LinkTarget[];
@@ -102,6 +108,8 @@ type TreeDocument = {
   currentLine: number | undefined;
   currentLineKind: "file" | "viewModeControl" | undefined;
   mutedLines: number[];
+  warningFilenameRanges: DiagnosticFilenameRange[];
+  errorFilenameRanges: DiagnosticFilenameRange[];
 };
 
 type InspectorSession = {
@@ -119,6 +127,8 @@ export class WriterlyDocumentTreeInspector
   private readonly statusBarItem: vscode.StatusBarItem;
   private readonly currentFileLineDecoration: vscode.TextEditorDecorationType;
   private readonly mutedLineDecoration: vscode.TextEditorDecorationType;
+  private readonly warningFilenameDecoration: vscode.TextEditorDecorationType;
+  private readonly errorFilenameDecoration: vscode.TextEditorDecorationType;
   private readonly onDidChangeEmitter =
     new vscode.EventEmitter<vscode.Uri>();
   public readonly onDidChange = this.onDidChangeEmitter.event;
@@ -155,6 +165,14 @@ export class WriterlyDocumentTreeInspector
         isWholeLine: true,
         color: new vscode.ThemeColor("disabledForeground"),
       });
+    this.warningFilenameDecoration =
+      vscode.window.createTextEditorDecorationType({
+        color: new vscode.ThemeColor("editorWarning.foreground"),
+      });
+    this.errorFilenameDecoration =
+      vscode.window.createTextEditorDecorationType({
+        color: new vscode.ThemeColor("editorError.foreground"),
+      });
 
     const watcher = vscode.workspace.createFileSystemWatcher("**/*");
     const refresh = () => this.scheduleRefresh();
@@ -163,6 +181,8 @@ export class WriterlyDocumentTreeInspector
       this.statusBarItem,
       this.currentFileLineDecoration,
       this.mutedLineDecoration,
+      this.warningFilenameDecoration,
+      this.errorFilenameDecoration,
       this.onDidChangeEmitter,
       watcher,
       vscode.workspace.registerTextDocumentContentProvider(
@@ -1162,6 +1182,30 @@ export class WriterlyDocumentTreeInspector
             new vscode.Range(line, 0, line, 0),
         ),
       );
+      editor.setDecorations(
+        this.warningFilenameDecoration,
+        treeDocument.warningFilenameRanges.map(
+          (range) =>
+            new vscode.Range(
+              range.line,
+              range.startCharacter,
+              range.line,
+              range.endCharacter,
+            ),
+        ),
+      );
+      editor.setDecorations(
+        this.errorFilenameDecoration,
+        treeDocument.errorFilenameRanges.map(
+          (range) =>
+            new vscode.Range(
+              range.line,
+              range.startCharacter,
+              range.line,
+              range.endCharacter,
+            ),
+        ),
+      );
     }
 
     return allVisibleDocumentsAreCurrent;
@@ -1180,6 +1224,8 @@ export class WriterlyDocumentTreeInspector
         currentLine: undefined,
         currentLineKind: undefined,
         mutedLines: [],
+        warningFilenameRanges: [],
+        errorFilenameRanges: [],
       };
     }
 
@@ -1194,6 +1240,8 @@ export class WriterlyDocumentTreeInspector
         currentLine: undefined,
         currentLineKind: undefined,
         mutedLines: [],
+        warningFilenameRanges: [],
+        errorFilenameRanges: [],
       };
     }
     if (rootStatus === "notRoot") {
@@ -1205,6 +1253,8 @@ export class WriterlyDocumentTreeInspector
         currentLine: undefined,
         currentLineKind: undefined,
         mutedLines: [],
+        warningFilenameRanges: [],
+        errorFilenameRanges: [],
       };
     }
 
@@ -1277,6 +1327,8 @@ export class WriterlyDocumentTreeInspector
     const links: LinkTarget[] = [];
     const fileLines: FileLineTarget[] = [];
     const mutedLines: number[] = [];
+    const warningFilenameRanges: DiagnosticFilenameRange[] = [];
+    const errorFilenameRanges: DiagnosticFilenameRange[] = [];
     let currentLine: number | undefined;
     const hashFileCount = files.filter((uri) =>
       this.isCommentedPath(uri.fsPath),
@@ -1295,6 +1347,8 @@ export class WriterlyDocumentTreeInspector
       links,
       fileLines,
       mutedLines,
+      warningFilenameRanges,
+      errorFilenameRanges,
       sourceUri,
     );
     if (fileLines.length > 0) {
@@ -1317,6 +1371,8 @@ export class WriterlyDocumentTreeInspector
       currentLine,
       currentLineKind: currentLine === undefined ? undefined : "file",
       mutedLines,
+      warningFilenameRanges,
+      errorFilenameRanges,
     };
   }
 
@@ -1329,6 +1385,8 @@ export class WriterlyDocumentTreeInspector
     links: LinkTarget[],
     fileLines: FileLineTarget[],
     mutedLines: number[],
+    warningFilenameRanges: DiagnosticFilenameRange[],
+    errorFilenameRanges: DiagnosticFilenameRange[],
     sourceUri: vscode.Uri,
   ): number | undefined {
     let currentLine: number | undefined;
@@ -1337,14 +1395,18 @@ export class WriterlyDocumentTreeInspector
       for (const uri of files) {
         const line = lines.length;
         const fileName = path.basename(uri.fsPath);
-        const fileLabel = this.getFileLabelWithDiagnosticMarker(
-          fileName,
-          uri.fsPath,
-        );
         if (uri.fsPath === currentFsPath) currentLine = line;
         if (this.isCommentedPath(uri.fsPath)) mutedLines.push(line);
+        this.addDiagnosticFilenameRange(
+          uri.fsPath,
+          line,
+          0,
+          fileName.length,
+          warningFilenameRanges,
+          errorFilenameRanges,
+        );
         lines.push(
-          `${fileLabel}  ${this.getCommentStatusMarker(uri.fsPath)} `,
+          `${fileName}  ${this.getCommentStatusMarker(uri.fsPath)} `,
         );
         links.push({
           line,
@@ -1387,28 +1449,28 @@ export class WriterlyDocumentTreeInspector
     );
     const fileColumnWidth = Math.max(
       ...displayFiles.map(
-        (file) =>
-          file.indentation +
-          this.getFileLabelWithDiagnosticMarker(
-            file.fileName,
-            file.uri.fsPath,
-          ).length,
+        (file) => file.indentation + file.fileName.length,
       ),
       0,
     );
 
     for (const file of displayFiles) {
       const line = lines.length;
-      const indentedFileLabel = `${" ".repeat(file.indentation)}${this.getFileLabelWithDiagnosticMarker(
-        file.fileName,
-        file.uri.fsPath,
-      )}`;
+      const indentedFileName = `${" ".repeat(file.indentation)}${file.fileName}`;
       const dirColumn =
         file.dirPath.length > 0 ? file.dirPath : "";
       if (file.uri.fsPath === currentFsPath) currentLine = line;
       if (this.isCommentedPath(file.uri.fsPath)) mutedLines.push(line);
+      this.addDiagnosticFilenameRange(
+        file.uri.fsPath,
+        line,
+        file.indentation,
+        file.indentation + file.fileName.length,
+        warningFilenameRanges,
+        errorFilenameRanges,
+      );
       lines.push(
-        `${indentedFileLabel.padEnd(fileColumnWidth)}  ${this.getCommentStatusMarker(file.uri.fsPath)} ${dirColumn}`,
+        `${indentedFileName.padEnd(fileColumnWidth)}  ${this.getCommentStatusMarker(file.uri.fsPath)} ${dirColumn}`,
       );
       links.push({
         line,
@@ -1506,19 +1568,20 @@ export class WriterlyDocumentTreeInspector
     return this.isCommentedPath(fsPath) ? "#" : " ";
   }
 
-  private getFileLabelWithDiagnosticMarker(
-    fileName: string,
+  private addDiagnosticFilenameRange(
     fsPath: string,
-  ): string {
-    const marker = this.getDiagnosticStatusMarker(fsPath);
-    return marker ? `${fileName} ${marker}` : fileName;
-  }
-
-  private getDiagnosticStatusMarker(fsPath: string): string {
+    line: number,
+    startCharacter: number,
+    endCharacter: number,
+    warningFilenameRanges: DiagnosticFilenameRange[],
+    errorFilenameRanges: DiagnosticFilenameRange[],
+  ): void {
     const status = this.getDiagnosticStatus(fsPath);
-    if (status === "error") return "🔴";
-    if (status === "warning") return "🟠";
-    return "";
+    if (status === "error") {
+      errorFilenameRanges.push({ line, startCharacter, endCharacter });
+    } else if (status === "warning") {
+      warningFilenameRanges.push({ line, startCharacter, endCharacter });
+    }
   }
 
   private isCommentedPath(fsPath: string): boolean {
