@@ -120,7 +120,7 @@
       },
       {
         "command": "writerly.toggleDocumentTreeInspector",
-        "title": "(Un)Focus Document Tree",
+        "title": "Toggle Document Tree",
         "category": "Writerly"
       }
     ],

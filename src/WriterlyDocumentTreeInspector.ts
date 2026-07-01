@@ -142,7 +142,7 @@ export class WriterlyDocumentTreeInspector
     );
     this.statusBarItem.command = TOGGLE_TREE_INSPECTOR_COMMAND;
     this.statusBarItem.text = "$(list-tree) Writerly Tree";
-    this.statusBarItem.tooltip = "(Un)focus Writerly document tree";
+    this.statusBarItem.tooltip = "Toggle Writerly document tree";
     this.currentFileLineDecoration =
       vscode.window.createTextEditorDecorationType({
         isWholeLine: true,
