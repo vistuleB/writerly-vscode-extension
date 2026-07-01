@@ -157,6 +157,7 @@ const MISSING_FILE_WARNING_ATTRIBUTE_NAMES = new Set([
   "source",
 ]);
 const URI_SCHEME_REGEX = /^[a-z][a-z0-9+.-]*:/i;
+const OPEN_DOCUMENT_PROCESSING_DELAY_MS = 250;
 
 export class WriterlyLinkProvider
   implements
@@ -178,6 +179,8 @@ export class WriterlyLinkProvider
   private revalidateTimer: NodeJS.Timeout | undefined;
   private missingFileRevalidateTimer: NodeJS.Timeout | undefined;
   private missingFileValidationTimer: NodeJS.Timeout | undefined;
+  private openDocumentProcessingTimer: NodeJS.Timeout | undefined;
+  private pendingOpenDocument: vscode.TextDocument | undefined;
   private openDocumentRevalidationTimer: NodeJS.Timeout | undefined;
   private pendingMissingFileDocuments = new Map<FSPath, vscode.TextDocument>();
 
@@ -265,6 +268,7 @@ export class WriterlyLinkProvider
     this.diagnosticCollection.clear();
     this.missingFileDiagnosticCollection.clear();
     this.pendingMissingFileDocuments.clear();
+    this.pendingOpenDocument = undefined;
 
     if (this.revalidateTimer) {
       clearTimeout(this.revalidateTimer);
@@ -277,6 +281,10 @@ export class WriterlyLinkProvider
     if (this.missingFileValidationTimer) {
       clearTimeout(this.missingFileValidationTimer);
       this.missingFileValidationTimer = undefined;
+    }
+    if (this.openDocumentProcessingTimer) {
+      clearTimeout(this.openDocumentProcessingTimer);
+      this.openDocumentProcessingTimer = undefined;
     }
     if (this.openDocumentRevalidationTimer) {
       clearTimeout(this.openDocumentRevalidationTimer);
@@ -380,8 +388,37 @@ export class WriterlyLinkProvider
   private onDidOpen(document: vscode.TextDocument): void {
     if (!this.isInitialized) return;
     if (!this.isWriterlyFile(document.uri.fsPath)) return;
-    void this.processDocument(document);
+    this.scheduleOpenDocumentProcessing(document);
     this.scheduleOpenDocumentRevalidation();
+  }
+
+  private scheduleOpenDocumentProcessing(
+    document: vscode.TextDocument,
+  ): void {
+    this.pendingOpenDocument = document;
+    if (this.openDocumentProcessingTimer) {
+      clearTimeout(this.openDocumentProcessingTimer);
+    }
+
+    this.openDocumentProcessingTimer = setTimeout(() => {
+      void this.processPendingOpenDocument();
+    }, OPEN_DOCUMENT_PROCESSING_DELAY_MS);
+  }
+
+  private async processPendingOpenDocument(): Promise<void> {
+    this.openDocumentProcessingTimer = undefined;
+    const document = this.pendingOpenDocument;
+    this.pendingOpenDocument = undefined;
+    if (!document) return;
+    if (!this.isWriterlyFile(document.uri.fsPath)) return;
+
+    const isStillOpen = vscode.workspace.textDocuments.some(
+      (candidate) => candidate.uri.toString() === document.uri.toString(),
+    );
+    if (!isStillOpen) return;
+    if (!(await this.shouldIndexOpenDocument(document))) return;
+
+    await this.processDocument(document);
   }
 
   private async onDidRename(event: vscode.FileRenameEvent): Promise<void> {
