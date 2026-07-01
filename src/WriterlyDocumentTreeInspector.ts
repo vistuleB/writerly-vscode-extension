@@ -303,10 +303,15 @@ export class WriterlyDocumentTreeInspector
 
   private updateStatusBarVisibility(): void {
     const editor = vscode.window.activeTextEditor;
+    const isDocumentTreeEditor =
+      editor?.document.uri.scheme === DOCUMENT_TREE_SCHEME;
     void this.setDocumentTreeActiveContext(
-      editor?.document.uri.scheme === DOCUMENT_TREE_SCHEME,
+      isDocumentTreeEditor,
     );
-    if (editor && isWriterlyFilePath(editor.document.uri.fsPath)) {
+    if (
+      isDocumentTreeEditor ||
+      (editor && isWriterlyFilePath(editor.document.uri.fsPath))
+    ) {
       this.statusBarItem.show();
     } else {
       this.statusBarItem.hide();
