@@ -90,6 +90,13 @@ type HandleName = string;
 type DocumentTreeKey = string;
 type UsageCounts = Map<HandleName, Map<DocumentTreeKey, number>>;
 
+type MissingFileValidationCache = {
+  fileExists: Map<string, Promise<boolean>>;
+  localPathExists: Map<string, Promise<boolean>>;
+  possibleFilePaths: Map<string, Promise<string[]>>;
+  possibleDirPaths: Map<string, Promise<string[]>>;
+};
+
 type HandleDefinition = {
   fsPath: FSPath;
   range: vscode.Range;
@@ -154,15 +161,20 @@ export class WriterlyLinkProvider
   private definitions: Map<HandleName, HandleDefinition[]> = new Map();
   private writerlyContainers: FSPath[] = [];
   private diagnosticCollection: vscode.DiagnosticCollection;
+  private missingFileDiagnosticCollection: vscode.DiagnosticCollection;
   private isInitialized = false;
   private documentLinks: Map<FSPath, vscode.DocumentLink[]> = new Map();
   private usageCounts: UsageCounts = new Map();
   private revalidateTimer: NodeJS.Timeout | undefined;
   private missingFileRevalidateTimer: NodeJS.Timeout | undefined;
+  private missingFileValidationTimer: NodeJS.Timeout | undefined;
+  private pendingMissingFileDocuments = new Map<FSPath, vscode.TextDocument>();
 
   constructor(context: vscode.ExtensionContext) {
     this.diagnosticCollection =
       vscode.languages.createDiagnosticCollection("writerly-links");
+    this.missingFileDiagnosticCollection =
+      vscode.languages.createDiagnosticCollection("writerly-missing-files");
     const watcher = vscode.workspace.createFileSystemWatcher(
       ALL_WRITERLY_FILE_GLOB,
     );
@@ -175,6 +187,7 @@ export class WriterlyLinkProvider
     assetWatcher.onDidChange((uri) => this.triggerMissingFileRevalidation(uri));
     const disposables = [
       this.diagnosticCollection,
+      this.missingFileDiagnosticCollection,
       vscode.workspace.onDidChangeTextDocument((event) =>
         this.onDidChange(event.document),
       ),
@@ -235,6 +248,8 @@ export class WriterlyLinkProvider
     this.writerlyContainers = [];
     this.isInitialized = false;
     this.diagnosticCollection.clear();
+    this.missingFileDiagnosticCollection.clear();
+    this.pendingMissingFileDocuments.clear();
 
     if (this.revalidateTimer) {
       clearTimeout(this.revalidateTimer);
@@ -243,6 +258,10 @@ export class WriterlyLinkProvider
     if (this.missingFileRevalidateTimer) {
       clearTimeout(this.missingFileRevalidateTimer);
       this.missingFileRevalidateTimer = undefined;
+    }
+    if (this.missingFileValidationTimer) {
+      clearTimeout(this.missingFileValidationTimer);
+      this.missingFileValidationTimer = undefined;
     }
 
     await this.initializeAsync();
@@ -373,6 +392,8 @@ export class WriterlyLinkProvider
     }
 
     this.diagnosticCollection.delete(uri);
+    this.missingFileDiagnosticCollection.delete(uri);
+    this.pendingMissingFileDocuments.delete(uri.fsPath);
 
     this.documentLinks.delete(targetPath);
 
@@ -425,6 +446,9 @@ export class WriterlyLinkProvider
 
     this.diagnosticCollection.set(document.uri, diagnostics);
     this.documentLinks.set(currentFsPath, documentLinks);
+    if (this.isInitialized) {
+      this.queueMissingFileValidation(document);
+    }
     return documentLinks;
   }
 
@@ -448,8 +472,6 @@ export class WriterlyLinkProvider
   ): Promise<vscode.DocumentLink[]> {
     const documentLinks: vscode.DocumentLink[] = [];
     const currentFsPath = document.uri.fsPath;
-    const missingFileDiagnosticTasks: Promise<void>[] = [];
-    const enableMissingFileWarnings = this.isMissingFileWarningEnabled();
 
     let finalState = WriterlyDocumentWalker.walk(
       document,
@@ -478,18 +500,6 @@ export class WriterlyLinkProvider
             indent,
             currentFsPath,
           );
-
-          if (enableMissingFileWarnings) {
-            missingFileDiagnosticTasks.push(
-              this.addMissingFileAttributeDiagnostic(
-                document,
-                content,
-                lineNumber,
-                indent,
-                diagnostics,
-              ),
-            );
-          }
         }
 
         if (lineType === LineType.Text) {
@@ -518,7 +528,6 @@ export class WriterlyLinkProvider
       finalState,
       diagnostics,
     );
-    await Promise.all(missingFileDiagnosticTasks);
 
     return documentLinks;
   }
@@ -531,12 +540,98 @@ export class WriterlyLinkProvider
     );
   }
 
+  private createMissingFileValidationCache(): MissingFileValidationCache {
+    return {
+      fileExists: new Map(),
+      localPathExists: new Map(),
+      possibleFilePaths: new Map(),
+      possibleDirPaths: new Map(),
+    };
+  }
+
+  private queueMissingFileValidation(
+    document: vscode.TextDocument,
+    delayMs = 750,
+  ): void {
+    if (!this.isWriterlyFile(document.uri.fsPath)) return;
+    if (!this.isMissingFileWarningEnabled()) {
+      this.missingFileDiagnosticCollection.delete(document.uri);
+      return;
+    }
+
+    this.pendingMissingFileDocuments.set(document.uri.fsPath, document);
+    if (this.missingFileValidationTimer) {
+      clearTimeout(this.missingFileValidationTimer);
+    }
+    this.missingFileValidationTimer = setTimeout(() => {
+      void this.runPendingMissingFileValidation();
+    }, delayMs);
+  }
+
+  private async runPendingMissingFileValidation(): Promise<void> {
+    const documents = [...this.pendingMissingFileDocuments.values()];
+    this.pendingMissingFileDocuments.clear();
+    this.missingFileValidationTimer = undefined;
+
+    if (!this.isMissingFileWarningEnabled()) {
+      this.missingFileDiagnosticCollection.clear();
+      return;
+    }
+
+    for (const document of documents) {
+      if (!this.isWriterlyFile(document.uri.fsPath)) continue;
+      const diagnostics = await this.collectMissingFileDiagnostics(document);
+      this.missingFileDiagnosticCollection.set(document.uri, diagnostics);
+    }
+  }
+
+  private async collectMissingFileDiagnostics(
+    document: vscode.TextDocument,
+  ): Promise<vscode.Diagnostic[]> {
+    const diagnostics: vscode.Diagnostic[] = [];
+    const cache = this.createMissingFileValidationCache();
+    const attributes: Array<{
+      content: string;
+      lineNumber: number;
+      indent: number;
+    }> = [];
+
+    WriterlyDocumentWalker.walk(
+      document,
+      (
+        _stateBeforeLine,
+        lineType,
+        _stateAfterLine,
+        lineNumber,
+        indent,
+        content,
+      ) => {
+        if (lineType !== LineType.Attribute) return;
+        attributes.push({ content, lineNumber, indent });
+      },
+    );
+
+    for (const attribute of attributes) {
+      await this.addMissingFileAttributeDiagnostic(
+        document,
+        attribute.content,
+        attribute.lineNumber,
+        attribute.indent,
+        diagnostics,
+        cache,
+      );
+    }
+
+    return diagnostics;
+  }
+
   private async addMissingFileAttributeDiagnostic(
     document: vscode.TextDocument,
     content: string,
     lineNumber: number,
     indent: number,
     diagnostics: vscode.Diagnostic[],
+    cache: MissingFileValidationCache,
   ): Promise<void> {
     const attributeMatch = content.match(/^([A-Za-z0-9_.:-]+)=/);
     if (!attributeMatch) return;
@@ -553,6 +648,7 @@ export class WriterlyLinkProvider
     const message = await this.getMissingFileAttributeDiagnosticMessage(
       document,
       value,
+      cache,
     );
     if (!message) return;
 
@@ -596,45 +692,52 @@ export class WriterlyLinkProvider
   private async getMissingFileAttributeDiagnosticMessage(
     document: vscode.TextDocument,
     filePath: string,
+    cache: MissingFileValidationCache,
   ): Promise<string | undefined> {
     const misdirectedWarning =
-      await this.getSpokenForDirectoryReferenceWarning(document, filePath);
+      await this.getSpokenForDirectoryReferenceWarning(document, filePath, cache);
     if (misdirectedWarning) return misdirectedWarning;
 
-    const exists = await this.localFileReferenceExists(filePath);
+    const exists = await this.localFileReferenceExists(filePath, cache);
     return exists ? undefined : `Local file not found: ${filePath}`;
   }
 
-  private async localFileReferenceExists(filePath: string): Promise<boolean> {
+  private async localFileReferenceExists(
+    filePath: string,
+    cache: MissingFileValidationCache,
+  ): Promise<boolean> {
     if (path.isAbsolute(filePath)) {
-      try {
-        await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
-        return true;
-      } catch {
-        return false;
-      }
+      return this.cachedLocalPathExists(filePath, cache);
     }
 
-    return fileUtils.fileExists(filePath);
+    let cached = cache.fileExists.get(filePath);
+    if (!cached) {
+      cached = fileUtils.fileExists(filePath);
+      cache.fileExists.set(filePath, cached);
+    }
+    return cached;
   }
 
   private async getSpokenForDirectoryReferenceWarning(
     document: vscode.TextDocument,
     filePath: string,
+    cache: MissingFileValidationCache,
   ): Promise<string | undefined> {
     if (path.isAbsolute(filePath)) return undefined;
 
     const { dirPath, fileName } = this.splitReferencePath(filePath);
     if (!dirPath || !fileName) return undefined;
 
-    const matchingFiles = await fileUtils.resolvePossibleFilePaths(filePath);
+    const matchingFiles = await this.cachedPossibleFilePaths(filePath, cache);
     if (matchingFiles.length !== 1) return undefined;
 
     const resolvedFile = matchingFiles[0];
     const resolvedDir = path.dirname(resolvedFile);
-    const matchingDirs = await fileUtils.resolvePossibleDirPaths(dirPath, {
-      rootRelativeTo: document.uri.fsPath,
-    });
+    const matchingDirs = await this.cachedPossibleDirPaths(
+      dirPath,
+      document.uri.fsPath,
+      cache,
+    );
     if (matchingDirs.length <= 1) return undefined;
 
     const topmostRoots = this.getTopmostWriterlyRoots();
@@ -664,7 +767,7 @@ export class WriterlyLinkProvider
     if (closestDirs.length !== 1) return undefined;
 
     const closestDir = closestDirs[0];
-    if (await this.localPathExists(path.join(closestDir, fileName))) {
+    if (await this.cachedLocalPathExists(path.join(closestDir, fileName), cache)) {
       return undefined;
     }
 
@@ -691,6 +794,44 @@ export class WriterlyLinkProvider
     } catch {
       return false;
     }
+  }
+
+  private cachedLocalPathExists(
+    fsPath: string,
+    cache: MissingFileValidationCache,
+  ): Promise<boolean> {
+    let cached = cache.localPathExists.get(fsPath);
+    if (!cached) {
+      cached = this.localPathExists(fsPath);
+      cache.localPathExists.set(fsPath, cached);
+    }
+    return cached;
+  }
+
+  private cachedPossibleFilePaths(
+    filePath: string,
+    cache: MissingFileValidationCache,
+  ): Promise<string[]> {
+    let cached = cache.possibleFilePaths.get(filePath);
+    if (!cached) {
+      cached = fileUtils.resolvePossibleFilePaths(filePath);
+      cache.possibleFilePaths.set(filePath, cached);
+    }
+    return cached;
+  }
+
+  private cachedPossibleDirPaths(
+    dirPath: string,
+    rootRelativeTo: string,
+    cache: MissingFileValidationCache,
+  ): Promise<string[]> {
+    const cacheKey = `${rootRelativeTo}\n${dirPath}`;
+    let cached = cache.possibleDirPaths.get(cacheKey);
+    if (!cached) {
+      cached = fileUtils.resolvePossibleDirPaths(dirPath, { rootRelativeTo });
+      cache.possibleDirPaths.set(cacheKey, cached);
+    }
+    return cached;
   }
 
   private getTopmostWriterlyRoots(): string[] {
@@ -1593,6 +1734,7 @@ export class WriterlyLinkProvider
   private triggerMissingFileRevalidation(uri: vscode.Uri): void {
     if (this.isWriterlyFile(uri.fsPath)) return;
     if (this.shouldIgnoreAssetWatcherPath(uri.fsPath)) return;
+    if (!this.isMissingFileWarningEnabled()) return;
 
     if (this.missingFileRevalidateTimer) {
       clearTimeout(this.missingFileRevalidateTimer);
@@ -1601,10 +1743,10 @@ export class WriterlyLinkProvider
     this.missingFileRevalidateTimer = setTimeout(() => {
       for (const doc of vscode.workspace.textDocuments) {
         if (this.isWriterlyFile(doc.uri.fsPath)) {
-          void this.processDocument(doc, false);
+          this.queueMissingFileValidation(doc, 1000);
         }
       }
-    }, 300);
+    }, 1000);
   }
 
   private shouldIgnoreAssetWatcherPath(fsPath: string): boolean {
