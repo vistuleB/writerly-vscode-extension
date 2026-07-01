@@ -504,9 +504,8 @@ export class WriterlyDocumentTreeInspector
         const line = lines.length;
         const fileName = path.basename(uri.fsPath);
         if (uri.fsPath === currentFsPath) currentLine = line;
-        const currentMarker = uri.fsPath === currentFsPath ? "■" : " ";
         lines.push(
-          `${fileName}  ${currentMarker} ${this.getCommentStatusMarker(uri.fsPath)} .`,
+          `${fileName}  ${this.getCommentStatusMarker(uri.fsPath)} .`,
         );
         links.push({
           line,
@@ -553,9 +552,8 @@ export class WriterlyDocumentTreeInspector
       const dirColumn =
         file.dirPath.length > 0 ? file.dirPath : ".";
       if (file.uri.fsPath === currentFsPath) currentLine = line;
-      const currentMarker = file.uri.fsPath === currentFsPath ? "■" : " ";
       lines.push(
-        `${indentedFileName.padEnd(fileColumnWidth)}  ${currentMarker} ${this.getCommentStatusMarker(file.uri.fsPath)} ${dirColumn}`,
+        `${indentedFileName.padEnd(fileColumnWidth)}  ${this.getCommentStatusMarker(file.uri.fsPath)} ${dirColumn}`,
       );
       links.push({
         line,
