@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import * as fs from "fs";
 import {
   ALL_WRITERLY_FILE_GLOB,
   getWriterlyFileGlob,
@@ -16,10 +15,10 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
   readonly onDidChangeTreeData: vscode.Event<
     WriterlyTreeItem | undefined | null | void
   > = this._onDidChangeTreeData.event;
-  writerlyFilesCache: vscode.Uri[] = [];
+  writerlyFilesCache: vscode.Uri[] | undefined = undefined;
   fileSystemWatcher: vscode.FileSystemWatcher;
   public treeView?: vscode.TreeView<WriterlyTreeItem>;
-  private isScanning = false;
+  private scanPromise: Promise<void> | undefined;
 
   constructor(context: vscode.ExtensionContext) {
     this.fileSystemWatcher =
@@ -61,7 +60,7 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
    */
   public async reset(): Promise<void> {
     // 1. Clear the cached file URIs
-    this.writerlyFilesCache = [];
+    this.writerlyFilesCache = undefined;
 
     // 2. Trigger a full UI refresh
     // This forces getChildren() to run again, which calls findFiles()
@@ -92,7 +91,7 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
   }
 
   public refresh(): void {
-    this.writerlyFilesCache = [];
+    this.writerlyFilesCache = undefined;
     this._onDidChangeTreeData.fire();
   }
 
@@ -105,17 +104,7 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
       return [];
     }
 
-    if (this.writerlyFilesCache.length === 0 && !element && !this.isScanning) {
-      this.isScanning = true;
-      try {
-        const fileGlob = getWriterlyFileGlob();
-        this.writerlyFilesCache = fileGlob
-          ? await vscode.workspace.findFiles(fileGlob, "**/node_modules/**")
-          : [];
-      } finally {
-        this.isScanning = false;
-      }
-    }
+    await this.ensureWriterlyFilesCache();
 
     if (!element) {
       return this.buildWorkspaceRootItems();
@@ -124,6 +113,25 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
     }
 
     return [];
+  }
+
+  private async ensureWriterlyFilesCache(): Promise<void> {
+    if (this.writerlyFilesCache !== undefined) return;
+
+    if (!this.scanPromise) {
+      this.scanPromise = this.loadWriterlyFilesCache().finally(() => {
+        this.scanPromise = undefined;
+      });
+    }
+
+    await this.scanPromise;
+  }
+
+  private async loadWriterlyFilesCache(): Promise<void> {
+    const fileGlob = getWriterlyFileGlob();
+    this.writerlyFilesCache = fileGlob
+      ? await vscode.workspace.findFiles(fileGlob, "**/node_modules/**")
+      : [];
   }
 
   // --- New comparison helper function ---
@@ -142,9 +150,10 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
     if (!workspaceFolders) return [];
 
     const items: WriterlyTreeItem[] = [];
+    const writerlyFiles = this.writerlyFilesCache ?? [];
     workspaceFolders.forEach((folder) => {
-      const hasWriterlyFiles = this.writerlyFilesCache.some((uri) =>
-        uri.fsPath.startsWith(folder.uri.fsPath),
+      const hasWriterlyFiles = writerlyFiles.some((uri) =>
+        this.isPathUnderDirectory(uri.fsPath, folder.uri.fsPath),
       );
       if (hasWriterlyFiles) {
         items.push(new WriterlyFolderItem(folder.uri, folder.name));
@@ -161,20 +170,22 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
     const parentDir = folderItem.resourceUri.fsPath;
     const items: WriterlyTreeItem[] = [];
     const seenPaths = new Set<string>(); // Track unique paths to prevent ID collisions
+    const writerlyFiles = this.writerlyFilesCache ?? [];
 
     try {
       // 1. Process Subdirectories
-      const subdirectories = fs
-        .readdirSync(parentDir, { withFileTypes: true })
-        .filter((dirent) => dirent.isDirectory())
-        .map((dirent) => path.join(parentDir, dirent.name));
+      const subdirectories = (
+        await vscode.workspace.fs.readDirectory(folderItem.resourceUri)
+      )
+        .filter(([, fileType]) => fileType & vscode.FileType.Directory)
+        .map(([name]) => path.join(parentDir, name));
 
       for (const dirPath of subdirectories) {
         // Normalize path for consistent ID comparison
         const normalizedPath = vscode.Uri.file(dirPath).fsPath;
 
-        const hasWriterlyFilesDeep = this.writerlyFilesCache.some((uri) =>
-          uri.fsPath.startsWith(normalizedPath),
+        const hasWriterlyFilesDeep = writerlyFiles.some((uri) =>
+          this.isPathUnderDirectory(uri.fsPath, normalizedPath),
         );
 
         if (hasWriterlyFilesDeep && !seenPaths.has(normalizedPath)) {
@@ -185,7 +196,7 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
       }
 
       // 2. Process Files in this folder
-      const files = this.writerlyFilesCache.filter(
+      const files = writerlyFiles.filter(
         (uri) => path.dirname(uri.fsPath) === parentDir,
       );
 
@@ -203,6 +214,14 @@ export class WriterlyFileProvider implements vscode.TreeDataProvider<WriterlyTre
       console.error(`Error reading directory ${parentDir}:`, error);
       return [];
     }
+  }
+
+  private isPathUnderDirectory(filePath: string, dirPath: string): boolean {
+    const relativePath = path.relative(dirPath, filePath);
+    return (
+      relativePath === "" ||
+      (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+    );
   }
 
   public getParent(element: WriterlyTreeItem): WriterlyTreeItem | undefined {
