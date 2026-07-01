@@ -31,7 +31,8 @@ const PARENT_FILE_SUFFIX = "__parent.wly";
 const ASSEMBLY_INDENT_WIDTH = 4;
 const SHOW_HASH_FILES_LABEL = "Show '#'-files";
 const HIDE_HASH_FILES_LABEL = "Hide '#' files";
-const DECORATION_REFRESH_MAX_ATTEMPTS = 5;
+const DECORATION_REFRESH_MAX_ATTEMPTS = 20;
+const DECORATION_REFRESH_RETRY_DELAY_MS = 25;
 const DOCUMENT_TREE_ACTIVE_CONTEXT = "writerlyDocumentTreeActive";
 
 type TreeViewMode = "active" | "all";
@@ -1139,12 +1140,14 @@ export class WriterlyDocumentTreeInspector
     if (this.decorationRefreshTimeout) {
       clearTimeout(this.decorationRefreshTimeout);
     }
+    const delay = attempt === 0 ? 0 : DECORATION_REFRESH_RETRY_DELAY_MS;
     this.decorationRefreshTimeout = setTimeout(() => {
+      this.decorationRefreshTimeout = undefined;
       const applied = this.applyTreeDocumentDecorations();
       if (!applied && attempt < DECORATION_REFRESH_MAX_ATTEMPTS) {
         this.scheduleTreeDocumentDecorations(attempt + 1);
       }
-    }, 0);
+    }, delay);
   }
 
   private applyTreeDocumentDecorations(): boolean {
