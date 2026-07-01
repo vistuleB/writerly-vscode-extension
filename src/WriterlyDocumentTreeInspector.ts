@@ -441,16 +441,42 @@ export class WriterlyDocumentTreeInspector
     session: InspectorSession,
   ): Promise<void> {
     const sourceUriString = this.getUriKey(sourceUri);
-    const document = await vscode.workspace.openTextDocument(uri);
-    const openedEditor = await vscode.window.showTextDocument(document, {
-      viewColumn: session.originViewColumn,
-      preview: true,
-      preserveFocus: true,
-    });
+    const previousOpenFsPath = session.currentOpenFsPath;
     session.currentOpenFsPath = uri.fsPath;
-    session.originViewColumn = openedEditor.viewColumn;
-    await this.refreshSession(sourceUriString, session);
+    this.updateTreeDocumentCurrentLine(sourceUriString, uri.fsPath);
+    this.scheduleTreeDocumentDecorations();
     await this.moveTreeCursorToCurrentLine(sourceUri);
+
+    try {
+      const document = await vscode.workspace.openTextDocument(uri);
+      const openedEditor = await vscode.window.showTextDocument(document, {
+        viewColumn: session.originViewColumn,
+        preview: true,
+        preserveFocus: true,
+      });
+      session.originViewColumn = openedEditor.viewColumn;
+    } catch (error) {
+      session.currentOpenFsPath = previousOpenFsPath;
+      this.updateTreeDocumentCurrentLine(sourceUriString, previousOpenFsPath);
+      this.scheduleTreeDocumentDecorations();
+      await this.moveTreeCursorToCurrentLine(sourceUri);
+      void vscode.window.showErrorMessage(
+        `Could not open Writerly tree file: ${uri.fsPath}`,
+      );
+    }
+  }
+
+  private updateTreeDocumentCurrentLine(
+    sourceUriString: string,
+    fsPath: string,
+  ): void {
+    const treeDocument = this.documents.get(sourceUriString);
+    if (!treeDocument) return;
+
+    const currentFileLine = treeDocument.fileLines.find(
+      (fileLine) => fileLine.uri.fsPath === fsPath,
+    );
+    treeDocument.currentLine = currentFileLine?.line;
   }
 
   private getFileLineForClickedLine(
