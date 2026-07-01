@@ -89,6 +89,7 @@ type FSPath = string;
 type HandleName = string;
 type DocumentTreeKey = string;
 type UsageCounts = Map<HandleName, Map<DocumentTreeKey, number>>;
+export type WriterlyDiagnosticStatus = "none" | "warning" | "error";
 
 type MissingFileValidationCache = {
   fileExists: Map<string, Promise<boolean>>;
@@ -420,6 +421,31 @@ export class WriterlyLinkProvider
     } catch (error) {
       console.error(`Failed to process document ${uri.fsPath}:`, error);
     }
+  }
+
+  public getDiagnosticStatus(fsPath: string): WriterlyDiagnosticStatus {
+    const diagnostics = [
+      ...(this.diagnosticCollection.get(vscode.Uri.file(fsPath)) ?? []),
+      ...(this.missingFileDiagnosticCollection.get(vscode.Uri.file(fsPath)) ?? []),
+    ];
+
+    if (
+      diagnostics.some(
+        (diagnostic) =>
+          diagnostic.severity === vscode.DiagnosticSeverity.Error,
+      )
+    ) {
+      return "error";
+    }
+    if (
+      diagnostics.some(
+        (diagnostic) =>
+          diagnostic.severity === vscode.DiagnosticSeverity.Warning,
+      )
+    ) {
+      return "warning";
+    }
+    return "none";
   }
 
   private async processDocument(

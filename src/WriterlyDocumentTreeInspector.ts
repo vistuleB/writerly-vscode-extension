@@ -8,17 +8,31 @@ import {
   discoverWriterlyContainers,
   isPathUnderDirectory,
 } from "./WriterlyDocumentTrees";
+import type { WriterlyDiagnosticStatus } from "./WriterlyLinkProvider";
 
 const DOCUMENT_TREE_SCHEME = "writerly-document-tree";
+const TOGGLE_TREE_INSPECTOR_COMMAND = "writerly.toggleDocumentTreeInspector";
 const OPEN_TREE_FILE_COMMAND = "writerly.openDocumentTreeFile";
 const SET_TREE_VIEW_MODE_COMMAND = "writerly.setDocumentTreeViewMode";
 const NAVIGATE_TREE_UP_COMMAND = "writerly.navigateDocumentTreeUp";
 const NAVIGATE_TREE_DOWN_COMMAND = "writerly.navigateDocumentTreeDown";
+const NAVIGATE_TREE_FIRST_COMMAND = "writerly.navigateDocumentTreeFirst";
+const NAVIGATE_TREE_LAST_COMMAND = "writerly.navigateDocumentTreeLast";
+const NAVIGATE_TREE_PARENT_COMMAND = "writerly.navigateDocumentTreeParent";
+const NAVIGATE_TREE_CHILD_COMMAND = "writerly.navigateDocumentTreeChild";
+const NAVIGATE_TREE_PREVIOUS_SIBLING_COMMAND =
+  "writerly.navigateDocumentTreePreviousSibling";
+const NAVIGATE_TREE_NEXT_SIBLING_COMMAND =
+  "writerly.navigateDocumentTreeNextSibling";
+const FOCUS_TREE_FILE_COMMAND = "writerly.focusDocumentTreeFile";
+const FOCUS_TREE_FILE_AND_CLOSE_COMMAND =
+  "writerly.focusDocumentTreeFileAndClose";
 const PARENT_FILE_SUFFIX = "__parent.wly";
 const ASSEMBLY_INDENT_WIDTH = 4;
 const SHOW_HASH_FILES_LABEL = "Show '#'-files";
 const HIDE_HASH_FILES_LABEL = "Hide '#' files";
 const DECORATION_REFRESH_MAX_ATTEMPTS = 5;
+const DOCUMENT_TREE_ACTIVE_CONTEXT = "writerlyDocumentTreeActive";
 
 type TreeViewMode = "active" | "all";
 type RootDirectoryStatus = "ok" | "missing" | "notRoot";
@@ -68,6 +82,9 @@ type LinkTarget = {
 type FileLineTarget = {
   line: number;
   uri: vscode.Uri;
+  indentation: number;
+  startCharacter: number;
+  endCharacter: number;
 };
 
 type ViewModeControlTarget = {
@@ -83,6 +100,7 @@ type TreeDocument = {
   fileLines: FileLineTarget[];
   viewModeControl: ViewModeControlTarget | undefined;
   currentLine: number | undefined;
+  currentLineKind: "file" | "viewModeControl" | undefined;
   mutedLines: number[];
 };
 
@@ -110,15 +128,21 @@ export class WriterlyDocumentTreeInspector
   private refreshTimeout: NodeJS.Timeout | undefined;
   private decorationRefreshTimeout: NodeJS.Timeout | undefined;
   private suppressTreeSelectionUntil = 0;
+  private documentTreeActiveContext = false;
 
-  constructor(context: vscode.ExtensionContext) {
+  constructor(
+    context: vscode.ExtensionContext,
+    private readonly getDiagnosticStatus: (
+      fsPath: string,
+    ) => WriterlyDiagnosticStatus = () => "none",
+  ) {
     this.statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left,
       20,
     );
-    this.statusBarItem.command = "writerly.inspectDocumentTree";
+    this.statusBarItem.command = TOGGLE_TREE_INSPECTOR_COMMAND;
     this.statusBarItem.text = "$(list-tree) Writerly Tree";
-    this.statusBarItem.tooltip = "Inspect Writerly document tree";
+    this.statusBarItem.tooltip = "(Un)focus Writerly document tree";
     this.currentFileLineDecoration =
       vscode.window.createTextEditorDecorationType({
         isWholeLine: true,
@@ -152,6 +176,9 @@ export class WriterlyDocumentTreeInspector
       vscode.commands.registerCommand("writerly.inspectDocumentTree", () =>
         this.inspectActiveDocumentTree(),
       ),
+      vscode.commands.registerCommand(TOGGLE_TREE_INSPECTOR_COMMAND, () =>
+        this.toggleActiveDocumentTreeInspector(),
+      ),
       vscode.commands.registerCommand(
         OPEN_TREE_FILE_COMMAND,
         (fsPath: string, sourceUriString: string) =>
@@ -168,6 +195,30 @@ export class WriterlyDocumentTreeInspector
       vscode.commands.registerCommand(NAVIGATE_TREE_DOWN_COMMAND, () =>
         this.navigateDocumentTree(1),
       ),
+      vscode.commands.registerCommand(NAVIGATE_TREE_FIRST_COMMAND, () =>
+        this.navigateDocumentTreeEndpoint("first"),
+      ),
+      vscode.commands.registerCommand(NAVIGATE_TREE_LAST_COMMAND, () =>
+        this.navigateDocumentTreeEndpoint("last"),
+      ),
+      vscode.commands.registerCommand(NAVIGATE_TREE_PARENT_COMMAND, () =>
+        this.navigateDocumentTreeParent(),
+      ),
+      vscode.commands.registerCommand(NAVIGATE_TREE_CHILD_COMMAND, () =>
+        this.navigateDocumentTreeChild(),
+      ),
+      vscode.commands.registerCommand(NAVIGATE_TREE_PREVIOUS_SIBLING_COMMAND, () =>
+        this.navigateDocumentTreeSibling(-1),
+      ),
+      vscode.commands.registerCommand(NAVIGATE_TREE_NEXT_SIBLING_COMMAND, () =>
+        this.navigateDocumentTreeSibling(1),
+      ),
+      vscode.commands.registerCommand(FOCUS_TREE_FILE_COMMAND, () =>
+        this.focusDocumentTreeFile(),
+      ),
+      vscode.commands.registerCommand(FOCUS_TREE_FILE_AND_CLOSE_COMMAND, () =>
+        this.focusDocumentTreeFileAndClose(),
+      ),
       vscode.window.onDidChangeActiveTextEditor((editor) =>
         this.handleActiveTextEditorChange(editor),
       ),
@@ -180,12 +231,23 @@ export class WriterlyDocumentTreeInspector
       vscode.workspace.onDidOpenTextDocument(() =>
         this.updateStatusBarVisibility(),
       ),
+      vscode.languages.onDidChangeDiagnostics((event) =>
+        this.handleDiagnosticsChange(event),
+      ),
     );
     watcher.onDidCreate(refresh, undefined, context.subscriptions);
     watcher.onDidChange(refresh, undefined, context.subscriptions);
     watcher.onDidDelete(refresh, undefined, context.subscriptions);
 
     this.updateStatusBarVisibility();
+  }
+
+  private handleDiagnosticsChange(
+    event: vscode.DiagnosticChangeEvent,
+  ): void {
+    if (event.uris.some((uri) => isWriterlyFilePath(uri.fsPath))) {
+      this.scheduleRefresh();
+    }
   }
 
   public reset(): void {
@@ -220,6 +282,9 @@ export class WriterlyDocumentTreeInspector
 
   private updateStatusBarVisibility(): void {
     const editor = vscode.window.activeTextEditor;
+    void this.setDocumentTreeActiveContext(
+      editor?.document.uri.scheme === DOCUMENT_TREE_SCHEME,
+    );
     if (editor && isWriterlyFilePath(editor.document.uri.fsPath)) {
       this.statusBarItem.show();
     } else {
@@ -240,6 +305,15 @@ export class WriterlyDocumentTreeInspector
       }
       this.scheduleRefresh();
     }
+  }
+
+  private async setDocumentTreeActiveContext(active: boolean): Promise<void> {
+    this.documentTreeActiveContext = active;
+    await vscode.commands.executeCommand(
+      "setContext",
+      DOCUMENT_TREE_ACTIVE_CONTEXT,
+      active,
+    );
   }
 
   private async inspectActiveDocumentTree(): Promise<void> {
@@ -295,6 +369,37 @@ export class WriterlyDocumentTreeInspector
     await this.moveTreeCursorToCurrentLine(session.uri);
   }
 
+  private async toggleActiveDocumentTreeInspector(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (editor?.document.uri.scheme === DOCUMENT_TREE_SCHEME) {
+      await this.closeDocumentTreeTab(editor.document.uri);
+      return;
+    }
+
+    if (!editor || !isWriterlyFilePath(editor.document.uri.fsPath)) {
+      void vscode.window.showInformationMessage(
+        "Open a Writerly file to inspect its document tree.",
+      );
+      return;
+    }
+
+    const containers = await discoverWriterlyContainers();
+    const rootDir = this.getDocumentTreeRoot(
+      editor.document.uri.fsPath,
+      containers,
+    );
+    const existingSession = this.findSessionForRoot(rootDir);
+    if (!existingSession) {
+      await this.inspectActiveDocumentTree();
+      return;
+    }
+
+    if (this.isCommentedPath(editor.document.uri.fsPath)) {
+      existingSession.viewMode = "all";
+    }
+    await this.showExistingInspector(existingSession, editor);
+  }
+
   private findSessionForRoot(
     rootDir: string | undefined,
   ): InspectorSession | undefined {
@@ -348,10 +453,10 @@ export class WriterlyDocumentTreeInspector
   private handleTreeEditorSelectionChange(
     event: vscode.TextEditorSelectionChangeEvent,
   ): void {
-    if (Date.now() < this.suppressTreeSelectionUntil) return;
-    if (event.kind !== vscode.TextEditorSelectionChangeKind.Mouse) return;
     if (event.textEditor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) return;
 
+    const clickedLine = event.selections[0]?.active.line;
+    const clickedCharacter = event.selections[0]?.active.character;
     const sourceUriString = this.getUriKey(event.textEditor.document.uri);
     const session = this.sessions.get(sourceUriString);
     const treeDocument = this.documents.get(sourceUriString);
@@ -359,9 +464,10 @@ export class WriterlyDocumentTreeInspector
       return;
     }
 
-    const clickedLine = event.selections[0]?.active.line;
-    const clickedCharacter = event.selections[0]?.active.character;
     if (clickedLine === undefined) return;
+    if (Date.now() < this.suppressTreeSelectionUntil) return;
+    if (event.kind !== vscode.TextEditorSelectionChangeKind.Mouse) return;
+
     if (
       clickedCharacter !== undefined &&
       this.isInsideEnabledViewModeControl(
@@ -371,6 +477,19 @@ export class WriterlyDocumentTreeInspector
       )
     ) {
       void this.toggleDocumentTreeViewMode(sourceUriString);
+      return;
+    }
+    if (
+      treeDocument.viewModeControl?.enabled &&
+      clickedLine >=
+        treeDocument.fileLines[treeDocument.fileLines.length - 1]?.line
+    ) {
+      void this.selectDocumentTreeLine(
+        event.textEditor.document.uri,
+        treeDocument,
+        treeDocument.viewModeControl.line,
+        "viewModeControl",
+      );
       return;
     }
 
@@ -416,6 +535,21 @@ export class WriterlyDocumentTreeInspector
     }
 
     const currentLine = treeDocument.currentLine;
+    if (
+      direction < 0 &&
+      treeDocument.currentLineKind === "viewModeControl"
+    ) {
+      const lastFileLine =
+        treeDocument.fileLines[treeDocument.fileLines.length - 1];
+      await this.selectDocumentTreeLine(
+        treeEditor.document.uri,
+        treeDocument,
+        lastFileLine.line,
+        "file",
+      );
+      return;
+    }
+
     const nextFileLine =
       currentLine === undefined
         ? direction > 0
@@ -426,13 +560,295 @@ export class WriterlyDocumentTreeInspector
           : [...treeDocument.fileLines]
               .reverse()
               .find((fileLine) => fileLine.line < currentLine);
-    if (!nextFileLine) return;
+    if (!nextFileLine) {
+      if (
+        direction > 0 &&
+        treeDocument.viewModeControl?.enabled &&
+        currentLine ===
+          treeDocument.fileLines[treeDocument.fileLines.length - 1]?.line
+      ) {
+        await this.selectDocumentTreeLine(
+          treeEditor.document.uri,
+          treeDocument,
+          treeDocument.viewModeControl.line,
+          "viewModeControl",
+        );
+      }
+      return;
+    }
 
     await this.openDocumentTreeFileInBrowserMode(
       nextFileLine.uri,
       treeEditor.document.uri,
       session,
     );
+  }
+
+  private async navigateDocumentTreeEndpoint(
+    endpoint: "first" | "last",
+  ): Promise<void> {
+    const treeEditor = vscode.window.activeTextEditor;
+    if (!treeEditor || treeEditor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) {
+      return;
+    }
+
+    const sourceUriString = this.getUriKey(treeEditor.document.uri);
+    const session = this.sessions.get(sourceUriString);
+    const treeDocument = this.documents.get(sourceUriString);
+    if (!session || !treeDocument || treeDocument.fileLines.length === 0) return;
+
+    const firstFileLine = treeDocument.fileLines[0];
+    const lastFileLine =
+      treeDocument.fileLines[treeDocument.fileLines.length - 1];
+    if (!firstFileLine || !lastFileLine) return;
+
+    if (endpoint === "first") {
+      if (treeDocument.currentLineKind === "viewModeControl") {
+        await this.openDocumentTreeFileInBrowserMode(
+          lastFileLine.uri,
+          treeEditor.document.uri,
+          session,
+        );
+        return;
+      }
+
+      await this.openDocumentTreeFileInBrowserMode(
+        firstFileLine.uri,
+        treeEditor.document.uri,
+        session,
+      );
+      return;
+    }
+
+    if (
+      treeDocument.viewModeControl?.enabled &&
+      treeDocument.currentLine === lastFileLine.line
+    ) {
+      await this.selectDocumentTreeLine(
+        treeEditor.document.uri,
+        treeDocument,
+        treeDocument.viewModeControl.line,
+        "viewModeControl",
+      );
+      return;
+    }
+
+    await this.openDocumentTreeFileInBrowserMode(
+      lastFileLine.uri,
+      treeEditor.document.uri,
+      session,
+    );
+  }
+
+  private async navigateDocumentTreeParent(): Promise<void> {
+    const treeEditor = vscode.window.activeTextEditor;
+    if (!treeEditor || treeEditor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) {
+      return;
+    }
+
+    const sourceUriString = this.getUriKey(treeEditor.document.uri);
+    const session = this.sessions.get(sourceUriString);
+    const treeDocument = this.documents.get(sourceUriString);
+    if (!session || !treeDocument || treeDocument.fileLines.length === 0) {
+      return;
+    }
+
+    const current = this.getCurrentFileLine(treeDocument);
+    if (!current) return;
+
+    const parentFileLine =
+      this.findNearestActiveParentFileLine(current, treeDocument) ??
+      this.findNearestLowerIndentFileLine(current, treeDocument);
+    if (!parentFileLine) return;
+
+    await this.openDocumentTreeFileInBrowserMode(
+      parentFileLine.uri,
+      treeEditor.document.uri,
+      session,
+    );
+  }
+
+  private async navigateDocumentTreeChild(): Promise<void> {
+    const treeEditor = vscode.window.activeTextEditor;
+    if (!treeEditor || treeEditor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) {
+      return;
+    }
+
+    const sourceUriString = this.getUriKey(treeEditor.document.uri);
+    const session = this.sessions.get(sourceUriString);
+    const treeDocument = this.documents.get(sourceUriString);
+    if (!session || !treeDocument || treeDocument.fileLines.length === 0) {
+      return;
+    }
+
+    const current = this.getCurrentFileLine(treeDocument);
+    if (!current) return;
+
+    const childFileLine = treeDocument.fileLines.find(
+      (fileLine) =>
+        fileLine.line > current.fileLine.line &&
+        fileLine.indentation > current.fileLine.indentation,
+    );
+    if (!childFileLine) return;
+
+    await this.openDocumentTreeFileInBrowserMode(
+      childFileLine.uri,
+      treeEditor.document.uri,
+      session,
+    );
+  }
+
+  private async navigateDocumentTreeSibling(direction: -1 | 1): Promise<void> {
+    const treeEditor = vscode.window.activeTextEditor;
+    if (!treeEditor || treeEditor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) {
+      return;
+    }
+
+    const sourceUriString = this.getUriKey(treeEditor.document.uri);
+    const session = this.sessions.get(sourceUriString);
+    const treeDocument = this.documents.get(sourceUriString);
+    if (!session || !treeDocument || treeDocument.fileLines.length === 0) {
+      return;
+    }
+
+    const current = this.getCurrentFileLine(treeDocument);
+    if (!current) return;
+
+    const siblingFileLine =
+      direction > 0
+        ? treeDocument.fileLines.find(
+            (fileLine) =>
+              fileLine.line > current.fileLine.line &&
+              fileLine.indentation === current.fileLine.indentation,
+          )
+        : [...treeDocument.fileLines]
+            .reverse()
+            .find(
+              (fileLine) =>
+                fileLine.line < current.fileLine.line &&
+                fileLine.indentation === current.fileLine.indentation,
+            );
+    if (!siblingFileLine) {
+      if (
+        direction > 0 &&
+        this.isFirstLineWithImmediateDeeperNextLine(current, treeDocument)
+      ) {
+      const nextFileLine = treeDocument.fileLines.find(
+          (fileLine) => fileLine.line > current.fileLine.line,
+        )!;
+        await this.openDocumentTreeFileInBrowserMode(
+          nextFileLine.uri,
+          treeEditor.document.uri,
+          session,
+        );
+      } else if (
+        direction < 0 &&
+        this.isImmediateShallowerFirstLine(current.fileLine, treeDocument)
+      ) {
+        const previousFileLine = [...treeDocument.fileLines]
+          .reverse()
+          .find((fileLine) => fileLine.line < current.fileLine.line)!;
+        await this.openDocumentTreeFileInBrowserMode(
+          previousFileLine.uri,
+          treeEditor.document.uri,
+          session,
+        );
+      }
+      return;
+    }
+
+    await this.openDocumentTreeFileInBrowserMode(
+      siblingFileLine.uri,
+      treeEditor.document.uri,
+      session,
+    );
+  }
+
+  private getCurrentFileLine(
+    treeDocument: TreeDocument,
+  ): { fileLine: FileLineTarget; index: number } | undefined {
+    if (
+      treeDocument.currentLine === undefined ||
+      treeDocument.currentLineKind !== "file"
+    ) {
+      return undefined;
+    }
+
+    const index = treeDocument.fileLines.findIndex(
+      (fileLine) => fileLine.line === treeDocument.currentLine,
+    );
+    if (index < 0) return undefined;
+
+    return { fileLine: treeDocument.fileLines[index], index };
+  }
+
+  private isFirstLineWithImmediateDeeperNextLine(
+    current: { fileLine: FileLineTarget; index: number },
+    treeDocument: TreeDocument,
+  ): boolean {
+    if (current.index !== 0) return false;
+
+    const nextFileLine = treeDocument.fileLines.find(
+      (fileLine) => fileLine.line > current.fileLine.line,
+    );
+    return (
+      nextFileLine !== undefined &&
+      nextFileLine.line === current.fileLine.line + 1 &&
+      nextFileLine.indentation > current.fileLine.indentation
+    );
+  }
+
+  private isImmediateShallowerFirstLine(
+    currentFileLine: FileLineTarget,
+    treeDocument: TreeDocument,
+  ): boolean {
+    const previousFileLine = [...treeDocument.fileLines]
+      .reverse()
+      .find((fileLine) => fileLine.line < currentFileLine.line);
+    return (
+      previousFileLine !== undefined &&
+      previousFileLine === treeDocument.fileLines[0] &&
+      previousFileLine.line === currentFileLine.line - 1 &&
+      previousFileLine.indentation < currentFileLine.indentation
+    );
+  }
+
+  private findNearestActiveParentFileLine(
+    current: { fileLine: FileLineTarget; index: number },
+    treeDocument: TreeDocument,
+  ): FileLineTarget | undefined {
+    if (this.isActiveParentFileLine(current.fileLine)) return undefined;
+
+    for (let index = current.index - 1; index >= 0; index--) {
+      const candidate = treeDocument.fileLines[index];
+      if (
+        this.isActiveParentFileLine(candidate) &&
+        candidate.indentation <= current.fileLine.indentation
+      ) {
+        return candidate;
+      }
+    }
+
+    return undefined;
+  }
+
+  private findNearestLowerIndentFileLine(
+    current: { fileLine: FileLineTarget; index: number },
+    treeDocument: TreeDocument,
+  ): FileLineTarget | undefined {
+    for (let index = current.index - 1; index >= 0; index--) {
+      const candidate = treeDocument.fileLines[index];
+      if (candidate.indentation < current.fileLine.indentation) {
+        return candidate;
+      }
+    }
+
+    return undefined;
+  }
+
+  private isActiveParentFileLine(fileLine: FileLineTarget): boolean {
+    const name = path.basename(fileLine.uri.fsPath);
+    return name.endsWith(PARENT_FILE_SUFFIX) && !name.startsWith("#");
   }
 
   private async openDocumentTreeFileInBrowserMode(
@@ -442,6 +858,10 @@ export class WriterlyDocumentTreeInspector
   ): Promise<void> {
     const sourceUriString = this.getUriKey(sourceUri);
     const previousOpenFsPath = session.currentOpenFsPath;
+    const treeEditor = vscode.window.visibleTextEditors.find(
+      (editor) => editor.document.uri.toString() === sourceUri.toString(),
+    );
+    const treeViewColumn = treeEditor?.viewColumn;
     session.currentOpenFsPath = uri.fsPath;
     this.updateTreeDocumentCurrentLine(sourceUriString, uri.fsPath);
     this.scheduleTreeDocumentDecorations();
@@ -455,6 +875,14 @@ export class WriterlyDocumentTreeInspector
         preserveFocus: true,
       });
       session.originViewColumn = openedEditor.viewColumn;
+      const treeDocument = await vscode.workspace.openTextDocument(sourceUri);
+      await vscode.window.showTextDocument(treeDocument, {
+        viewColumn: treeViewColumn,
+        preview: false,
+        preserveFocus: false,
+      });
+      await this.setDocumentTreeActiveContext(true);
+      await this.moveTreeCursorToCurrentLine(sourceUri);
     } catch (error) {
       session.currentOpenFsPath = previousOpenFsPath;
       this.updateTreeDocumentCurrentLine(sourceUriString, previousOpenFsPath);
@@ -464,6 +892,18 @@ export class WriterlyDocumentTreeInspector
         `Could not open Writerly tree file: ${uri.fsPath}`,
       );
     }
+  }
+
+  private async selectDocumentTreeLine(
+    sourceUri: vscode.Uri,
+    treeDocument: TreeDocument,
+    line: number,
+    kind: "file" | "viewModeControl",
+  ): Promise<void> {
+    treeDocument.currentLine = line;
+    treeDocument.currentLineKind = kind;
+    this.scheduleTreeDocumentDecorations();
+    await this.moveTreeCursorToCurrentLine(sourceUri);
   }
 
   private updateTreeDocumentCurrentLine(
@@ -477,6 +917,8 @@ export class WriterlyDocumentTreeInspector
       (fileLine) => fileLine.uri.fsPath === fsPath,
     );
     treeDocument.currentLine = currentFileLine?.line;
+    treeDocument.currentLineKind =
+      currentFileLine === undefined ? undefined : "file";
   }
 
   private getFileLineForClickedLine(
@@ -559,6 +1001,88 @@ export class WriterlyDocumentTreeInspector
       viewColumn: session.originViewColumn ?? visibleEditor.viewColumn,
       preview: false,
     });
+  }
+
+  private async focusDocumentTreeFile(): Promise<void> {
+    const treeEditor = vscode.window.activeTextEditor;
+    if (!treeEditor || treeEditor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) {
+      return;
+    }
+
+    const sourceUriString = this.getUriKey(treeEditor.document.uri);
+    const treeDocument = this.documents.get(sourceUriString);
+    if (
+      treeDocument?.currentLineKind === "viewModeControl" &&
+      treeDocument.viewModeControl?.enabled
+    ) {
+      await this.toggleDocumentTreeViewModeInPlace(sourceUriString);
+      return;
+    }
+
+    const session = this.sessions.get(sourceUriString);
+    if (!session) return;
+
+    const document = await vscode.workspace.openTextDocument(
+      vscode.Uri.file(session.currentOpenFsPath),
+    );
+    await vscode.window.showTextDocument(document, {
+      viewColumn: session.originViewColumn,
+      preview: true,
+    });
+  }
+
+  private async toggleDocumentTreeViewModeInPlace(
+    sourceUriString: string,
+  ): Promise<void> {
+    const session = this.sessions.get(sourceUriString);
+    if (!session) return;
+
+    session.viewMode = session.viewMode === "all" ? "active" : "all";
+    await this.refreshSession(sourceUriString, session);
+
+    const treeDocument = this.documents.get(sourceUriString);
+    if (!treeDocument?.viewModeControl?.enabled) return;
+    treeDocument.currentLine = treeDocument.viewModeControl.line;
+    treeDocument.currentLineKind = "viewModeControl";
+    this.scheduleTreeDocumentDecorations();
+    await this.moveTreeCursorToCurrentLine(session.uri);
+  }
+
+  private async focusDocumentTreeFileAndClose(): Promise<void> {
+    const treeEditor = vscode.window.activeTextEditor;
+    if (!treeEditor || treeEditor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) {
+      return;
+    }
+
+    const treeUri = treeEditor.document.uri;
+    await this.focusDocumentTreeFile();
+    await this.closeDocumentTreeTab(treeUri);
+  }
+
+  private async closeDocumentTreeTab(uri: vscode.Uri): Promise<void> {
+    const match = this.findTabForUri(uri);
+    if (!match) return;
+    await vscode.window.tabGroups.close(match.tab, true);
+  }
+
+  private findTabForUri(
+    uri: vscode.Uri,
+  ): { tab: vscode.Tab; tabGroup: vscode.TabGroup } | undefined {
+    for (const tabGroup of vscode.window.tabGroups.all) {
+      const tab = tabGroup.tabs.find((candidate) =>
+        this.isTabForUri(candidate, uri),
+      );
+      if (tab) return { tab, tabGroup };
+    }
+    return undefined;
+  }
+
+  private isTabForUri(tab: vscode.Tab, uri: vscode.Uri): boolean {
+    const input = tab.input;
+    return (
+      input instanceof vscode.TabInputText &&
+      input.uri.toString() === uri.toString()
+    );
   }
 
   private scheduleRefresh(): void {
@@ -652,6 +1176,7 @@ export class WriterlyDocumentTreeInspector
         fileLines: [],
         viewModeControl: undefined,
         currentLine: undefined,
+        currentLineKind: undefined,
         mutedLines: [],
       };
     }
@@ -665,6 +1190,7 @@ export class WriterlyDocumentTreeInspector
         fileLines: [],
         viewModeControl: undefined,
         currentLine: undefined,
+        currentLineKind: undefined,
         mutedLines: [],
       };
     }
@@ -675,6 +1201,7 @@ export class WriterlyDocumentTreeInspector
         fileLines: [],
         viewModeControl: undefined,
         currentLine: undefined,
+        currentLineKind: undefined,
         mutedLines: [],
       };
     }
@@ -768,7 +1295,9 @@ export class WriterlyDocumentTreeInspector
       mutedLines,
       sourceUri,
     );
-    lines.push("");
+    if (fileLines.length > 0) {
+      lines.push("");
+    }
     const viewModeControl = this.appendViewModeControl(
       lines,
       links,
@@ -784,6 +1313,7 @@ export class WriterlyDocumentTreeInspector
       fileLines,
       viewModeControl,
       currentLine,
+      currentLineKind: currentLine === undefined ? undefined : "file",
       mutedLines,
     };
   }
@@ -808,7 +1338,7 @@ export class WriterlyDocumentTreeInspector
         if (uri.fsPath === currentFsPath) currentLine = line;
         if (this.isCommentedPath(uri.fsPath)) mutedLines.push(line);
         lines.push(
-          `${fileName}  ${this.getCommentStatusMarker(uri.fsPath)} `,
+          `${fileName}  ${this.getCommentStatusMarker(uri.fsPath)} ${this.getDiagnosticStatusMarker(uri.fsPath)} `,
         );
         links.push({
           line,
@@ -817,7 +1347,13 @@ export class WriterlyDocumentTreeInspector
           uri,
           sourceUri,
         });
-        fileLines.push({ line, uri });
+        fileLines.push({
+          line,
+          uri,
+          indentation: 0,
+          startCharacter: 0,
+          endCharacter: fileName.length,
+        });
       }
       return currentLine;
     }
@@ -858,7 +1394,7 @@ export class WriterlyDocumentTreeInspector
       if (file.uri.fsPath === currentFsPath) currentLine = line;
       if (this.isCommentedPath(file.uri.fsPath)) mutedLines.push(line);
       lines.push(
-        `${indentedFileName.padEnd(fileColumnWidth)}  ${this.getCommentStatusMarker(file.uri.fsPath)} ${dirColumn}`,
+        `${indentedFileName.padEnd(fileColumnWidth)}  ${this.getCommentStatusMarker(file.uri.fsPath)} ${this.getDiagnosticStatusMarker(file.uri.fsPath)} ${dirColumn}`,
       );
       links.push({
         line,
@@ -867,7 +1403,13 @@ export class WriterlyDocumentTreeInspector
         uri: file.uri,
         sourceUri,
       });
-      fileLines.push({ line, uri: file.uri });
+      fileLines.push({
+        line,
+        uri: file.uri,
+        indentation: file.indentation,
+        startCharacter: file.indentation,
+        endCharacter: file.indentation + file.fileName.length,
+      });
     }
 
     return currentLine;
@@ -947,7 +1489,14 @@ export class WriterlyDocumentTreeInspector
   }
 
   private getCommentStatusMarker(fsPath: string): string {
-    return this.isCommentedPath(fsPath) ? "#" : ".";
+    return this.isCommentedPath(fsPath) ? "#" : " ";
+  }
+
+  private getDiagnosticStatusMarker(fsPath: string): string {
+    const status = this.getDiagnosticStatus(fsPath);
+    if (status === "error") return "🔴";
+    if (status === "warning") return "🟠";
+    return "🟢";
   }
 
   private isCommentedPath(fsPath: string): boolean {

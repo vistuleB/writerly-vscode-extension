@@ -11,14 +11,18 @@ export class WriterlyController {
   private providers: any[] = [];
 
   constructor(context: vscode.ExtensionContext) {
+    const linkProvider = new WriterlyLinkProvider(context);
     this.providers = [
       new WriterlyFileOpener(context),
       new WriterlyHoverProvider(context),
       new WriterlyFileProvider(context),
       new WriterlyCompletionProvider(context),
-      new WriterlyLinkProvider(context),
+      linkProvider,
       new WriterlyFileRenamer(context),
-      new WriterlyDocumentTreeInspector(context),
+      new WriterlyDocumentTreeInspector(
+        context,
+        (fsPath) => linkProvider.getDiagnosticStatus(fsPath),
+      ),
     ];
 
     // Register the master restart command

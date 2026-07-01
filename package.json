@@ -3,7 +3,7 @@
   "icon": "logo.png",
   "displayName": "Writerly",
   "description": "Writerly support for VS Code with file navigation - open images, documents, and files under cursor",
-  "version": "0.0.99",
+  "version": "0.0.100",
   "publisher": "TabbyNotes",
   "author": {
     "name": "Chaker Atallah"
@@ -117,6 +117,11 @@
         "command": "writerly.inspectDocumentTree",
         "title": "Inspect Document Tree",
         "category": "Writerly"
+      },
+      {
+        "command": "writerly.toggleDocumentTreeInspector",
+        "title": "(Un)Focus Document Tree",
+        "category": "Writerly"
       }
     ],
     "keybindings": [
@@ -134,6 +139,68 @@
       {
         "command": "writerly.navigateDocumentTreeDown",
         "key": "down",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
+      },
+      {
+        "command": "writerly.navigateDocumentTreeFirst",
+        "key": "ctrl+up",
+        "mac": "cmd+up",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
+      },
+      {
+        "command": "writerly.navigateDocumentTreeLast",
+        "key": "ctrl+down",
+        "mac": "cmd+down",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
+      },
+      {
+        "command": "writerly.navigateDocumentTreeParent",
+        "key": "left",
+        "when": "writerlyDocumentTreeActive"
+      },
+      {
+        "command": "writerly.navigateDocumentTreeChild",
+        "key": "right",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
+      },
+      {
+        "command": "writerly.navigateDocumentTreePreviousSibling",
+        "key": "alt+up",
+        "mac": "alt+up",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
+      },
+      {
+        "command": "writerly.navigateDocumentTreePreviousSibling",
+        "key": "alt+left",
+        "mac": "alt+left",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
+      },
+      {
+        "command": "writerly.navigateDocumentTreeNextSibling",
+        "key": "alt+down",
+        "mac": "alt+down",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
+      },
+      {
+        "command": "writerly.navigateDocumentTreeNextSibling",
+        "key": "alt+right",
+        "mac": "alt+right",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
+      },
+      {
+        "command": "writerly.focusDocumentTreeFile",
+        "key": "enter",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
+      },
+      {
+        "command": "writerly.focusDocumentTreeFile",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
+      },
+      {
+        "command": "writerly.focusDocumentTreeFileAndClose",
+        "key": "shift+enter",
         "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
       }
     ],
