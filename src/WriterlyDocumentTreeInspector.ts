@@ -6,17 +6,22 @@ import {
 } from "./WriterlyFileExtensions";
 import {
   discoverWriterlyContainers,
-  isInSameWriterlyDocumentTree,
   isPathUnderDirectory,
 } from "./WriterlyDocumentTrees";
 
 const DOCUMENT_TREE_SCHEME = "writerly-document-tree";
 const OPEN_TREE_FILE_COMMAND = "writerly.openDocumentTreeFile";
 const SET_TREE_VIEW_MODE_COMMAND = "writerly.setDocumentTreeViewMode";
+const NAVIGATE_TREE_UP_COMMAND = "writerly.navigateDocumentTreeUp";
+const NAVIGATE_TREE_DOWN_COMMAND = "writerly.navigateDocumentTreeDown";
 const PARENT_FILE_SUFFIX = "__parent.wly";
 const ASSEMBLY_INDENT_WIDTH = 4;
+const SHOW_HASH_FILES_LABEL = "Show '#'-files";
+const HIDE_HASH_FILES_LABEL = "Hide '#' files";
+const DECORATION_REFRESH_MAX_ATTEMPTS = 5;
 
 type TreeViewMode = "active" | "all";
+type RootDirectoryStatus = "ok" | "missing" | "notRoot";
 
 type RootDisplay = {
   rootDir: string;
@@ -60,10 +65,25 @@ type LinkTarget = {
   isCommand?: boolean;
 };
 
+type FileLineTarget = {
+  line: number;
+  uri: vscode.Uri;
+};
+
+type ViewModeControlTarget = {
+  line: number;
+  startCharacter: number;
+  endCharacter: number;
+  enabled: boolean;
+};
+
 type TreeDocument = {
   text: string;
   links: LinkTarget[];
+  fileLines: FileLineTarget[];
+  viewModeControl: ViewModeControlTarget | undefined;
   currentLine: number | undefined;
+  mutedLines: number[];
 };
 
 type InspectorSession = {
@@ -80,6 +100,7 @@ export class WriterlyDocumentTreeInspector
 {
   private readonly statusBarItem: vscode.StatusBarItem;
   private readonly currentFileLineDecoration: vscode.TextEditorDecorationType;
+  private readonly mutedLineDecoration: vscode.TextEditorDecorationType;
   private readonly onDidChangeEmitter =
     new vscode.EventEmitter<vscode.Uri>();
   public readonly onDidChange = this.onDidChangeEmitter.event;
@@ -87,6 +108,8 @@ export class WriterlyDocumentTreeInspector
   private readonly sessions = new Map<string, InspectorSession>();
   private documentVersion = 0;
   private refreshTimeout: NodeJS.Timeout | undefined;
+  private decorationRefreshTimeout: NodeJS.Timeout | undefined;
+  private suppressTreeSelectionUntil = 0;
 
   constructor(context: vscode.ExtensionContext) {
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -103,6 +126,11 @@ export class WriterlyDocumentTreeInspector
           "editor.findMatchHighlightBackground",
         ),
       });
+    this.mutedLineDecoration =
+      vscode.window.createTextEditorDecorationType({
+        isWholeLine: true,
+        color: new vscode.ThemeColor("disabledForeground"),
+      });
 
     const watcher = vscode.workspace.createFileSystemWatcher("**/*");
     const refresh = () => this.scheduleRefresh();
@@ -110,6 +138,7 @@ export class WriterlyDocumentTreeInspector
     context.subscriptions.push(
       this.statusBarItem,
       this.currentFileLineDecoration,
+      this.mutedLineDecoration,
       this.onDidChangeEmitter,
       watcher,
       vscode.workspace.registerTextDocumentContentProvider(
@@ -130,14 +159,23 @@ export class WriterlyDocumentTreeInspector
       ),
       vscode.commands.registerCommand(
         SET_TREE_VIEW_MODE_COMMAND,
-        (mode: TreeViewMode, sourceUriString: string) =>
-          this.setDocumentTreeViewMode(mode, sourceUriString),
+        (sourceUriString: string) =>
+          this.toggleDocumentTreeViewMode(sourceUriString),
+      ),
+      vscode.commands.registerCommand(NAVIGATE_TREE_UP_COMMAND, () =>
+        this.navigateDocumentTree(-1),
+      ),
+      vscode.commands.registerCommand(NAVIGATE_TREE_DOWN_COMMAND, () =>
+        this.navigateDocumentTree(1),
       ),
       vscode.window.onDidChangeActiveTextEditor((editor) =>
         this.handleActiveTextEditorChange(editor),
       ),
       vscode.window.onDidChangeVisibleTextEditors(() =>
-        this.applyCurrentFileLineDecorations(),
+        this.scheduleTreeDocumentDecorations(),
+      ),
+      vscode.window.onDidChangeTextEditorSelection((event) =>
+        this.handleTreeEditorSelectionChange(event),
       ),
       vscode.workspace.onDidOpenTextDocument(() =>
         this.updateStatusBarVisibility(),
@@ -220,6 +258,9 @@ export class WriterlyDocumentTreeInspector
     );
     const existingSession = this.findSessionForRoot(rootDir);
     if (existingSession) {
+      if (this.isCommentedPath(editor.document.uri.fsPath)) {
+        existingSession.viewMode = "all";
+      }
       await this.showExistingInspector(existingSession, editor);
       return;
     }
@@ -233,7 +274,9 @@ export class WriterlyDocumentTreeInspector
       anchorFsPath: editor.document.uri.fsPath,
       currentOpenFsPath: editor.document.uri.fsPath,
       rootDir,
-      viewMode: "active",
+      viewMode: this.isCommentedPath(editor.document.uri.fsPath)
+        ? "all"
+        : "active",
       originViewColumn: editor.viewColumn,
       uri,
     };
@@ -248,11 +291,8 @@ export class WriterlyDocumentTreeInspector
       preview: false,
       viewColumn: vscode.ViewColumn.Beside,
     });
-    this.applyCurrentFileLineDecorations();
-    await vscode.window.showTextDocument(editor.document, {
-      viewColumn: session.originViewColumn,
-      preview: false,
-    });
+    this.scheduleTreeDocumentDecorations();
+    await this.moveTreeCursorToCurrentLine(session.uri);
   }
 
   private findSessionForRoot(
@@ -281,11 +321,8 @@ export class WriterlyDocumentTreeInspector
       preview: false,
       viewColumn: vscode.ViewColumn.Beside,
     });
-    this.applyCurrentFileLineDecorations();
-    await vscode.window.showTextDocument(editor.document, {
-      viewColumn: session.originViewColumn,
-      preview: false,
-    });
+    this.scheduleTreeDocumentDecorations();
+    await this.moveTreeCursorToCurrentLine(session.uri);
   }
 
   private async openDocumentTreeFile(
@@ -293,17 +330,159 @@ export class WriterlyDocumentTreeInspector
     sourceUriString: string,
   ): Promise<void> {
     const session = this.sessions.get(sourceUriString);
+    this.suppressTreeSelectionUntil = Date.now() + 500;
     const document = await vscode.workspace.openTextDocument(
       vscode.Uri.file(fsPath),
     );
-    await vscode.window.showTextDocument(document, {
+    const editor = await vscode.window.showTextDocument(document, {
       viewColumn: session?.originViewColumn,
       preview: false,
     });
     if (session) {
       session.currentOpenFsPath = fsPath;
+      session.originViewColumn = editor.viewColumn;
       await this.refreshSession(sourceUriString, session);
     }
+  }
+
+  private handleTreeEditorSelectionChange(
+    event: vscode.TextEditorSelectionChangeEvent,
+  ): void {
+    if (Date.now() < this.suppressTreeSelectionUntil) return;
+    if (event.kind !== vscode.TextEditorSelectionChangeKind.Mouse) return;
+    if (event.textEditor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) return;
+
+    const sourceUriString = this.getUriKey(event.textEditor.document.uri);
+    const session = this.sessions.get(sourceUriString);
+    const treeDocument = this.documents.get(sourceUriString);
+    if (!session || !treeDocument || treeDocument.fileLines.length === 0) {
+      return;
+    }
+
+    const clickedLine = event.selections[0]?.active.line;
+    const clickedCharacter = event.selections[0]?.active.character;
+    if (clickedLine === undefined) return;
+    if (
+      clickedCharacter !== undefined &&
+      this.isInsideEnabledViewModeControl(
+        treeDocument,
+        clickedLine,
+        clickedCharacter,
+      )
+    ) {
+      void this.toggleDocumentTreeViewMode(sourceUriString);
+      return;
+    }
+
+    const fileLine = this.getFileLineForClickedLine(
+      treeDocument,
+      clickedLine,
+    );
+    if (!fileLine) return;
+
+    void this.openDocumentTreeFileInBrowserMode(
+      fileLine.uri,
+      event.textEditor.document.uri,
+      session,
+    );
+  }
+
+  private isInsideEnabledViewModeControl(
+    treeDocument: TreeDocument,
+    clickedLine: number,
+    clickedCharacter: number,
+  ): boolean {
+    const control = treeDocument.viewModeControl;
+    return (
+      control !== undefined &&
+      control.enabled &&
+      clickedLine === control.line &&
+      clickedCharacter >= control.startCharacter &&
+      clickedCharacter < control.endCharacter
+    );
+  }
+
+  private async navigateDocumentTree(direction: -1 | 1): Promise<void> {
+    const treeEditor = vscode.window.activeTextEditor;
+    if (!treeEditor || treeEditor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) {
+      return;
+    }
+
+    const sourceUriString = this.getUriKey(treeEditor.document.uri);
+    const session = this.sessions.get(sourceUriString);
+    const treeDocument = this.documents.get(sourceUriString);
+    if (!session || !treeDocument || treeDocument.fileLines.length === 0) {
+      return;
+    }
+
+    const currentLine = treeDocument.currentLine;
+    const nextFileLine =
+      currentLine === undefined
+        ? direction > 0
+          ? treeDocument.fileLines[0]
+          : treeDocument.fileLines[treeDocument.fileLines.length - 1]
+        : direction > 0
+          ? treeDocument.fileLines.find((fileLine) => fileLine.line > currentLine)
+          : [...treeDocument.fileLines]
+              .reverse()
+              .find((fileLine) => fileLine.line < currentLine);
+    if (!nextFileLine) return;
+
+    await this.openDocumentTreeFileInBrowserMode(
+      nextFileLine.uri,
+      treeEditor.document.uri,
+      session,
+    );
+  }
+
+  private async openDocumentTreeFileInBrowserMode(
+    uri: vscode.Uri,
+    sourceUri: vscode.Uri,
+    session: InspectorSession,
+  ): Promise<void> {
+    const sourceUriString = this.getUriKey(sourceUri);
+    const document = await vscode.workspace.openTextDocument(uri);
+    const openedEditor = await vscode.window.showTextDocument(document, {
+      viewColumn: session.originViewColumn,
+      preview: true,
+      preserveFocus: true,
+    });
+    session.currentOpenFsPath = uri.fsPath;
+    session.originViewColumn = openedEditor.viewColumn;
+    await this.refreshSession(sourceUriString, session);
+    await this.moveTreeCursorToCurrentLine(sourceUri);
+  }
+
+  private getFileLineForClickedLine(
+    treeDocument: TreeDocument,
+    clickedLine: number,
+  ): FileLineTarget | undefined {
+    const firstFileLine = treeDocument.fileLines[0];
+    const lastFileLine =
+      treeDocument.fileLines[treeDocument.fileLines.length - 1];
+    if (!firstFileLine || !lastFileLine) return undefined;
+    if (clickedLine <= firstFileLine.line) return firstFileLine;
+    if (clickedLine >= lastFileLine.line) return lastFileLine;
+
+    return treeDocument.fileLines.find(
+      (fileLine) => fileLine.line === clickedLine,
+    );
+  }
+
+  private async moveTreeCursorToCurrentLine(uri: vscode.Uri): Promise<void> {
+    const treeEditor = vscode.window.visibleTextEditors.find(
+      (editor) => editor.document.uri.toString() === uri.toString(),
+    );
+    const treeDocument = this.documents.get(this.getUriKey(uri));
+    const currentLine = treeDocument?.currentLine;
+    if (!treeEditor || currentLine === undefined) return;
+
+    const position = new vscode.Position(currentLine, 0);
+    treeEditor.selection = new vscode.Selection(position, position);
+    treeEditor.revealRange(
+      new vscode.Range(position, position),
+      vscode.TextEditorRevealType.InCenterIfOutsideViewport,
+    );
   }
 
   private createOpenFileCommandUri(
@@ -320,14 +499,40 @@ export class WriterlyDocumentTreeInspector
     return uri.toString();
   }
 
-  private async setDocumentTreeViewMode(
-    mode: TreeViewMode,
+  private async toggleDocumentTreeViewMode(
     sourceUriString: string,
   ): Promise<void> {
     const session = this.sessions.get(sourceUriString);
     if (!session) return;
-    session.viewMode = mode;
+    const treeDocument = this.documents.get(sourceUriString);
+    if (treeDocument?.viewModeControl?.enabled === false) {
+      const lastFileLine = treeDocument.fileLines[treeDocument.fileLines.length - 1];
+      if (lastFileLine) {
+        await this.openDocumentTreeFileInBrowserMode(
+          lastFileLine.uri,
+          session.uri,
+          session,
+        );
+      }
+      return;
+    }
+    session.viewMode = session.viewMode === "all" ? "active" : "all";
     await this.refreshSession(sourceUriString, session);
+    await this.focusSessionOriginEditor(session);
+  }
+
+  private async focusSessionOriginEditor(
+    session: InspectorSession,
+  ): Promise<void> {
+    const visibleEditor = vscode.window.visibleTextEditors.find(
+      (editor) => editor.document.uri.fsPath === session.currentOpenFsPath,
+    );
+    if (!visibleEditor) return;
+
+    await vscode.window.showTextDocument(visibleEditor.document, {
+      viewColumn: session.originViewColumn ?? visibleEditor.viewColumn,
+      preview: false,
+    });
   }
 
   private scheduleRefresh(): void {
@@ -355,16 +560,36 @@ export class WriterlyDocumentTreeInspector
       await this.createTreeDocumentForAnchor(session),
     );
     this.onDidChangeEmitter.fire(session.uri);
-    this.applyCurrentFileLineDecorations();
+    this.scheduleTreeDocumentDecorations();
   }
 
-  private applyCurrentFileLineDecorations(): void {
+  private scheduleTreeDocumentDecorations(attempt = 0): void {
+    if (this.decorationRefreshTimeout) {
+      clearTimeout(this.decorationRefreshTimeout);
+    }
+    this.decorationRefreshTimeout = setTimeout(() => {
+      const applied = this.applyTreeDocumentDecorations();
+      if (!applied && attempt < DECORATION_REFRESH_MAX_ATTEMPTS) {
+        this.scheduleTreeDocumentDecorations(attempt + 1);
+      }
+    }, 0);
+  }
+
+  private applyTreeDocumentDecorations(): boolean {
+    let allVisibleDocumentsAreCurrent = true;
+
     for (const editor of vscode.window.visibleTextEditors) {
       if (editor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) continue;
 
       const treeDocument = this.documents.get(
         this.getUriKey(editor.document.uri),
       );
+      if (!treeDocument) continue;
+      if (editor.document.getText() !== treeDocument.text) {
+        allVisibleDocumentsAreCurrent = false;
+        continue;
+      }
+
       const currentLine = treeDocument?.currentLine;
       const ranges =
         currentLine === undefined
@@ -374,53 +599,100 @@ export class WriterlyDocumentTreeInspector
                 currentLine,
                 0,
                 currentLine,
-                Number.MAX_SAFE_INTEGER,
+                0,
               ),
             ];
       editor.setDecorations(this.currentFileLineDecoration, ranges);
+      editor.setDecorations(
+        this.mutedLineDecoration,
+        (treeDocument?.mutedLines ?? []).map(
+          (line) =>
+            new vscode.Range(line, 0, line, 0),
+        ),
+      );
     }
+
+    return allVisibleDocumentsAreCurrent;
   }
 
   private async createTreeDocumentForAnchor(
     session: InspectorSession,
   ): Promise<TreeDocument> {
-    const anchorFsPath = session.anchorFsPath;
-    const exists = await this.fileExists(anchorFsPath);
-    if (!exists) {
+    const rootDir = session.rootDir;
+    if (!rootDir) {
       return {
-        text: `Inspector abandoned: anchor file no longer exists.\n\n${anchorFsPath}`,
+        text: `Inspector abandoned: no Writerly root directory was found for:\n\n${session.anchorFsPath}`,
         links: [],
+        fileLines: [],
+        viewModeControl: undefined,
         currentLine: undefined,
+        mutedLines: [],
       };
     }
 
     const containers = await discoverWriterlyContainers();
-    const files = await this.getDocumentTreeFiles(anchorFsPath, containers);
-    const root = this.getDocumentTreeRoot(anchorFsPath, containers);
-    session.rootDir = root;
-    const rootDisplay = root ? { rootDir: root } : undefined;
+    const rootStatus = await this.getRootDirectoryStatus(rootDir, containers);
+    if (rootStatus === "missing") {
+      return {
+        text: `Inspector abandoned: root directory no longer exists.\n\n${rootDir}`,
+        links: [],
+        fileLines: [],
+        viewModeControl: undefined,
+        currentLine: undefined,
+        mutedLines: [],
+      };
+    }
+    if (rootStatus === "notRoot") {
+      return {
+        text: `Inspector abandoned: directory is no longer a topmost Writerly root.\n\n${rootDir}`,
+        links: [],
+        fileLines: [],
+        viewModeControl: undefined,
+        currentLine: undefined,
+        mutedLines: [],
+      };
+    }
+
+    const files = await this.getDocumentTreeFilesForRoot(rootDir);
 
     return this.createTreeDocument(
       session.currentOpenFsPath,
       files,
-      rootDisplay,
+      { rootDir },
       session.viewMode,
       session.uri,
     );
   }
 
-  private async fileExists(fsPath: string): Promise<boolean> {
+  private async getRootDirectoryStatus(
+    rootDir: string,
+    containers: readonly string[],
+  ): Promise<RootDirectoryStatus> {
+    if (!(await this.directoryExists(rootDir))) {
+      return "missing";
+    }
+
+    const isTopmostRoot =
+      containers.includes(rootDir) &&
+      !containers.some(
+        (candidateParent) =>
+          candidateParent !== rootDir &&
+          isPathUnderDirectory(rootDir, candidateParent),
+      );
+    return isTopmostRoot ? "ok" : "notRoot";
+  }
+
+  private async directoryExists(fsPath: string): Promise<boolean> {
     try {
       const stat = await vscode.workspace.fs.stat(vscode.Uri.file(fsPath));
-      return stat.type === vscode.FileType.File;
+      return stat.type === vscode.FileType.Directory;
     } catch {
       return false;
     }
   }
 
-  private async getDocumentTreeFiles(
-    currentFsPath: string,
-    containers: readonly string[],
+  private async getDocumentTreeFilesForRoot(
+    rootDir: string,
   ): Promise<vscode.Uri[]> {
     const fileGlob = getWriterlyFileGlob();
     if (!fileGlob) return [];
@@ -430,11 +702,7 @@ export class WriterlyDocumentTreeInspector
       .filter(
         (uri) =>
           isWriterlyFilePath(uri.fsPath) &&
-          isInSameWriterlyDocumentTree(
-            currentFsPath,
-            uri.fsPath,
-            containers,
-          ),
+          isPathUnderDirectory(uri.fsPath, rootDir),
       )
       .sort((a, b) =>
         this.getRelativeWorkspacePath(a.fsPath).localeCompare(
@@ -452,24 +720,16 @@ export class WriterlyDocumentTreeInspector
   ): TreeDocument {
     const lines: string[] = [];
     const links: LinkTarget[] = [];
+    const fileLines: FileLineTarget[] = [];
+    const mutedLines: number[] = [];
     let currentLine: number | undefined;
+    const hashFileCount = files.filter((uri) =>
+      this.isCommentedPath(uri.fsPath),
+    ).length;
 
-    if (!root) {
-      lines.push(
-        `Containing directory: ${this.getRelativeWorkspacePath(
-          path.dirname(currentFsPath),
-        )}`,
-      );
-    } else {
-      lines.push(
-        `Containing directory: ${this.getRelativeWorkspacePath(root.rootDir)}`,
-      );
-    }
+    const assemblyDirectory = root?.rootDir ?? path.dirname(currentFsPath);
+    lines.push(`Assembly directory: ${assemblyDirectory}`);
 
-    if (files.some((uri) => this.isCommentedPath(uri.fsPath))) {
-      lines.push("");
-      this.appendViewModeControl(lines, links, viewMode, sourceUri);
-    }
     lines.push("");
     currentLine = this.appendOrderedFileLines(
       lines,
@@ -478,13 +738,27 @@ export class WriterlyDocumentTreeInspector
       root,
       viewMode,
       links,
+      fileLines,
+      mutedLines,
+      sourceUri,
+    );
+    lines.push("");
+    const viewModeControl = this.appendViewModeControl(
+      lines,
+      links,
+      viewMode,
+      hashFileCount,
+      mutedLines,
       sourceUri,
     );
 
     return {
       text: lines.join("\n"),
       links,
+      fileLines,
+      viewModeControl,
       currentLine,
+      mutedLines,
     };
   }
 
@@ -495,6 +769,8 @@ export class WriterlyDocumentTreeInspector
     root: RootDisplay | undefined,
     viewMode: TreeViewMode,
     links: LinkTarget[],
+    fileLines: FileLineTarget[],
+    mutedLines: number[],
     sourceUri: vscode.Uri,
   ): number | undefined {
     let currentLine: number | undefined;
@@ -504,8 +780,9 @@ export class WriterlyDocumentTreeInspector
         const line = lines.length;
         const fileName = path.basename(uri.fsPath);
         if (uri.fsPath === currentFsPath) currentLine = line;
+        if (this.isCommentedPath(uri.fsPath)) mutedLines.push(line);
         lines.push(
-          `${fileName}  ${this.getCommentStatusMarker(uri.fsPath)} .`,
+          `${fileName}  ${this.getCommentStatusMarker(uri.fsPath)} `,
         );
         links.push({
           line,
@@ -514,6 +791,7 @@ export class WriterlyDocumentTreeInspector
           uri,
           sourceUri,
         });
+        fileLines.push({ line, uri });
       }
       return currentLine;
     }
@@ -550,8 +828,9 @@ export class WriterlyDocumentTreeInspector
       const line = lines.length;
       const indentedFileName = `${" ".repeat(file.indentation)}${file.fileName}`;
       const dirColumn =
-        file.dirPath.length > 0 ? file.dirPath : ".";
+        file.dirPath.length > 0 ? file.dirPath : "";
       if (file.uri.fsPath === currentFsPath) currentLine = line;
+      if (this.isCommentedPath(file.uri.fsPath)) mutedLines.push(line);
       lines.push(
         `${indentedFileName.padEnd(fileColumnWidth)}  ${this.getCommentStatusMarker(file.uri.fsPath)} ${dirColumn}`,
       );
@@ -562,6 +841,7 @@ export class WriterlyDocumentTreeInspector
         uri: file.uri,
         sourceUri,
       });
+      fileLines.push({ line, uri: file.uri });
     }
 
     return currentLine;
@@ -641,7 +921,7 @@ export class WriterlyDocumentTreeInspector
   }
 
   private getCommentStatusMarker(fsPath: string): string {
-    return this.isCommentedPath(fsPath) ? "#" : "✓";
+    return this.isCommentedPath(fsPath) ? "#" : ".";
   }
 
   private isCommentedPath(fsPath: string): boolean {
@@ -652,44 +932,42 @@ export class WriterlyDocumentTreeInspector
     lines: string[],
     links: LinkTarget[],
     viewMode: TreeViewMode,
+    hashFileCount: number,
+    mutedLines: number[],
     sourceUri: vscode.Uri,
-  ): void {
+  ): ViewModeControlTarget {
     const line = lines.length;
-    const activeLabel = `${viewMode === "active" ? "✓ " : ""}active only`;
-    const allLabel = `${viewMode === "all" ? "✓ " : ""}all`;
-    const prefix = "View: ";
-    lines.push(`${prefix}${activeLabel} | ${allLabel}`);
+    const label = viewMode === "all"
+      ? HIDE_HASH_FILES_LABEL
+      : SHOW_HASH_FILES_LABEL;
+    const enabled = hashFileCount > 0;
+    lines.push(`${label} (${hashFileCount})`);
 
-    const activeStart =
-      prefix.length + (viewMode === "active" ? "✓ ".length : 0);
-    const activeLinkText = "active only";
-    const allStart = prefix.length + activeLabel.length + 3;
-    const allLinkStart = allStart + (viewMode === "all" ? "✓ ".length : 0);
-    const allLinkText = "all";
-    links.push(
-      {
-        line,
-        startCharacter: activeStart,
-        endCharacter: activeStart + activeLinkText.length,
-        uri: this.createSetViewModeCommandUri("active", sourceUri),
-        isCommand: true,
-      },
-      {
-        line,
-        startCharacter: allLinkStart,
-        endCharacter: allLinkStart + allLinkText.length,
-        uri: this.createSetViewModeCommandUri("all", sourceUri),
-        isCommand: true,
-      },
-    );
+    if (!enabled) {
+      mutedLines.push(line);
+    }
+
+    links.push({
+      line,
+      startCharacter: 0,
+      endCharacter: label.length,
+      uri: this.createToggleViewModeCommandUri(sourceUri),
+      isCommand: true,
+    });
+
+    return {
+      line,
+      startCharacter: 0,
+      endCharacter: label.length,
+      enabled,
+    };
   }
 
-  private createSetViewModeCommandUri(
-    mode: TreeViewMode,
+  private createToggleViewModeCommandUri(
     sourceUri: vscode.Uri,
   ): vscode.Uri {
     const args = encodeURIComponent(
-      JSON.stringify([mode, this.getUriKey(sourceUri)]),
+      JSON.stringify([this.getUriKey(sourceUri)]),
     );
     return vscode.Uri.parse(`command:${SET_TREE_VIEW_MODE_COMMAND}?${args}`);
   }

@@ -125,6 +125,16 @@
         "key": "ctrl+shift+o",
         "mac": "cmd+shift+o",
         "when": "editorTextFocus && editorLangId == writerly"
+      },
+      {
+        "command": "writerly.navigateDocumentTreeUp",
+        "key": "up",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
+      },
+      {
+        "command": "writerly.navigateDocumentTreeDown",
+        "key": "down",
+        "when": "editorTextFocus && resourceScheme == 'writerly-document-tree'"
       }
     ],
     "menus": {
