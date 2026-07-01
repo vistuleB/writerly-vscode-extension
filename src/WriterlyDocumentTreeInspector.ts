@@ -578,16 +578,13 @@ export class WriterlyDocumentTreeInspector
       return;
     }
 
+    const currentFileLine = this.getCurrentFileLine(treeDocument);
     const nextFileLine =
-      currentLine === undefined
+      currentLine === undefined || currentFileLine === undefined
         ? direction > 0
           ? treeDocument.fileLines[0]
           : treeDocument.fileLines[treeDocument.fileLines.length - 1]
-        : direction > 0
-          ? treeDocument.fileLines.find((fileLine) => fileLine.line > currentLine)
-          : [...treeDocument.fileLines]
-              .reverse()
-              .find((fileLine) => fileLine.line < currentLine);
+        : treeDocument.fileLines[currentFileLine.index + direction];
     if (!nextFileLine) {
       if (
         direction > 0 &&
