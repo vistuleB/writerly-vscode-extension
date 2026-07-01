@@ -81,7 +81,12 @@ enum ValidationState {
 
 declare module "vscode" {
   export interface DocumentLink {
-    data: { handleName: string; fsPath: string; validated: ValidationState };
+    data: {
+      handleName: string;
+      fsPath: string;
+      validated: ValidationState;
+      suppressDiagnostics?: boolean;
+    };
   }
 }
 
@@ -268,7 +273,7 @@ export class WriterlyLinkProvider
     await this.initializeAsync();
 
     for (const doc of vscode.workspace.textDocuments) {
-      if (this.isWriterlyFile(doc.uri.fsPath)) {
+      if (await this.shouldIndexOpenDocument(doc)) {
         await this.processDocument(doc);
       }
     }
@@ -282,7 +287,7 @@ export class WriterlyLinkProvider
       this.isInitialized = true;
 
       for (const doc of vscode.workspace.textDocuments) {
-        if (this.isWriterlyFile(doc.uri.fsPath)) {
+        if (await this.shouldIndexOpenDocument(doc)) {
           await this.processDocument(doc);
         }
       }
@@ -307,6 +312,25 @@ export class WriterlyLinkProvider
 
   private async refreshWriterlyContainers(): Promise<void> {
     this.writerlyContainers = await discoverWriterlyContainers(MAX_FILES);
+  }
+
+  private async shouldIndexOpenDocument(
+    document: vscode.TextDocument,
+  ): Promise<boolean> {
+    if (!this.isWriterlyFile(document.uri.fsPath)) return false;
+    if (!this.isInWorkspace(document.uri.fsPath)) return false;
+    if (await this.localPathExists(document.uri.fsPath)) {
+      return true;
+    }
+
+    await this.deleteUri(document.uri);
+    return false;
+  }
+
+  private isInWorkspace(fsPath: string): boolean {
+    return (vscode.workspace.workspaceFolders || []).some((folder) =>
+      isPathUnderDirectory(fsPath, folder.uri.fsPath),
+    );
   }
 
   private onDidChange(document: vscode.TextDocument): void {
@@ -543,6 +567,7 @@ export class WriterlyLinkProvider
             lineNumber,
             indent,
             currentFsPath,
+            this.isCommentLine(lineType),
           );
           documentLinks.push(...usageLinks);
         }
@@ -563,6 +588,13 @@ export class WriterlyLinkProvider
       lineType !== LineType.CodeBlockLine &&
       lineType !== LineType.Tag &&
       lineType !== LineType.CodeBlockClosing
+    );
+  }
+
+  private isCommentLine(lineType: LineType): boolean {
+    return (
+      lineType === LineType.AttributeZoneComment ||
+      lineType === LineType.TextZoneComment
     );
   }
 
@@ -972,6 +1004,7 @@ export class WriterlyLinkProvider
     lineNumber: number,
     indent: number,
     fsPath: string,
+    suppressDiagnostics = false,
   ): vscode.DocumentLink[] {
     const links: vscode.DocumentLink[] = [];
     let usageMatch;
@@ -988,7 +1021,12 @@ export class WriterlyLinkProvider
       );
 
       const link = new vscode.DocumentLink(range);
-      link.data = { handleName, fsPath, validated: ValidationState.UNKNOWN };
+      link.data = {
+        handleName,
+        fsPath,
+        validated: ValidationState.UNKNOWN,
+        suppressDiagnostics,
+      };
       links.push(link);
     }
 
@@ -1006,6 +1044,10 @@ export class WriterlyLinkProvider
       const currentFsPath = link.data?.fsPath;
 
       if (!handleName || !currentFsPath) continue;
+      if (link.data.suppressDiagnostics) {
+        link.data.validated = ValidationState.OK;
+        continue;
+      }
 
       // if it doesn't match the strict regex, underline it in red immediately.
       if (!strictRegex.test(handleName)) {
@@ -1534,6 +1576,12 @@ export class WriterlyLinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): HandleAtPosition | undefined {
+    const lineType = WriterlyDocumentWalker.onTheFlyLineClassification(
+      document,
+      position,
+    );
+    if (!this.shouldProcessUsageInLine(lineType)) return undefined;
+
     const line = document.lineAt(position).text;
     let usageMatch;
     USAGE_REGEX.lastIndex = 0;
@@ -1834,6 +1882,7 @@ export class WriterlyLinkProvider
     delta: number,
   ): void {
     for (const link of links) {
+      if (link.data.suppressDiagnostics) continue;
       this.updateUsageCount(link.data.handleName, link.data.fsPath, delta);
     }
   }
