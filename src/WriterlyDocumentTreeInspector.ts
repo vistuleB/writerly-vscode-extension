@@ -1337,10 +1337,14 @@ export class WriterlyDocumentTreeInspector
       for (const uri of files) {
         const line = lines.length;
         const fileName = path.basename(uri.fsPath);
+        const fileLabel = this.getFileLabelWithDiagnosticMarker(
+          fileName,
+          uri.fsPath,
+        );
         if (uri.fsPath === currentFsPath) currentLine = line;
         if (this.isCommentedPath(uri.fsPath)) mutedLines.push(line);
         lines.push(
-          `${fileName}  ${this.getCommentStatusMarker(uri.fsPath)} ${this.getDiagnosticStatusMarker(uri.fsPath)} `,
+          `${fileLabel}  ${this.getCommentStatusMarker(uri.fsPath)} `,
         );
         links.push({
           line,
@@ -1383,20 +1387,28 @@ export class WriterlyDocumentTreeInspector
     );
     const fileColumnWidth = Math.max(
       ...displayFiles.map(
-        (file) => file.indentation + file.fileName.length,
+        (file) =>
+          file.indentation +
+          this.getFileLabelWithDiagnosticMarker(
+            file.fileName,
+            file.uri.fsPath,
+          ).length,
       ),
       0,
     );
 
     for (const file of displayFiles) {
       const line = lines.length;
-      const indentedFileName = `${" ".repeat(file.indentation)}${file.fileName}`;
+      const indentedFileLabel = `${" ".repeat(file.indentation)}${this.getFileLabelWithDiagnosticMarker(
+        file.fileName,
+        file.uri.fsPath,
+      )}`;
       const dirColumn =
         file.dirPath.length > 0 ? file.dirPath : "";
       if (file.uri.fsPath === currentFsPath) currentLine = line;
       if (this.isCommentedPath(file.uri.fsPath)) mutedLines.push(line);
       lines.push(
-        `${indentedFileName.padEnd(fileColumnWidth)}  ${this.getCommentStatusMarker(file.uri.fsPath)} ${this.getDiagnosticStatusMarker(file.uri.fsPath)} ${dirColumn}`,
+        `${indentedFileLabel.padEnd(fileColumnWidth)}  ${this.getCommentStatusMarker(file.uri.fsPath)} ${dirColumn}`,
       );
       links.push({
         line,
@@ -1494,11 +1506,19 @@ export class WriterlyDocumentTreeInspector
     return this.isCommentedPath(fsPath) ? "#" : " ";
   }
 
+  private getFileLabelWithDiagnosticMarker(
+    fileName: string,
+    fsPath: string,
+  ): string {
+    const marker = this.getDiagnosticStatusMarker(fsPath);
+    return marker ? `${fileName} ${marker}` : fileName;
+  }
+
   private getDiagnosticStatusMarker(fsPath: string): string {
     const status = this.getDiagnosticStatus(fsPath);
     if (status === "error") return "🔴";
     if (status === "warning") return "🟠";
-    return "🟢";
+    return "";
   }
 
   private isCommentedPath(fsPath: string): boolean {
