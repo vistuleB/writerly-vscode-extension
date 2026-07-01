@@ -119,8 +119,6 @@ type HandleResolution =
   | { kind: "multiple"; definitions: HandleDefinition[] }
   | { kind: "inaccessible"; definitions: HandleDefinition[] };
 
-const MAX_FILES: number = 1500;
-
 const HANDLE_CHARS: string = "\\p{L}\\p{N}\\p{M}_.:'\\-\\^";
 const HANDLE_END_CHARS: string = "\\p{L}\\p{N}\\p{M}_'\\^";
 const HANDLE_REGEX_STRING: string = `(?:[${HANDLE_CHARS}]*[${HANDLE_END_CHARS}])`;
@@ -174,6 +172,7 @@ export class WriterlyLinkProvider
   private revalidateTimer: NodeJS.Timeout | undefined;
   private missingFileRevalidateTimer: NodeJS.Timeout | undefined;
   private missingFileValidationTimer: NodeJS.Timeout | undefined;
+  private openDocumentRevalidationTimer: NodeJS.Timeout | undefined;
   private pendingMissingFileDocuments = new Map<FSPath, vscode.TextDocument>();
 
   constructor(context: vscode.ExtensionContext) {
@@ -196,6 +195,9 @@ export class WriterlyLinkProvider
       this.missingFileDiagnosticCollection,
       vscode.workspace.onDidChangeTextDocument((event) =>
         this.onDidChange(event.document),
+      ),
+      vscode.workspace.onDidOpenTextDocument((document) =>
+        this.onDidOpen(document),
       ),
       vscode.workspace.onDidRenameFiles((event) => this.onDidRename(event)),
       vscode.workspace.onDidDeleteFiles((event) => this.onDidDelete(event)),
@@ -269,14 +271,12 @@ export class WriterlyLinkProvider
       clearTimeout(this.missingFileValidationTimer);
       this.missingFileValidationTimer = undefined;
     }
+    if (this.openDocumentRevalidationTimer) {
+      clearTimeout(this.openDocumentRevalidationTimer);
+      this.openDocumentRevalidationTimer = undefined;
+    }
 
     await this.initializeAsync();
-
-    for (const doc of vscode.workspace.textDocuments) {
-      if (await this.shouldIndexOpenDocument(doc)) {
-        await this.processDocument(doc);
-      }
-    }
   }
 
   private async initializeAsync(): Promise<void> {
@@ -284,13 +284,23 @@ export class WriterlyLinkProvider
       await this.refreshWriterlyContainers();
       await this.processAllDocuments();
 
-      this.isInitialized = true;
-
+      const openWriterlyDocuments: vscode.TextDocument[] = [];
       for (const doc of vscode.workspace.textDocuments) {
+        if (!this.isWriterlyFile(doc.uri.fsPath)) continue;
+
         if (await this.shouldIndexOpenDocument(doc)) {
+          openWriterlyDocuments.push(doc);
           await this.processDocument(doc);
         }
       }
+
+      this.isInitialized = true;
+
+      for (const doc of openWriterlyDocuments) {
+        await this.processDocument(doc, false);
+      }
+
+      this.scheduleOpenDocumentRevalidation();
     } catch (error) {
       console.error("WriterlyLinkProvider initialization failed:", error);
     }
@@ -300,18 +310,14 @@ export class WriterlyLinkProvider
     const fileGlob = getWriterlyFileGlob();
     if (!fileGlob) return;
 
-    const uris = await vscode.workspace.findFiles(
-      fileGlob,
-      null,
-      MAX_FILES,
-    );
+    const uris = await vscode.workspace.findFiles(fileGlob);
 
     // process all files and await completion
     await Promise.all(uris.map((uri) => this.processUri(uri)));
   }
 
   private async refreshWriterlyContainers(): Promise<void> {
-    this.writerlyContainers = await discoverWriterlyContainers(MAX_FILES);
+    this.writerlyContainers = await discoverWriterlyContainers();
   }
 
   private async shouldIndexOpenDocument(
@@ -333,9 +339,42 @@ export class WriterlyLinkProvider
     );
   }
 
+  private scheduleOpenDocumentRevalidation(): void {
+    if (this.openDocumentRevalidationTimer) {
+      clearTimeout(this.openDocumentRevalidationTimer);
+    }
+
+    this.openDocumentRevalidationTimer = setTimeout(() => {
+      void this.revalidateOpenDocuments();
+    }, 1000);
+  }
+
+  private async revalidateOpenDocuments(): Promise<void> {
+    this.openDocumentRevalidationTimer = undefined;
+
+    const openWriterlyDocuments: vscode.TextDocument[] = [];
+    for (const document of vscode.workspace.textDocuments) {
+      if (!this.isWriterlyFile(document.uri.fsPath)) continue;
+      if (await this.shouldIndexOpenDocument(document)) {
+        openWriterlyDocuments.push(document);
+      }
+    }
+
+    for (const document of openWriterlyDocuments) {
+      await this.processDocument(document, false);
+    }
+  }
+
   private onDidChange(document: vscode.TextDocument): void {
     if (!this.isWriterlyFile(document.uri.fsPath)) return;
     void this.processDocument(document);
+  }
+
+  private onDidOpen(document: vscode.TextDocument): void {
+    if (!this.isInitialized) return;
+    if (!this.isWriterlyFile(document.uri.fsPath)) return;
+    void this.processDocument(document);
+    this.scheduleOpenDocumentRevalidation();
   }
 
   private async onDidRename(event: vscode.FileRenameEvent): Promise<void> {

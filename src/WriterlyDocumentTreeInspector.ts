@@ -479,10 +479,12 @@ export class WriterlyDocumentTreeInspector
       void this.toggleDocumentTreeViewMode(sourceUriString);
       return;
     }
+    const lastFileLine =
+      treeDocument.fileLines[treeDocument.fileLines.length - 1];
     if (
       treeDocument.viewModeControl?.enabled &&
-      clickedLine >=
-        treeDocument.fileLines[treeDocument.fileLines.length - 1]?.line
+      lastFileLine !== undefined &&
+      clickedLine > lastFileLine.line
     ) {
       void this.selectDocumentTreeLine(
         event.textEditor.document.uri,
