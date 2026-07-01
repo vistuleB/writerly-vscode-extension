@@ -892,7 +892,7 @@ export class WriterlyDocumentTreeInspector
     const treeViewColumn = treeEditor?.viewColumn;
     session.currentOpenFsPath = uri.fsPath;
     this.updateTreeDocumentCurrentLine(sourceUriString, uri.fsPath);
-    this.scheduleTreeDocumentDecorations();
+    this.applyCurrentLineDecorations();
     await this.moveTreeCursorToCurrentLine(sourceUri);
 
     try {
@@ -914,7 +914,7 @@ export class WriterlyDocumentTreeInspector
     } catch (error) {
       session.currentOpenFsPath = previousOpenFsPath;
       this.updateTreeDocumentCurrentLine(sourceUriString, previousOpenFsPath);
-      this.scheduleTreeDocumentDecorations();
+      this.applyCurrentLineDecorations();
       await this.moveTreeCursorToCurrentLine(sourceUri);
       void vscode.window.showErrorMessage(
         `Could not open Writerly tree file: ${uri.fsPath}`,
@@ -930,7 +930,7 @@ export class WriterlyDocumentTreeInspector
   ): Promise<void> {
     treeDocument.currentLine = line;
     treeDocument.currentLineKind = kind;
-    this.scheduleTreeDocumentDecorations();
+    this.applyCurrentLineDecorations();
     await this.moveTreeCursorToCurrentLine(sourceUri);
   }
 
@@ -1133,10 +1133,16 @@ export class WriterlyDocumentTreeInspector
     uriString: string,
     session: InspectorSession,
   ): Promise<void> {
-    this.documents.set(
-      uriString,
-      await this.createTreeDocumentForAnchor(session),
-    );
+    const previousTreeDocument = this.documents.get(uriString);
+    const nextTreeDocument = await this.createTreeDocumentForAnchor(session);
+    if (
+      previousTreeDocument?.currentLineKind === "viewModeControl" &&
+      nextTreeDocument.viewModeControl?.enabled
+    ) {
+      nextTreeDocument.currentLine = nextTreeDocument.viewModeControl.line;
+      nextTreeDocument.currentLineKind = "viewModeControl";
+    }
+    this.documents.set(uriString, nextTreeDocument);
     this.onDidChangeEmitter.fire(session.uri);
     this.scheduleTreeDocumentDecorations();
   }
@@ -1155,6 +1161,21 @@ export class WriterlyDocumentTreeInspector
     }, delay);
   }
 
+  private applyCurrentLineDecorations(): void {
+    for (const editor of vscode.window.visibleTextEditors) {
+      if (editor.document.uri.scheme !== DOCUMENT_TREE_SCHEME) continue;
+
+      const treeDocument = this.documents.get(
+        this.getUriKey(editor.document.uri),
+      );
+      if (!treeDocument) continue;
+      editor.setDecorations(
+        this.currentFileLineDecoration,
+        this.getCurrentLineDecorationRanges(treeDocument),
+      );
+    }
+  }
+
   private applyTreeDocumentDecorations(): boolean {
     let allVisibleDocumentsAreCurrent = true;
 
@@ -1170,19 +1191,10 @@ export class WriterlyDocumentTreeInspector
         continue;
       }
 
-      const currentLine = treeDocument?.currentLine;
-      const ranges =
-        currentLine === undefined
-          ? []
-          : [
-              new vscode.Range(
-                currentLine,
-                0,
-                currentLine,
-                0,
-              ),
-            ];
-      editor.setDecorations(this.currentFileLineDecoration, ranges);
+      editor.setDecorations(
+        this.currentFileLineDecoration,
+        this.getCurrentLineDecorationRanges(treeDocument),
+      );
       editor.setDecorations(
         this.mutedLineDecoration,
         (treeDocument?.mutedLines ?? []).map(
@@ -1217,6 +1229,21 @@ export class WriterlyDocumentTreeInspector
     }
 
     return allVisibleDocumentsAreCurrent;
+  }
+
+  private getCurrentLineDecorationRanges(
+    treeDocument: TreeDocument,
+  ): vscode.Range[] {
+    const currentLine = treeDocument.currentLine;
+    if (currentLine === undefined) return [];
+    return [
+      new vscode.Range(
+        currentLine,
+        0,
+        currentLine,
+        0,
+      ),
+    ];
   }
 
   private async createTreeDocumentForAnchor(
