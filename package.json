@@ -61,7 +61,7 @@
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Workspace-relative directory containing Writerly template files used by 'Create File Under Cursor From Template'. Should be set at the workspace level."
+          "description": "Workspace-relative directory containing Writerly template files used by 'Create File From Template'. Should be set at the workspace level."
         }
       }
     },
@@ -110,7 +110,7 @@
       },
       {
         "command": "writerly.createFileUnderCursorFromTemplate",
-        "title": "Create File Under Cursor From Template",
+        "title": "Create File From Template",
         "category": "Writerly"
       },
       {

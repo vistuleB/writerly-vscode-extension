@@ -92,12 +92,12 @@ same document tree:
 - `writerly.openFileWithDefault` - Open current file with system default
 - `writerly.renameFileUnderCursor` - Rename the file under the cursor and update references
 - `writerly.moveFileUnderCursor` - Move the file or same-directory multi-cursor files under selection to another workspace directory
-- `writerly.createFileUnderCursorFromTemplate` - Create the file under the cursor from a matching template
+- `writerly.createFileUnderCursorFromTemplate` - Create a file from a matching template
 - `writerly.restart` - Restart the extension
 
 ## Creating Files From Templates
 
-The `writerly.createFileUnderCursorFromTemplate` command lets you scaffold a new file directly from a path written in your document. Place the cursor on a file path that does **not** exist yet and run the command. The extension will:
+The `writerly.createFileUnderCursorFromTemplate` command, shown as **Writerly: Create File From Template**, lets you scaffold a new file directly from a path written in your document. Place the cursor on a file path that does **not** exist yet and run the command. The extension will:
 
 1. Resolve the directory portion of the path to a unique directory in the workspace (it aborts if the directory is ambiguous or missing, or if a file with that name already exists). Bare directory paths are suffix-matched. Paths beginning with `./` are resolved relative to the workspace folder containing the active Writerly document.
 2. Look up your configured template files directory (see below).
