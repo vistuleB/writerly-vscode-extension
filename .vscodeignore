@@ -14,7 +14,6 @@ exp.html
 package.sh
 publish.sh
 logo.svg
-logo_outline.svg
 *.code-workspace
 .gitignore
 .vscodeignore
