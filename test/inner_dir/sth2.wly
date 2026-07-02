@@ -1,5 +1,8 @@
 |> sth
     w=3
+    src=inner_dir/missing.svg
+    src=inner_dir/missing3.svg
+    src=inner_dir/missing2.svg
 
     >>_after_partY__
 
