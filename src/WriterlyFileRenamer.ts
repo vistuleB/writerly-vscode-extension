@@ -61,6 +61,20 @@ type TemplateQuickPickItem = vscode.QuickPickItem & {
   filePath: string;
 };
 
+type TemplateCandidate = {
+  filePath: string;
+  label: string;
+  description?: string;
+  detail?: string;
+  sortGroup: number;
+  sortScore: number;
+};
+
+type DocumentPathToken = {
+  filePath: string;
+  range: vscode.Range;
+};
+
 const PATH_TOKEN_FORBIDDEN_CHARS = /[\s'"=\[\]\{\}\(\);!<>|]/;
 
 class UserReportedFileOperationError extends Error {}
@@ -750,6 +764,8 @@ class WriterlyTemplateFileCreator {
       templateDir,
       templateDirSetting,
       fileName,
+      targetDir,
+      target,
     );
     if (!selectedTemplate) return;
 
@@ -797,6 +813,8 @@ class WriterlyTemplateFileCreator {
     templateDir: string,
     templateDirSetting: string,
     fileName: string,
+    targetDir: string,
+    target: FileCommandTarget,
   ): Promise<string | undefined> {
     const ext = path.extname(fileName);
     if (!ext) {
@@ -804,17 +822,60 @@ class WriterlyTemplateFileCreator {
       return undefined;
     }
 
-    const templateFiles = (
-      await fileUtils.listFilesRecursively(templateDir)
-    ).filter((filePath) => filePath.endsWith(ext));
-    if (templateFiles.length === 0) {
+    const candidates = [
+      ...(await this.getTemplateDirectoryCandidates(
+        templateDir,
+        fileName,
+        ext,
+      )),
+      ...(await this.getNearbyReferenceCandidates(target, ext)),
+      ...(await this.getTargetDirectoryCandidate(targetDir, fileName, ext)),
+    ];
+    const uniqueCandidates = this.dedupeTemplateCandidates(candidates).sort(
+      (a, b) =>
+        a.sortGroup - b.sortGroup ||
+        b.sortScore - a.sortScore ||
+        a.label.localeCompare(b.label),
+    );
+
+    if (uniqueCandidates.length === 0) {
       vscode.window.showErrorMessage(
         `No template files with extension "${ext}" found in "${templateDirSetting}"`,
       );
       return undefined;
     }
 
-    const sortedTemplateFiles = templateFiles
+    if (uniqueCandidates.length === 1) {
+      return uniqueCandidates[0].filePath;
+    }
+
+    const items: TemplateQuickPickItem[] = uniqueCandidates.map(
+      (candidate) => ({
+        label: candidate.label,
+        description: candidate.description,
+        detail: candidate.detail ?? candidate.filePath,
+        filePath: candidate.filePath,
+      }),
+    );
+    const selection = await vscode.window.showQuickPick(items, {
+      placeHolder: `Select template for "${fileName}"`,
+      matchOnDescription: true,
+      matchOnDetail: true,
+    });
+
+    return selection?.filePath;
+  }
+
+  private async getTemplateDirectoryCandidates(
+    templateDir: string,
+    fileName: string,
+    ext: string,
+  ): Promise<TemplateCandidate[]> {
+    const templateFiles = (
+      await fileUtils.listFilesRecursively(templateDir)
+    ).filter((filePath) => filePath.endsWith(ext));
+
+    return templateFiles
       .map((filePath) => ({
         filePath,
         relativePath: path.relative(templateDir, filePath),
@@ -828,27 +889,130 @@ class WriterlyTemplateFileCreator {
           return b.suffixLength - a.suffixLength;
         }
         return a.relativePath.localeCompare(b.relativePath);
-      });
-
-    if (sortedTemplateFiles.length === 1) {
-      return sortedTemplateFiles[0].filePath;
-    }
-
-    const items: TemplateQuickPickItem[] = sortedTemplateFiles.map(
-      (template, index) => ({
-        label: template.relativePath.split(path.sep).join("/"),
+      })
+      .map((template, index) => ({
+        filePath: template.filePath,
+        label: `Template: ${template.relativePath.split(path.sep).join("/")}`,
         description: index === 0 ? "default match" : undefined,
         detail: template.filePath,
-        filePath: template.filePath,
-      }),
-    );
-    const selection = await vscode.window.showQuickPick(items, {
-      placeHolder: `Select template for "${fileName}"`,
-      matchOnDescription: true,
-      matchOnDetail: true,
-    });
+        sortGroup: 0,
+        sortScore: template.suffixLength,
+      }));
+  }
 
-    return selection?.filePath;
+  private async getNearbyReferenceCandidates(
+    target: FileCommandTarget,
+    ext: string,
+  ): Promise<TemplateCandidate[]> {
+    const tokens = collectDocumentPathTokens(target.document, ext);
+    const before = tokens
+      .filter((token) => token.range.end.isBeforeOrEqual(target.pathRange.start))
+      .reverse();
+    const after = tokens.filter((token) =>
+      token.range.start.isAfterOrEqual(target.pathRange.end),
+    );
+
+    const candidates: TemplateCandidate[] = [];
+    const previous = await this.findFirstResolvedReference(before, target);
+    if (previous) {
+      candidates.push({
+        filePath: previous,
+        label: `⬆️: ${path.basename(previous)}`,
+        detail: previous,
+        sortGroup: 1,
+        sortScore: 0,
+      });
+    }
+
+    const next = await this.findFirstResolvedReference(after, target);
+    if (next) {
+      candidates.push({
+        filePath: next,
+        label: `⬇️: ${path.basename(next)}`,
+        detail: next,
+        sortGroup: 2,
+        sortScore: 0,
+      });
+    }
+
+    return candidates;
+  }
+
+  private async findFirstResolvedReference(
+    tokens: DocumentPathToken[],
+    target: FileCommandTarget,
+  ): Promise<string | undefined> {
+    for (const token of tokens) {
+      if (token.filePath === target.filePath) continue;
+
+      const resolution = await fileUtils.resolveUniqueFilePath(
+        token.filePath,
+        {
+          rootRelativeTo: target.document.uri.fsPath,
+          resolutionRoot: target.resolutionRoot,
+        },
+      );
+      if (
+        resolution.kind === "unique" ||
+        resolution.kind === "resolvedAmbiguous"
+      ) {
+        return resolution.fsPath;
+      }
+    }
+
+    return undefined;
+  }
+
+  private async getTargetDirectoryCandidate(
+    targetDir: string,
+    fileName: string,
+    ext: string,
+  ): Promise<TemplateCandidate[]> {
+    const entries = await vscode.workspace.fs.readDirectory(
+      vscode.Uri.file(targetDir),
+    );
+    const sameExtensionFiles = entries
+      .filter(
+        ([entryName, type]) =>
+          (type & vscode.FileType.File) !== 0 && path.extname(entryName) === ext,
+      )
+      .map(([entryName]) => ({
+        fileName: entryName,
+        filePath: path.join(targetDir, entryName),
+        prefixLength: longestCommonPrefixLength(entryName, fileName),
+      }))
+      .sort((a, b) => {
+        if (b.prefixLength !== a.prefixLength) {
+          return b.prefixLength - a.prefixLength;
+        }
+        return a.fileName.localeCompare(b.fileName);
+      });
+
+    const best = sameExtensionFiles[0];
+    if (!best) return [];
+
+    return [
+      {
+        filePath: best.filePath,
+        label: `Similar Name: ${best.fileName}`,
+        detail: best.filePath,
+        sortGroup: 3,
+        sortScore: best.prefixLength,
+      },
+    ];
+  }
+
+  private dedupeTemplateCandidates(
+    candidates: TemplateCandidate[],
+  ): TemplateCandidate[] {
+    const byResolvedPath = new Map<string, TemplateCandidate>();
+    for (const candidate of candidates) {
+      const key = path.resolve(candidate.filePath);
+      if (!byResolvedPath.has(key)) {
+        byResolvedPath.set(key, candidate);
+      }
+    }
+    return [...byResolvedPath.values()];
   }
 }
 
@@ -884,6 +1048,48 @@ function getPathTokenAtOffset(text: string, offset: number): string | undefined 
 
   if (start === end) return undefined;
   return text.slice(start, end);
+}
+
+function collectDocumentPathTokens(
+  document: vscode.TextDocument,
+  ext: string,
+): DocumentPathToken[] {
+  const tokens: DocumentPathToken[] = [];
+
+  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+    const text = document.lineAt(lineNumber).text;
+    let index = 0;
+    while (index < text.length) {
+      while (
+        index < text.length &&
+        PATH_TOKEN_FORBIDDEN_CHARS.test(text[index])
+      ) {
+        index++;
+      }
+
+      const start = index;
+      while (
+        index < text.length &&
+        !PATH_TOKEN_FORBIDDEN_CHARS.test(text[index])
+      ) {
+        index++;
+      }
+
+      if (start === index) continue;
+      const filePath = text.slice(start, index);
+      if (path.extname(filePath) !== ext) continue;
+
+      tokens.push({
+        filePath,
+        range: new vscode.Range(
+          new vscode.Position(lineNumber, start),
+          new vscode.Position(lineNumber, index),
+        ),
+      });
+    }
+  }
+
+  return tokens;
 }
 
 function getExistingResolvedPath(
@@ -1206,6 +1412,14 @@ function longestCommonSuffixLength(a: string, b: string): number {
     i < b.length &&
     a[a.length - 1 - i] === b[b.length - 1 - i]
   ) {
+    i++;
+  }
+  return i;
+}
+
+function longestCommonPrefixLength(a: string, b: string): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) {
     i++;
   }
   return i;
