@@ -57,6 +57,10 @@ type PathReplacement = {
   newPath: string;
 };
 
+type TemplateQuickPickItem = vscode.QuickPickItem & {
+  filePath: string;
+};
+
 const PATH_TOKEN_FORBIDDEN_CHARS = /[\s'"=\[\]\{\}\(\);!<>|]/;
 
 class UserReportedFileOperationError extends Error {}
@@ -810,14 +814,41 @@ class WriterlyTemplateFileCreator {
       return undefined;
     }
 
-    return templateFiles.reduce((best, candidate) => {
-      const bestLength = longestCommonSuffixLength(path.basename(best), fileName);
-      const candidateLength = longestCommonSuffixLength(
-        path.basename(candidate),
-        fileName,
-      );
-      return candidateLength > bestLength ? candidate : best;
+    const sortedTemplateFiles = templateFiles
+      .map((filePath) => ({
+        filePath,
+        relativePath: path.relative(templateDir, filePath),
+        suffixLength: longestCommonSuffixLength(
+          path.basename(filePath),
+          fileName,
+        ),
+      }))
+      .sort((a, b) => {
+        if (b.suffixLength !== a.suffixLength) {
+          return b.suffixLength - a.suffixLength;
+        }
+        return a.relativePath.localeCompare(b.relativePath);
+      });
+
+    if (sortedTemplateFiles.length === 1) {
+      return sortedTemplateFiles[0].filePath;
+    }
+
+    const items: TemplateQuickPickItem[] = sortedTemplateFiles.map(
+      (template, index) => ({
+        label: template.relativePath.split(path.sep).join("/"),
+        description: index === 0 ? "default match" : undefined,
+        detail: template.filePath,
+        filePath: template.filePath,
+      }),
+    );
+    const selection = await vscode.window.showQuickPick(items, {
+      placeHolder: `Select template for "${fileName}"`,
+      matchOnDescription: true,
+      matchOnDetail: true,
     });
+
+    return selection?.filePath;
   }
 }
 
