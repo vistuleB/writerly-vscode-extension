@@ -740,29 +740,19 @@ class WriterlyTemplateFileCreator {
     }
 
     const templateDirSetting = vscode.workspace
-      .getConfiguration("writerly")
+      .getConfiguration("writerly", target.document.uri)
       .get<string>("templateFilesDirectory");
 
-    if (!templateDirSetting || templateDirSetting.trim() === "") {
-      vscode.window.showErrorMessage(
-        'No template files directory configured. Set "writerly.templateFilesDirectory" in your workspace settings.',
-      );
-      return;
-    }
-
-    const templateDir = await this.resolveUniqueDirectory(
-      templateDirSetting,
+    const templateDir = await this.resolveOptionalTemplateDirectory(
+      templateDirSetting?.trim() ?? "",
       target.document.uri.fsPath,
       target.resolutionRoot,
-      `Template files directory "${templateDirSetting}" matches no directory in the workspace`,
-      `Template files directory "${templateDirSetting}" matches multiple directories in the workspace. Please make it more specific.`,
       target.ambiguityNotes,
     );
-    if (!templateDir) return;
 
     const selectedTemplate = await this.selectTemplateFile(
       templateDir,
-      templateDirSetting,
+      templateDirSetting?.trim() ?? "",
       fileName,
       targetDir,
       target,
@@ -788,6 +778,35 @@ class WriterlyTemplateFileCreator {
     );
   }
 
+  private async resolveOptionalTemplateDirectory(
+    dirPath: string,
+    rootRelativeTo: string,
+    resolutionRoot: string,
+    ambiguityNotes: string[],
+  ): Promise<string | undefined> {
+    if (!dirPath) return undefined;
+
+    const resolution = await fileUtils.resolveDirectoryPath(dirPath, {
+      rootRelativeTo,
+      resolutionRoot,
+    });
+    if (
+      resolution.kind === "unique" ||
+      resolution.kind === "resolvedAmbiguous"
+    ) {
+      const note = getResolvedAmbiguousPathNote(dirPath, resolution);
+      if (note) ambiguityNotes.push(note);
+      return resolution.fsPath;
+    }
+
+    vscode.window.showWarningMessage(
+      resolution.kind === "ambiguous"
+        ? `Template files directory "${dirPath}" matches multiple directories in the workspace. Ignoring configured template directory.`
+        : `Template files directory "${dirPath}" matches no directory in the workspace. Ignoring configured template directory.`,
+    );
+    return undefined;
+  }
+
   private async resolveUniqueDirectory(
     dirPath: string,
     rootRelativeTo: string,
@@ -810,7 +829,7 @@ class WriterlyTemplateFileCreator {
   }
 
   private async selectTemplateFile(
-    templateDir: string,
+    templateDir: string | undefined,
     templateDirSetting: string,
     fileName: string,
     targetDir: string,
@@ -823,11 +842,13 @@ class WriterlyTemplateFileCreator {
     }
 
     const candidates = [
-      ...(await this.getTemplateDirectoryCandidates(
-        templateDir,
-        fileName,
-        ext,
-      )),
+      ...(templateDir
+        ? await this.getTemplateDirectoryCandidates(
+            templateDir,
+            fileName,
+            ext,
+          )
+        : []),
       ...(await this.getNearbyReferenceCandidates(target, ext)),
       ...(await this.getTargetDirectoryCandidate(targetDir, fileName, ext)),
     ];
@@ -840,7 +861,9 @@ class WriterlyTemplateFileCreator {
 
     if (uniqueCandidates.length === 0) {
       vscode.window.showErrorMessage(
-        `No template files with extension "${ext}" found in "${templateDirSetting}"`,
+        templateDirSetting
+          ? `No template, nearby, or similar files with extension "${ext}" found.`
+          : `No nearby or similar files with extension "${ext}" found. Configure "writerly.templateFilesDirectory" to add template choices.`,
       );
       return undefined;
     }
