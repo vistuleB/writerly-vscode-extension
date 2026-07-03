@@ -10,6 +10,7 @@ import {
   isWriterlyFilePath,
 } from "./WriterlyFileExtensions";
 import {
+  discoverWriterlyContainers,
   discoverTopmostWriterlyDocumentRoots,
   getNearestWriterlyContainer,
   isPathUnderDirectory,
@@ -620,6 +621,7 @@ class WriterlyPathReferenceUpdater {
     if (!fileGlob) return;
 
     const writerlyFiles = await vscode.workspace.findFiles(fileGlob);
+    const context = await ReferenceReplacementContext.create();
     const oldPathAlternatives = [...new Set(replacements.map((r) => r.oldPath))]
       .sort((a, b) => b.length - a.length)
       .map(escapeRegExp)
@@ -644,6 +646,7 @@ class WriterlyPathReferenceUpdater {
         text,
         pathRegex,
         replacements,
+        context,
       );
       if (newText === text) continue;
 
@@ -660,8 +663,9 @@ class WriterlyPathReferenceUpdater {
     text: string,
     pathRegex: RegExp,
     replacements: PathReplacement[],
+    context: ReferenceReplacementContext,
   ): Promise<string> {
-    const resolutionRoot = await getDocumentResolutionRoot(document.uri.fsPath);
+    const resolutionRoot = context.getDocumentResolutionRoot(document.uri.fsPath);
     const replacementsByOldPath = groupReplacementsByOldPath(replacements);
     let nextText = "";
     let lastIndex = 0;
@@ -677,7 +681,7 @@ class WriterlyPathReferenceUpdater {
       const candidates = replacementsByOldPath.get(oldPath);
       if (!candidates) continue;
 
-      const resolution = await fileUtils.resolveUniqueFilePath(tokenText, {
+      const resolution = await context.resolveUniqueFilePath(tokenText, {
         rootRelativeTo: document.uri.fsPath,
         resolutionRoot,
       });
@@ -711,6 +715,54 @@ class WriterlyPathReferenceUpdater {
 
     if (!changed) return text;
     return nextText + text.slice(lastIndex);
+  }
+}
+
+class ReferenceReplacementContext {
+  private readonly resolutionCache = new Map<string, Promise<FileResolution>>();
+
+  private constructor(private readonly writerlyContainers: readonly string[]) {}
+
+  static async create(): Promise<ReferenceReplacementContext> {
+    return new ReferenceReplacementContext(await discoverWriterlyContainers());
+  }
+
+  getDocumentResolutionRoot(fsPath: string): string {
+    const writerlyContainer = this.getNearestWriterlyContainer(fsPath);
+    if (writerlyContainer) return writerlyContainer;
+
+    const workspaceFolder = getClosestWorkspaceFolder(fsPath);
+    return workspaceFolder?.uri.fsPath ?? path.dirname(fsPath);
+  }
+
+  resolveUniqueFilePath(
+    filePath: string,
+    options: {
+      rootRelativeTo?: string;
+      resolutionRoot?: string;
+    },
+  ): Promise<FileResolution> {
+    const scopeKind = options.resolutionRoot ? "resolutionRoot" : "rootRelativeTo";
+    const scope = options.resolutionRoot ?? options.rootRelativeTo ?? "";
+    const key = [
+      filePath,
+      scopeKind,
+      scope,
+    ].join("\0");
+    const cached = this.resolutionCache.get(key);
+    if (cached) return cached;
+
+    const resolution = fileUtils.resolveUniqueFilePath(filePath, options);
+    this.resolutionCache.set(key, resolution);
+    return resolution;
+  }
+
+  private getNearestWriterlyContainer(fsPath: string): string | undefined {
+    if (!isWriterlyFilePath(fsPath)) return undefined;
+
+    return this.writerlyContainers
+      .filter((containerPath) => isPathUnderDirectory(fsPath, containerPath))
+      .sort((a, b) => b.length - a.length)[0];
   }
 }
 
