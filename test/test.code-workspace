@@ -4,7 +4,4 @@
 			"path": "."
 		}
 	],
-	"settings": {
-	    "writerly.templateFilesDirectory": "./templates"
-	}
 }

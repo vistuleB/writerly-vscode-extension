@@ -117,6 +117,12 @@ type HandleAtPosition = {
   range: vscode.Range;
 };
 
+type HandleUsage = {
+  fsPath: FSPath;
+  range: vscode.Range;
+  handleName: HandleName;
+};
+
 type HandleResolution =
   | { kind: "ok"; definition: HandleDefinition }
   | { kind: "notFound" }
@@ -156,6 +162,7 @@ const MISSING_FILE_WARNING_ATTRIBUTE_NAMES = new Set([
   "file",
   "source",
 ]);
+const GO_TO_HANDLE_USAGE_COMMAND = "writerly.goToHandleUsage";
 const URI_SCHEME_REGEX = /^[a-z][a-z0-9+.-]*:/i;
 const OPEN_DOCUMENT_PROCESSING_DELAY_MS = 250;
 
@@ -232,6 +239,9 @@ export class WriterlyLinkProvider
         { scheme: "file", language: "writerly" },
         this,
         ">", // Triggered when the user types the second '>'
+      ),
+      vscode.commands.registerCommand(GO_TO_HANDLE_USAGE_COMMAND, () =>
+        this.goToHandleUsage(),
       ),
 
       vscode.workspace.onDidChangeConfiguration((e) => {
@@ -1523,6 +1533,58 @@ export class WriterlyLinkProvider
     return completionItems;
   }
 
+  private async goToHandleUsage(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || !this.isWriterlyFile(editor.document.uri.fsPath)) {
+      vscode.window.showErrorMessage(
+        "Open a Writerly file and place the cursor on a handle.",
+      );
+      return;
+    }
+
+    if (!this.isInitialized) {
+      vscode.window.showErrorMessage("Writerly handles are still indexing.");
+      return;
+    }
+
+    const handle = this.getHandleAtPosition(
+      editor.document,
+      editor.selection.active,
+    );
+    if (!handle) {
+      vscode.window.showErrorMessage("No handle found under cursor.");
+      return;
+    }
+
+    const usages = this.getUsagesInDocumentTree(
+      handle.handleName,
+      editor.document.uri.fsPath,
+    );
+    if (usages.length === 0) {
+      vscode.window.showErrorMessage(
+        `Handle '${handle.handleName}' is not used in this document tree.`,
+      );
+      return;
+    }
+
+    if (usages.length === 1) {
+      await this.openHandleUsage(usages[0]);
+      return;
+    }
+
+    const selected = await vscode.window.showQuickPick(
+      await Promise.all(usages.map((usage) => this.createUsageQuickPick(usage))),
+      {
+        placeHolder: `Select usage of '${handle.handleName}'`,
+        matchOnDescription: true,
+        matchOnDetail: true,
+      },
+    );
+    if (!selected) return;
+
+    await this.openHandleUsage(selected.usage);
+  }
+
   private createGoToDefinitionAction(
     definition: HandleDefinition,
   ): vscode.CodeAction {
@@ -1569,6 +1631,74 @@ export class WriterlyLinkProvider
     );
     item.insertText = handleName;
     return item;
+  }
+
+  private getUsagesInDocumentTree(
+    handleName: HandleName,
+    currentFsPath: FSPath,
+  ): HandleUsage[] {
+    const usages: HandleUsage[] = [];
+
+    for (const [fsPath, links] of this.documentLinks) {
+      if (!this.isInSameDocumentTree(currentFsPath, fsPath)) continue;
+
+      for (const link of links) {
+        if (link.data?.handleName !== handleName) continue;
+        usages.push({
+          fsPath,
+          range: link.range,
+          handleName,
+        });
+      }
+    }
+
+    return usages.sort(
+      (a, b) =>
+        this.getRelativeWorkspacePath(a.fsPath).localeCompare(
+          this.getRelativeWorkspacePath(b.fsPath),
+          undefined,
+          { numeric: true, sensitivity: "base" },
+        ) ||
+        a.range.start.line - b.range.start.line ||
+        a.range.start.character - b.range.start.character,
+    );
+  }
+
+  private async createUsageQuickPick(
+    usage: HandleUsage,
+  ): Promise<vscode.QuickPickItem & { usage: HandleUsage }> {
+    const relativePath = this.getRelativeWorkspacePath(usage.fsPath);
+    const lineNumber = usage.range.start.line + 1;
+    const linePreview = await this.getUsageLinePreview(usage);
+
+    return {
+      label: `${relativePath}:${lineNumber}`,
+      description: usage.handleName,
+      detail: linePreview,
+      usage,
+    };
+  }
+
+  private async getUsageLinePreview(usage: HandleUsage): Promise<string> {
+    try {
+      const document = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(usage.fsPath),
+      );
+      return document.lineAt(usage.range.start.line).text.trim();
+    } catch {
+      return "";
+    }
+  }
+
+  private async openHandleUsage(usage: HandleUsage): Promise<void> {
+    const document = await vscode.workspace.openTextDocument(
+      vscode.Uri.file(usage.fsPath),
+    );
+    const editor = await vscode.window.showTextDocument(document, {
+      preview: false,
+      selection: usage.range,
+    });
+    editor.revealRange(usage.range, vscode.TextEditorRevealType.InCenter);
   }
 
   private getDefinitionOnLine(

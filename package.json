@@ -122,6 +122,11 @@
         "command": "writerly.toggleDocumentTreeInspector",
         "title": "Toggle Document Tree",
         "category": "Writerly"
+      },
+      {
+        "command": "writerly.goToHandleUsage",
+        "title": "Go to Handle Usage",
+        "category": "Writerly"
       }
     ],
     "keybindings": [
