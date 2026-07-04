@@ -4,6 +4,8 @@
     src=inner_dir/missing3.svg
     src=inner_dir/missing2.svg
 
-    >>_after_partY__
+    >>_after_partY__ >>page
 
     >>_Before_parTy
+
+    hiiii#page##<<|

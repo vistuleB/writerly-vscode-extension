@@ -79,15 +79,24 @@
       ]
     },
     "handle-in-text-definition": {
-      "match": "(?:^|[ {(\\[])([\\p{L}\\p{N}\\p{M}_.:'\\-\\^]*[\\p{L}\\p{N}\\p{M}_'\\^])((?:#[\\p{L}\\p{N}\\p{M}_:'\\-]+)*)(##<<)",
+      "match": "(?:(#)([\\p{L}\\p{N}\\p{M}_.:'\\-\\^]*[\\p{L}\\p{N}\\p{M}_'\\^])((?:#[\\p{L}\\p{N}\\p{M}_:'\\-]+)*)(##<<)|(?:^|[ {(\\[])([\\p{L}\\p{N}\\p{M}_.:'\\-\\^]*[\\p{L}\\p{N}\\p{M}_'\\^])(##<<))",
       "captures": {
         "1": {
-          "name": "entity.name.function.handle.definition.writerly"
+          "name": "punctuation.definition.handle.writerly"
         },
         "2": {
-          "name": "constant.language.handle.decorator.writerly"
+          "name": "entity.name.function.handle.definition.writerly"
         },
         "3": {
+          "name": "constant.language.handle.decorator.writerly"
+        },
+        "4": {
+          "name": "punctuation.definition.handle.writerly"
+        },
+        "5": {
+          "name": "entity.name.function.handle.definition.writerly"
+        },
+        "6": {
           "name": "punctuation.definition.handle.writerly"
         }
       }
