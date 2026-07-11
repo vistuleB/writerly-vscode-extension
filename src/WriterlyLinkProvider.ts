@@ -1910,7 +1910,7 @@ export class WriterlyLinkProvider
         this.addDuplicateHandleDefinitionDiagnostics(
           handleName,
           localDefs,
-          uniqueTreeDefs.length,
+          uniqueTreeDefs,
           diagnostics,
         );
         return;
@@ -1947,14 +1947,17 @@ export class WriterlyLinkProvider
   private addDuplicateHandleDefinitionDiagnostics(
     handleName: HandleName,
     definitions: HandleDefinition[],
-    definitionCount: number,
+    conflictingDefinitions: HandleDefinition[],
     diagnostics: vscode.Diagnostic[],
   ): void {
+    const locationInfo = this.formatDefinitionLocations(
+      conflictingDefinitions,
+    );
     definitions.forEach((definition) => {
       diagnostics.push(
         new vscode.Diagnostic(
           definition.range,
-          `Handle '${handleName}' is defined in multiple places (${definitionCount}) in this document tree.`,
+          `Handle '${handleName}' is defined in multiple places (${conflictingDefinitions.length}) in this document tree:\n ${locationInfo}`,
           vscode.DiagnosticSeverity.Error,
         ),
       );
