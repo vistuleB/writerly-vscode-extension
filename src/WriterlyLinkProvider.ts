@@ -1423,6 +1423,28 @@ export class WriterlyLinkProvider
       return undefined;
     }
 
+    const definition = this.getDefinitionAtPosition(document, position);
+    if (definition) {
+      const usages = this.getUsagesInDocumentTree(
+        definition.handleName,
+        document.uri.fsPath,
+      );
+      if (usages.length === 0) {
+        void vscode.window.showInformationMessage(
+          "no handle usages found in current document tree for this handle",
+        );
+        return new vscode.Location(document.uri, definition.range);
+      }
+
+      return usages.map(
+        (handleUsage) =>
+          new vscode.Location(
+            vscode.Uri.file(handleUsage.fsPath),
+            handleUsage.range,
+          ),
+      );
+    }
+
     const usage = this.getUsageOnLine(document, position);
     return usage
       ? this.getDefinitionForHandle(usage.handleName, document.uri.fsPath)
@@ -1813,6 +1835,16 @@ export class WriterlyLinkProvider
     document: vscode.TextDocument,
     position: vscode.Position,
   ): HandleAtPosition | undefined {
+    return (
+      this.getDefinitionAtPosition(document, position) ??
+      this.getUsageOnLine(document, position)
+    );
+  }
+
+  private getDefinitionAtPosition(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): HandleAtPosition | undefined {
     const attributeDefinition = this.getDefinitionOnLine(document, position);
     if (attributeDefinition?.range.contains(position)) {
       return attributeDefinition;
@@ -1823,7 +1855,7 @@ export class WriterlyLinkProvider
       return inTextDefinition;
     }
 
-    return this.getUsageOnLine(document, position);
+    return undefined;
   }
 
   private getDefinitionForHandle(
